@@ -112,8 +112,7 @@ Deno.serve(async (request) => {
       (existingImages as ExistingLocationImageRow[] | null)?.[0]?.sort_order ?? -1
 
     const nextSortOrder = latestSortOrder + 1
-    const isFirstImage = latestSortOrder === -1
-    const isCover = input.isCover === true ? true : isFirstImage
+    const isCover = input.isCover === true
 
     if (input.isCover === true) {
       const { error: clearCoverError } = await adminClient

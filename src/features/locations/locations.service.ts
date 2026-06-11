@@ -17,6 +17,88 @@ import type {
   SupabaseLocationRow,
 } from './locations.types'
 
+type LocationSlugRow = {
+  id: string
+  slug: string
+}
+
+type SupabaseErrorLike = {
+  code?: string
+  message?: string
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function normalizeLocationSlug(baseSlug: string) {
+  const trimmed = baseSlug.trim()
+
+  return trimmed.length > 0 ? trimmed : 'locacion'
+}
+
+function isLocationSlugUniqueError(error: SupabaseErrorLike | null) {
+  if (!error) {
+    return false
+  }
+
+  return (
+    error.code === '23505' ||
+    error.message?.includes('locations_slug_key') === true
+  )
+}
+
+async function getUniqueLocationSlug(
+  baseSlug: string,
+  currentLocationId?: string,
+): Promise<string> {
+  const normalizedBaseSlug = normalizeLocationSlug(baseSlug)
+  const supabase = getSupabaseClient()
+
+  let query = supabase
+    .from('locations')
+    .select('id, slug')
+    .like('slug', `${normalizedBaseSlug}%`)
+
+  if (currentLocationId) {
+    query = query.neq('id', currentLocationId)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const rows = (data ?? []) as LocationSlugRow[]
+  const slugPattern = new RegExp(`^${escapeRegExp(normalizedBaseSlug)}(?:-(\\d+))?$`)
+
+  const matchingSlugs = rows
+    .map((row) => row.slug)
+    .filter((slug) => slugPattern.test(slug))
+
+  if (!matchingSlugs.includes(normalizedBaseSlug)) {
+    return normalizedBaseSlug
+  }
+
+  const maxSuffix = matchingSlugs.reduce((highest, slug) => {
+    if (slug === normalizedBaseSlug) {
+      return Math.max(highest, 1)
+    }
+
+    const match = slug.match(slugPattern)
+    const parsedSuffix = Number.parseInt(match?.[1] ?? '', 10)
+
+    if (Number.isNaN(parsedSuffix)) {
+      return highest
+    }
+
+    return Math.max(highest, parsedSuffix)
+  }, 1)
+
+  return `${normalizedBaseSlug}-${maxSuffix + 1}`
+}
+
 function getRelationName(relation: LocationNameRelation) {
   if (!relation) {
     return null
@@ -221,14 +303,24 @@ export async function createLocation(
 ): Promise<string> {
   const supabase = getSupabaseClient()
   const { selectedFeatureIds, ...locationPayload } = payload
+  const uniqueSlug = await getUniqueLocationSlug(locationPayload.slug)
 
   const { data, error } = await supabase
     .from('locations')
-    .insert(locationPayload)
+    .insert({
+      ...locationPayload,
+      slug: uniqueSlug,
+    })
     .select('id')
     .single()
 
   if (error) {
+    if (isLocationSlugUniqueError(error)) {
+      throw new Error(
+        'Ya existe una locación con un código similar. Intentá guardar nuevamente.',
+      )
+    }
+
     throw new Error(error.message)
   }
 
@@ -266,7 +358,6 @@ export async function getLocationById(
         id,
         title,
         slug,
-        short_description,
         description,
         owner_id,
         category_id,
@@ -297,7 +388,6 @@ export async function getLocationById(
     id: row.id,
     title: row.title,
     slug: row.slug,
-    short_description: row.short_description,
     description: row.description,
     owner_id: row.owner_id,
     category_id: row.category_id,
@@ -322,15 +412,25 @@ export async function updateLocation(
 ): Promise<string> {
   const supabase = getSupabaseClient()
   const { selectedFeatureIds, ...locationPayload } = payload
+  const uniqueSlug = await getUniqueLocationSlug(locationPayload.slug, id)
 
   const { data, error } = await supabase
     .from('locations')
-    .update(locationPayload)
+    .update({
+      ...locationPayload,
+      slug: uniqueSlug,
+    })
     .eq('id', id)
     .select('id')
     .single()
 
   if (error) {
+    if (isLocationSlugUniqueError(error)) {
+      throw new Error(
+        'Ya existe una locación con un código similar. Intentá guardar nuevamente.',
+      )
+    }
+
     throw new Error(error.message)
   }
 

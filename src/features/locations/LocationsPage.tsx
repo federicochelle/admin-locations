@@ -2,8 +2,8 @@ import { useMemo } from 'react'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
-import EmptyState from '../../components/ui/EmptyState'
 import PageContainer from '../../components/ui/PageContainer'
+import LocationDeleteProgressModal from './LocationDeleteProgressModal'
 import LocationsTable from './LocationsTable'
 import { useLocations } from './useLocations'
 
@@ -46,6 +46,10 @@ function LocationsPage() {
       description="Espacio principal para administrar el inventario de locaciones audiovisuales."
       hideHeader
     >
+      <LocationDeleteProgressModal
+        isOpen={activeActionKey?.startsWith('delete:') ?? false}
+      />
+
       {isLoading ? (
         <Card>
           <div className="flex min-h-48 items-center justify-center">
@@ -87,16 +91,7 @@ function LocationsPage() {
         </Card>
       ) : null}
 
-      {!isLoading && !errorMessage && locations.length === 0 ? (
-        <Card className="p-4 sm:p-6">
-          <EmptyState
-            title="Todavía no hay locaciones cargadas"
-            description="Cuando conectemos Supabase, acá aparecerá el listado de locaciones."
-          />
-        </Card>
-      ) : null}
-
-      {!isLoading && !errorMessage && locations.length > 0 ? (
+      {!isLoading && !errorMessage ? (
         <LocationsTable
           locations={locations}
           activeActionKey={activeActionKey}
