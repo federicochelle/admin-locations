@@ -32,8 +32,7 @@ function mapRecordToFormValues(record: LocationEditableRecord): LocationFormValu
   return {
     title: record.title,
     slug: record.slug,
-    short_description: record.short_description ?? record.description ?? '',
-    description: record.description ?? record.short_description ?? '',
+    description: record.description ?? '',
     category_id: record.category_id ?? '',
     department_id: record.department_id ?? '',
     zone_id: record.zone_id ?? '',

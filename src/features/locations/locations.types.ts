@@ -54,7 +54,6 @@ export type LocationFormOptions = {
 export type LocationCreatePayload = {
   title: string
   slug: string
-  short_description: string | null
   description: string | null
   category_id: string | null
   department_id: string | null
@@ -77,7 +76,6 @@ export type LocationUpdatePayload = LocationCreatePayload
 export type LocationFormValues = {
   title: string
   slug: string
-  short_description: string
   description: string
   category_id: string
   department_id: string
@@ -99,7 +97,6 @@ export type LocationEditableRecord = {
   id: string
   title: string
   slug: string
-  short_description: string | null
   description: string | null
   category_id: string | null
   department_id: string | null

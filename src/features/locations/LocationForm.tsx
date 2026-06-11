@@ -51,7 +51,6 @@ type LocationFormProps = {
 const defaultInitialValues: LocationFormValues = {
   title: '',
   slug: '',
-  short_description: '',
   description: '',
   category_id: '',
   department_id: '',
@@ -91,7 +90,6 @@ function buildPayload(
   return {
     title: values.title.trim(),
     slug: values.slug.trim(),
-    short_description: null,
     description: toNullableString(values.description),
     category_id: values.category_id || null,
     department_id: values.department_id || null,
@@ -1295,7 +1293,7 @@ function markSaveProgressSuccess() {
             {showImagesSection && mode === 'create' ? (
               <div className="min-w-0 xl:pl-6 2xl:pl-8">
                 <LocationImagesGrid
-                  images={pendingImages}
+                  images={pendingCoverImage ? [pendingCoverImage] : []}
                   emptyCoverAction={
                     <LocationImageUploader
                       disabled={isSubmitting}
@@ -1560,12 +1558,11 @@ function markSaveProgressSuccess() {
           }
         >
           <div className="space-y-4">
-            {pendingImages.length > 0 ? (
+            {pendingGalleryImages.length > 0 ? (
               <LocationImagesGrid
-                images={pendingImages}
+                images={pendingGalleryImages}
                 isLocked={isSubmitting}
                 onRemove={handleRemovePendingImage}
-                onSetCover={handleSetCoverImage}
                 showCount={false}
                 showCover={false}
               />

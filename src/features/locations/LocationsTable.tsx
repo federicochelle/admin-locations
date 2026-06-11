@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import Card from '../../components/ui/Card'
+import EmptyState from '../../components/ui/EmptyState'
 import {
   buttonBaseClassName,
   buttonVariantClasses,
@@ -238,8 +239,9 @@ function LocationsTable({
   const [sortKey, setSortKey] = useState<LocationSortKey>('departmentName')
   const [sortDirection, setSortDirection] = useState<LocationSortDirection>('asc')
   const hasTitle = Boolean(title)
+  const normalizedSearchTerm = searchTerm.trim()
   const filteredLocations = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLocaleLowerCase()
+    const normalizedSearch = normalizedSearchTerm.toLocaleLowerCase()
 
     if (normalizedSearch.length === 0) {
       return locations
@@ -258,7 +260,7 @@ function LocationsTable({
         field.toLocaleLowerCase().includes(normalizedSearch),
       )
     })
-  }, [locations, searchTerm])
+  }, [locations, normalizedSearchTerm])
 
   const sortedLocations = useMemo(() => {
     return [...filteredLocations].sort((left, right) => {
@@ -290,6 +292,18 @@ function LocationsTable({
     setSortKey(nextSortKey)
     setSortDirection('asc')
   }
+
+  const isEmptyState = sortedLocations.length === 0
+  const emptyStateContent =
+    locations.length === 0
+      ? {
+          title: 'Todavia no hay locaciones cargadas.',
+          description: 'Crea tu primera locacion para comenzar.',
+        }
+      : {
+          title: 'No se encontraron locaciones.',
+          description: 'Proba con otro termino de busqueda.',
+        }
 
   return (
     <Card className="overflow-hidden p-0">
@@ -339,7 +353,15 @@ function LocationsTable({
         </div>
       ) : null}
 
-      <div className="overflow-x-auto">
+      {isEmptyState ? (
+        <div className="p-4 sm:p-6">
+          <EmptyState
+            title={emptyStateContent.title}
+            description={emptyStateContent.description}
+          />
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-slate-50">
             <tr>
@@ -399,14 +421,6 @@ function LocationsTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white">
-            {sortedLocations.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-6 py-8 text-sm text-slate-600">
-                  No se encontraron locaciones.
-                </td>
-              </tr>
-            ) : null}
-
             {sortedLocations.map((location) => (
               <tr key={location.id} className="align-top">
                 <td className="px-6 py-4">
@@ -469,7 +483,8 @@ function LocationsTable({
             ))}
           </tbody>
         </table>
-      </div>
+        </div>
+      )}
     </Card>
   )
 }

@@ -6,6 +6,7 @@ import Card from '../../components/ui/Card'
 import PageContainer from '../../components/ui/PageContainer'
 import OwnerForm, { type OwnerFormMode } from './OwnerForm'
 import { deleteLocation } from '../locations/locations.service'
+import LocationDeleteProgressModal from '../locations/LocationDeleteProgressModal'
 import { getOwnerById } from './owners.service'
 import type {
   OwnerEditableDetails,
@@ -37,6 +38,9 @@ function OwnerEditPage() {
   const [activeLocationActionKey, setActiveLocationActionKey] = useState<string | null>(
     null,
   )
+  const [locationActionErrorMessage, setLocationActionErrorMessage] = useState<
+    string | null
+  >(null)
 
   useEffect(() => {
     let isActive = true
@@ -88,6 +92,7 @@ function OwnerEditPage() {
 
     try {
       setActiveLocationActionKey(`delete:${locationId}`)
+      setLocationActionErrorMessage(null)
       await deleteLocation(locationId)
       setOwnerLocations((currentLocations) =>
         currentLocations.filter((location) => location.id !== locationId),
@@ -98,7 +103,7 @@ function OwnerEditPage() {
           ? error.message
           : 'No pudimos eliminar la locación.'
 
-      setErrorMessage(message)
+      setLocationActionErrorMessage(message)
     } finally {
       setActiveLocationActionKey(null)
     }
@@ -145,6 +150,10 @@ function OwnerEditPage() {
 
   return (
     <PageContainer title={pageTitle} description="" hideHeader>
+      <LocationDeleteProgressModal
+        isOpen={activeLocationActionKey?.startsWith('delete:') ?? false}
+      />
+
       <Card>
         {isLoading ? (
           <div className="flex min-h-72 items-center justify-center">
@@ -164,15 +173,23 @@ function OwnerEditPage() {
         ) : null}
 
         {!isLoading && !errorMessage && initialValues ? (
-          <OwnerForm
-            mode={'edit' satisfies OwnerFormMode}
-            ownerId={id}
-            ownerName={ownerName}
-            initialValues={initialValues}
-            locations={ownerLocations}
-            activeLocationActionKey={activeLocationActionKey}
-            onDeleteLocation={handleDeleteLocation}
-          />
+          <>
+            {locationActionErrorMessage ? (
+              <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {locationActionErrorMessage}
+              </div>
+            ) : null}
+
+            <OwnerForm
+              mode={'edit' satisfies OwnerFormMode}
+              ownerId={id}
+              ownerName={ownerName}
+              initialValues={initialValues}
+              locations={ownerLocations}
+              activeLocationActionKey={activeLocationActionKey}
+              onDeleteLocation={handleDeleteLocation}
+            />
+          </>
         ) : null}
       </Card>
     </PageContainer>

@@ -5,6 +5,7 @@ import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import EmptyState from '../../components/ui/EmptyState'
 import PageContainer from '../../components/ui/PageContainer'
+import LocationDeleteProgressModal from '../locations/LocationDeleteProgressModal'
 import CategoriesTable from './CategoriesTable'
 import LocationsTable from '../locations/LocationsTable'
 import {
@@ -146,6 +147,10 @@ function CategoriesPage() {
       description="Administrá las clasificaciones principales que ordenan el catálogo de locaciones y su estructura base."
       hideHeader
     >
+      <LocationDeleteProgressModal
+        isOpen={locationsActionKey?.startsWith('delete:') ?? false}
+      />
+
       {isLoading ? (
         <Card>
           <div className="flex min-h-48 items-center justify-center">
