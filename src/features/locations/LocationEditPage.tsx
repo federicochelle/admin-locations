@@ -1,0 +1,229 @@
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useParams } from 'react-router-dom'
+import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
+import {
+  getCategoryEditPath,
+  getOwnerEditPath,
+  routePaths,
+} from '../../app/router/route-paths'
+import Card from '../../components/ui/Card'
+import PageContainer from '../../components/ui/PageContainer'
+import LocationForm, { type LocationFormMode } from './LocationForm'
+import { getLocationById } from './locations.service'
+import type { LocationEditableRecord, LocationFormValues } from './locations.types'
+
+type OwnerLocationBreadcrumbState = {
+  source: 'owner'
+  ownerId: string
+  ownerName: string
+}
+
+type CategoryLocationBreadcrumbState = {
+  source: 'category'
+  categoryId: string
+  categoryName: string
+}
+
+type LocationBreadcrumbState =
+  | OwnerLocationBreadcrumbState
+  | CategoryLocationBreadcrumbState
+
+function mapRecordToFormValues(record: LocationEditableRecord): LocationFormValues {
+  return {
+    title: record.title,
+    slug: record.slug,
+    short_description: record.short_description ?? record.description ?? '',
+    description: record.description ?? record.short_description ?? '',
+    category_id: record.category_id ?? '',
+    department_id: record.department_id ?? '',
+    zone_id: record.zone_id ?? '',
+    owner_id: record.owner_id ?? '',
+    status: record.status ?? 'draft',
+    published: record.published ?? false,
+    premium: record.premium ?? false,
+    featured: record.featured ?? false,
+    visibility_level: record.visibility_level ?? 'public',
+    address_private: record.address_private ?? '',
+    address_public: record.address_public ?? '',
+    show_exact_location: record.show_exact_location ?? false,
+    map_visibility: record.map_visibility ?? 'public',
+    selectedFeatureIds: record.selectedFeatureIds,
+  }
+}
+
+function LocationEditPage() {
+  const { id } = useParams<{ id: string }>()
+  const routerLocation = useLocation()
+  const [initialValues, setInitialValues] = useState<LocationFormValues | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [locationTitle, setLocationTitle] = useState<string | null>(null)
+  const navigationState = routerLocation.state as LocationBreadcrumbState | null
+  const ownerContext =
+    navigationState?.source === 'owner' &&
+    navigationState.ownerId &&
+    navigationState.ownerName
+      ? navigationState
+      : null
+  const categoryContext =
+    navigationState?.source === 'category' &&
+    navigationState.categoryId &&
+    navigationState.categoryName
+      ? navigationState
+      : null
+
+  useEffect(() => {
+    let isActive = true
+
+    if (!id) {
+      return
+    }
+
+    void getLocationById(id)
+      .then((record) => {
+        if (!isActive) {
+          return
+        }
+
+        setInitialValues(mapRecordToFormValues(record))
+        setLocationTitle(record.title)
+        setErrorMessage(null)
+      })
+      .catch((error: unknown) => {
+        if (!isActive) {
+          return
+        }
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'No pudimos cargar la locación.'
+
+        setErrorMessage(message)
+      })
+      .finally(() => {
+        if (!isActive) {
+          return
+        }
+
+        setIsLoading(false)
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [id])
+
+  const breadcrumbCurrentLabel = !id
+    ? 'Editar locación'
+    : isLoading
+      ? 'Cargando...'
+      : !errorMessage && locationTitle
+        ? locationTitle
+        : 'Editar locación'
+  const pageTitle =
+    id && !isLoading && !errorMessage && locationTitle
+      ? locationTitle
+      : 'Editar locación'
+  const pageDescription =
+    id && !isLoading && !errorMessage && locationTitle
+      ? 'Editá la información, imágenes y configuración de esta locación.'
+      : undefined
+  const headerConfig = useMemo(
+    () => ({
+      breadcrumbItems: ownerContext
+        ? [
+            { label: 'Listado de dueños', to: routePaths.owners },
+            {
+              label: ownerContext.ownerName,
+              to: getOwnerEditPath(ownerContext.ownerId),
+            },
+            { label: breadcrumbCurrentLabel },
+          ]
+        : categoryContext
+          ? [
+              { label: 'Listado de categorías', to: routePaths.categories },
+              {
+                label: categoryContext.categoryName,
+                to: getCategoryEditPath(categoryContext.categoryId),
+              },
+              { label: breadcrumbCurrentLabel },
+            ]
+          : [
+            { label: 'Listado de locaciones', to: routePaths.locations },
+            { label: breadcrumbCurrentLabel },
+          ],
+      title: pageTitle,
+      description: pageDescription,
+    }),
+    [
+      breadcrumbCurrentLabel,
+      categoryContext,
+      ownerContext,
+      pageDescription,
+      pageTitle,
+    ],
+  )
+
+  useLayoutHeader(headerConfig)
+
+  if (!id) {
+    return (
+      <PageContainer
+        title="Editar locación"
+        description="Actualizá la información principal de la locación reutilizando el formulario base del panel."
+        hideHeader
+      >
+        <Card>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">
+              No pudimos cargar la locación
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              No encontramos el identificador de la locación.
+            </p>
+          </div>
+        </Card>
+      </PageContainer>
+    )
+  }
+
+  return (
+    <PageContainer
+      title={pageTitle}
+      description={pageDescription ?? 'Actualizá la información principal de la locación reutilizando el formulario base del panel.'}
+      hideHeader
+    >
+      <Card>
+        {isLoading ? (
+          <div className="flex min-h-72 items-center justify-center">
+            <p className="text-sm text-slate-600">Cargando locación...</p>
+          </div>
+        ) : null}
+
+        {!isLoading && errorMessage ? (
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">
+              No pudimos cargar la locación
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {errorMessage}
+            </p>
+          </div>
+        ) : null}
+
+        {!isLoading && !errorMessage && initialValues && id ? (
+          <LocationForm
+            mode={'edit' satisfies LocationFormMode}
+            locationId={id}
+            initialValues={initialValues}
+            showImagesSection
+            showAdvancedSection={false}
+          />
+        ) : null}
+      </Card>
+    </PageContainer>
+  )
+}
+
+export default LocationEditPage
