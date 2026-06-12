@@ -76,7 +76,7 @@ function inputClassName() {
 }
 
 function formatCellValue(value: string | null) {
-  return value && value.trim().length > 0 ? value : 'Sin dato'
+  return value && value.trim().length > 0 ? value : '-'
 }
 
 function formatLocationCode() {
@@ -315,7 +315,7 @@ function OwnerForm({
         </div>
 
         {mode === 'edit' ? (
-          <div className="md:col-span-2 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div className="md:col-span-2 overflow-hidden rounded-2xl border border-slate-200 bg-white/95 backdrop-blur-sm">
             <div className="border-b border-slate-200 px-6 py-5">
               <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
                 Locaciones asociadas
@@ -351,7 +351,7 @@ function OwnerForm({
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white">
+                  <tbody className="divide-y divide-slate-200 bg-white/95 backdrop-blur-sm">
                     {locations.map((location) => (
                       <tr key={location.id} className="align-top">
                         <td className="px-6 py-4">
@@ -407,7 +407,7 @@ function OwnerForm({
                                   ? 'Eliminando...'
                                   : 'Eliminar'
                               }
-                              buttonClassName="border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100"
+                              buttonClassName="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-50"
                               disabled={activeLocationActionKey !== null}
                               onClick={() => void onDeleteLocation?.(location.id)}
                             >

@@ -4,6 +4,7 @@ export type LocationListItem = {
   id: string
   title: string
   slug: string
+  locationCode: string | null
   coverImageUrl: string | null
   status: LocationStatus
   published: boolean
@@ -98,6 +99,7 @@ export type LocationEditableRecord = {
   id: string
   title: string
   slug: string
+  location_code: string | null
   description: string | null
   category_id: string | null
   department_id: string | null
@@ -139,6 +141,7 @@ export type SupabaseLocationRow = {
   id: string
   title: string
   slug: string
+  location_code: string | null
   location_images:
     | {
         url: string | null

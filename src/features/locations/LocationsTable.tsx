@@ -30,15 +30,27 @@ type LocationsTableProps = {
   onDelete: (id: string) => Promise<void>
 }
 
-type LocationSortKey = 'departmentName' | 'slug'
+type LocationSortKey = 'departmentName' | 'locationCode'
 type LocationSortDirection = 'asc' | 'desc'
 
 function formatCellValue(value: string | null) {
-  return value && value.trim().length > 0 ? value : 'Sin dato'
+  const hasValue = value && value.trim().length > 0
+
+  return (
+    <span className={hasValue ? 'text-slate-900' : 'text-slate-500'}>
+      {hasValue ? value : '-'}
+    </span>
+  )
 }
 
-function formatLocationCode() {
-  return 'xxxx-xxxx'
+function formatLocationCode(locationCode: string | null) {
+  const normalizedCode = locationCode?.trim()
+
+  if (!normalizedCode) {
+    return <span className="text-slate-500">-</span>
+  }
+
+  return normalizedCode.replaceAll('-', ' ')
 }
 
 function CoverPlaceholder() {
@@ -94,10 +106,7 @@ function SortIcon({ isActive = false }: { isActive?: boolean }) {
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      className={[
-        'h-3.5 w-3.5 transition',
-        isActive ? 'text-slate-700' : 'text-slate-400',
-      ].join(' ')}
+      className="h-3.5 w-3.5 transition"
       aria-hidden="true"
     >
       <path
@@ -252,6 +261,7 @@ function LocationsTable({
     return locations.filter((location) => {
       const searchableFields = [
         location.title,
+        location.locationCode ?? '',
         location.categoryName ?? '',
         location.departmentName ?? '',
         location.zoneName ?? '',
@@ -269,11 +279,11 @@ function LocationsTable({
       const leftValue =
         sortKey === 'departmentName'
           ? left.departmentName ?? ''
-          : left.slug
+          : left.locationCode ?? ''
       const rightValue =
         sortKey === 'departmentName'
           ? right.departmentName ?? ''
-          : right.slug
+          : right.locationCode ?? ''
 
       const comparison = leftValue.localeCompare(rightValue, 'es', {
         sensitivity: 'base',
@@ -332,14 +342,14 @@ function LocationsTable({
                 <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
                   {title}
                 </h2>
-                <p className="mt-1 text-sm text-slate-600">
+                <p className="mt-1 text-sm text-slate-500">
                   {locations.length} locaciones encontradas
                 </p>
               </div>
             ) : null}
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end lg:gap-4">
             <label className="relative block min-w-0 flex-1 sm:min-w-80 lg:min-w-[22rem]">
-              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
                 <SearchIcon />
               </span>
               <input
@@ -347,7 +357,7 @@ function LocationsTable({
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 placeholder={searchPlaceholder}
-                className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                className="w-full rounded-xl border border-slate-300 bg-white/95 py-2.5 pl-10 pr-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-500 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               />
             </label>
 
@@ -375,61 +385,61 @@ function LocationsTable({
         ) : (
         <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200">
-          <thead className="bg-slate-50">
+          <thead className="bg-[#f3f2ee]">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
                 Portada
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
                 <button
                   type="button"
-                  onClick={() => handleSort('slug')}
-                  className="inline-flex items-center gap-3 transition hover:text-slate-700"
+                  onClick={() => handleSort('locationCode')}
+                  className="inline-flex items-center gap-3 transition hover:text-[#C9A227]"
                 >
                   <span>CÓDIGO</span>
                   <span
                     className={[
                       'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
-                      sortKey === 'slug'
-                        ? 'border-slate-300 bg-white text-slate-700'
-                        : 'border-slate-200 bg-white text-slate-400',
+                      sortKey === 'locationCode'
+                        ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
+                        : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
                     ].join(' ')}
                   >
-                    <SortIcon isActive={sortKey === 'slug'} />
+                    <SortIcon isActive={sortKey === 'locationCode'} />
                   </span>
                 </button>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
                 Categoría
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
                 <button
                   type="button"
                   onClick={() => handleSort('departmentName')}
-                  className="inline-flex items-center gap-3 transition hover:text-slate-700"
+                  className="inline-flex items-center gap-3 transition hover:text-[#C9A227]"
                 >
                   <span>DEPARTAMENTO</span>
                   <span
                     className={[
                       'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
                       sortKey === 'departmentName'
-                        ? 'border-slate-300 bg-white text-slate-700'
-                        : 'border-slate-200 bg-white text-slate-400',
+                        ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
+                        : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
                     ].join(' ')}
                   >
                     <SortIcon isActive={sortKey === 'departmentName'} />
                   </span>
                 </button>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
                 Dueño
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
                 Acciones
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 bg-white">
+          <tbody className="divide-y divide-slate-200 bg-transparent">
             {sortedLocations.map((location) => (
               <tr key={location.id} className="align-top">
                 <td className="px-6 py-4">
@@ -446,15 +456,15 @@ function LocationsTable({
                   )}
                 </td>
                 <td className="px-6 py-4 text-sm font-medium text-slate-950">
-                  {formatLocationCode()}
+                  {formatLocationCode(location.locationCode)}
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-6 py-4 text-sm text-slate-900">
                   {formatCellValue(location.categoryName)}
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-6 py-4 text-sm text-slate-900">
                   {formatCellValue(location.departmentName)}
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-6 py-4 text-sm text-slate-900">
                   {location.ownerId && location.ownerName ? (
                     <button
                       type="button"
@@ -467,7 +477,7 @@ function LocationsTable({
                     formatCellValue(location.ownerName)
                   )}
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-6 py-4 text-sm text-slate-900">
                   <div className="flex flex-nowrap items-center gap-2">
                     <Link
                       to={getLocationEditPath(location.id)}
@@ -487,7 +497,7 @@ function LocationsTable({
                           ? 'Eliminando...'
                           : 'Eliminar'
                       }
-                      buttonClassName="border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100"
+                      buttonClassName="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-50"
                       disabled={activeActionKey !== null}
                       onClick={() => void onDelete(location.id)}
                     >

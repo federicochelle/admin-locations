@@ -7,7 +7,7 @@ type EmptyStateProps = PropsWithChildren<{
 
 function EmptyState({ children, description, title }: EmptyStateProps) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
+    <div className="rounded-2xl border border-dashed border-slate-300 bg-white/95 px-6 py-12 text-center backdrop-blur-sm">
       <div className="mx-auto max-w-2xl">
         <h2 className="text-xl font-semibold tracking-tight text-slate-950">
           {title}

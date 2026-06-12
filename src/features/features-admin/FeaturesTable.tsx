@@ -11,7 +11,7 @@ type FeaturesTableProps = {
 }
 
 function formatCellValue(value: string | null) {
-  return value && value.trim().length > 0 ? value : 'Sin dato'
+  return value && value.trim().length > 0 ? value : '-'
 }
 
 function formatActive(active: boolean | null) {
@@ -23,7 +23,7 @@ function formatActive(active: boolean | null) {
     return 'No'
   }
 
-  return 'Sin dato'
+  return '-'
 }
 
 function ActionIconButton({
@@ -109,7 +109,7 @@ function FeaturesTable({
               <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Acciones</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 bg-white">
+          <tbody className="divide-y divide-slate-200 bg-white/95 backdrop-blur-sm">
             {features.map((feature) => (
               <tr key={feature.id} className="align-top">
                 <td className="px-6 py-4 text-sm font-medium text-slate-950">{feature.name}</td>

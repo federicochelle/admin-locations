@@ -18,7 +18,13 @@ type OwnerSortKey = 'full_name' | 'locations_count'
 type OwnerSortDirection = 'asc' | 'desc'
 
 function formatCellValue(value: string | null) {
-  return value && value.trim().length > 0 ? value : 'Sin dato'
+  const hasValue = value && value.trim().length > 0
+
+  return (
+    <span className={hasValue ? 'text-slate-900' : 'text-slate-500'}>
+      {hasValue ? value : '-'}
+    </span>
+  )
 }
 
 function formatLocationsCount(count: number) {
@@ -102,10 +108,7 @@ function SortIcon({ isActive }: { isActive: boolean }) {
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      className={[
-        'h-3.5 w-3.5 transition',
-        isActive ? 'text-slate-700' : 'text-slate-400',
-      ].join(' ')}
+      className="h-3.5 w-3.5 transition"
       aria-hidden="true"
     >
       <path
@@ -229,7 +232,7 @@ function OwnersTable({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-end">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <label className="relative block min-w-0 sm:w-80">
-              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
                 <SearchIcon />
               </span>
               <input
@@ -237,7 +240,7 @@ function OwnersTable({
                 placeholder="Buscar dueño, empresa o email"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                className="w-full rounded-xl border border-slate-300 bg-white/95 py-2.5 pl-10 pr-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-500 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               />
             </label>
 
@@ -254,21 +257,21 @@ function OwnersTable({
 
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200">
-          <thead className="bg-slate-50">
+          <thead className="bg-[#f3f2ee]">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
                 <button
                   type="button"
                   onClick={() => handleSort('full_name')}
-                  className="inline-flex items-center gap-3 transition hover:text-slate-700"
+                  className="inline-flex items-center gap-3 transition hover:text-[#C9A227]"
                 >
                   <span>NOMBRE</span>
                   <span
                     className={[
                       'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
                       sortKey === 'full_name'
-                        ? 'border-slate-300 bg-white text-slate-700'
-                        : 'border-slate-200 bg-white text-slate-400',
+                        ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
+                        : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
                     ].join(' ')}
                   >
                     <SortIcon
@@ -277,22 +280,21 @@ function OwnersTable({
                   </span>
                 </button>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Empresa</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Email</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Teléfono</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Email</th>
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Teléfono</th>
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
                 <button
                   type="button"
                   onClick={() => handleSort('locations_count')}
-                  className="inline-flex items-center gap-3 transition hover:text-slate-700"
+                  className="inline-flex items-center gap-3 transition hover:text-[#C9A227]"
                 >
                   <span>LOCACIONES</span>
                   <span
                     className={[
                       'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
                       sortKey === 'locations_count'
-                        ? 'border-slate-300 bg-white text-slate-700'
-                        : 'border-slate-200 bg-white text-slate-400',
+                        ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
+                        : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
                     ].join(' ')}
                   >
                     <SortIcon
@@ -301,13 +303,13 @@ function OwnersTable({
                   </span>
                 </button>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Acciones</th>
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Acciones</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 bg-white">
+          <tbody className="divide-y divide-slate-200 bg-transparent">
             {filteredOwners.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-6 py-8 text-sm text-slate-600">
+                <td colSpan={5} className="px-6 py-8 text-sm text-slate-500">
                   No se encontraron dueños.
                 </td>
               </tr>
@@ -316,11 +318,10 @@ function OwnersTable({
             {filteredOwners.map((owner) => (
               <tr key={owner.id} className="align-top">
                 <td className="px-6 py-4 text-sm font-medium text-slate-950">{owner.full_name}</td>
-                <td className="px-6 py-4 text-sm text-slate-600">{formatCellValue(owner.company_name)}</td>
-                <td className="px-6 py-4 text-sm text-slate-600">{formatCellValue(owner.email)}</td>
-                <td className="px-6 py-4 text-sm text-slate-600">{formatCellValue(owner.phone)}</td>
-                <td className="px-6 py-4 text-sm text-slate-600">{formatLocationsCount(owner.locations_count)}</td>
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-6 py-4 text-sm text-slate-900">{formatCellValue(owner.email)}</td>
+                <td className="px-6 py-4 text-sm text-slate-900">{formatCellValue(owner.phone)}</td>
+                <td className="px-6 py-4 text-sm text-slate-900">{formatLocationsCount(owner.locations_count)}</td>
+                <td className="px-6 py-4 text-sm text-slate-900">
                   <div className="flex flex-wrap gap-2">
                     <Link
                       to={getOwnerEditPath(owner.id)}
@@ -339,7 +340,7 @@ function OwnersTable({
                           ? 'Eliminando...'
                           : 'Eliminar'
                       }
-                      buttonClassName="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100"
+                      buttonClassName="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-50"
                       disabled={activeActionKey !== null}
                       onClick={() => void onDelete(owner)}
                     >
