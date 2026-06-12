@@ -226,7 +226,7 @@ function DashboardPage() {
     >
       <div className="grid gap-4 lg:grid-cols-3">
         <Card>
-          <div className="-mx-6 -mt-6 rounded-t-2xl border-b border-slate-200 bg-slate-50 px-6 py-3">
+          <div className="-mx-6 -mt-6 rounded-t-2xl border-b border-slate-200 bg-white/95 px-6 py-3 backdrop-blur-sm">
             <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
               Actividad reciente
             </h2>
@@ -279,7 +279,7 @@ function DashboardPage() {
         </Card>
 
         <Card className="lg:col-span-2">
-          <div className="-mx-6 -mt-6 rounded-t-2xl border-b border-slate-200 bg-slate-50 px-6 py-3">
+          <div className="-mx-6 -mt-6 rounded-t-2xl border-b border-slate-200 bg-white/95 px-6 py-3 backdrop-blur-sm">
             <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
               Estado del proyecto
             </h2>

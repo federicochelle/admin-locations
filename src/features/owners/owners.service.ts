@@ -25,6 +25,11 @@ type OwnerIdRow = {
   id: string
 }
 
+type SupabaseErrorLike = {
+  code?: string
+  message?: string
+}
+
 type NameRelation =
   | {
       name: string | null
@@ -66,6 +71,43 @@ function getRelationName(relation: NameRelation) {
   }
 
   return relation.name
+}
+
+function getOwnerFriendlyErrorMessage(error: SupabaseErrorLike | null) {
+  if (!error) {
+    return 'No pudimos guardar el dueño.'
+  }
+
+  const normalizedMessage = error.message?.toLocaleLowerCase() ?? ''
+  const isUniqueViolation =
+    error.code === '23505' ||
+    normalizedMessage.includes('duplicate key') ||
+    normalizedMessage.includes('unique constraint')
+
+  if (!isUniqueViolation) {
+    return error.message ?? 'No pudimos guardar el dueño.'
+  }
+
+  if (normalizedMessage.includes('email')) {
+    return 'Ya existe un dueño con ese email.'
+  }
+
+  if (
+    normalizedMessage.includes('document_or_rut') ||
+    normalizedMessage.includes('documento') ||
+    normalizedMessage.includes('rut')
+  ) {
+    return 'Ya existe un dueño con ese documento o RUT.'
+  }
+
+  if (
+    normalizedMessage.includes('full_name') ||
+    normalizedMessage.includes('nombre')
+  ) {
+    return 'Ya existe un dueño con ese nombre.'
+  }
+
+  return 'Ya existe un dueño con esos datos.'
 }
 
 function mapOwner(row: OwnerRow): OwnerListItem {
@@ -198,7 +240,7 @@ export async function createOwner(payload: OwnerCreatePayload): Promise<string> 
     .single()
 
   if (error) {
-    throw new Error(error.message)
+    throw new Error(getOwnerFriendlyErrorMessage(error))
   }
 
   return (data as OwnerIdRow).id
@@ -218,7 +260,7 @@ export async function updateOwner(
     .single()
 
   if (error) {
-    throw new Error(error.message)
+    throw new Error(getOwnerFriendlyErrorMessage(error))
   }
 
   return (data as OwnerIdRow).id

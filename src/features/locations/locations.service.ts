@@ -22,6 +22,14 @@ type LocationSlugRow = {
   slug: string
 }
 
+type LocationCodeRow = {
+  location_code: string | null
+}
+
+type CategoryNameRow = {
+  name: string | null
+}
+
 type SupabaseErrorLike = {
   code?: string
   message?: string
@@ -37,6 +45,18 @@ function normalizeLocationSlug(baseSlug: string) {
   return trimmed.length > 0 ? trimmed : 'locacion'
 }
 
+function normalizeLocationCodePrefix(categoryName: string) {
+  const normalized = categoryName
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toUpperCase()
+
+  return normalized.length > 0 ? normalized : 'CATEGORIA'
+}
+
 function isLocationSlugUniqueError(error: SupabaseErrorLike | null) {
   if (!error) {
     return false
@@ -45,6 +65,18 @@ function isLocationSlugUniqueError(error: SupabaseErrorLike | null) {
   return (
     error.code === '23505' ||
     error.message?.includes('locations_slug_key') === true
+  )
+}
+
+function isLocationCodeUniqueError(error: SupabaseErrorLike | null) {
+  if (!error) {
+    return false
+  }
+
+  return (
+    error.code === '23505' &&
+    (error.message?.includes('locations_location_code_key') === true ||
+      error.message?.includes('location_code') === true)
   )
 }
 
@@ -99,6 +131,57 @@ async function getUniqueLocationSlug(
   return `${normalizedBaseSlug}-${maxSuffix + 1}`
 }
 
+async function getNextLocationCode(categoryId: string): Promise<string> {
+  const supabase = getSupabaseClient()
+
+  const { data: categoryData, error: categoryError } = await supabase
+    .from('categories')
+    .select('name')
+    .eq('id', categoryId)
+    .single()
+
+  if (categoryError) {
+    throw new Error(categoryError.message)
+  }
+
+  const categoryName = ((categoryData as CategoryNameRow | null)?.name ?? '').trim()
+
+  if (categoryName.length === 0) {
+    throw new Error('No pudimos generar el código de la locación porque la categoría no es válida.')
+  }
+
+  const prefix = normalizeLocationCodePrefix(categoryName)
+  const { data: locationData, error: locationError } = await supabase
+    .from('locations')
+    .select('location_code')
+    .eq('category_id', categoryId)
+    .not('location_code', 'is', null)
+
+  if (locationError) {
+    throw new Error(locationError.message)
+  }
+
+  const rows = (locationData ?? []) as LocationCodeRow[]
+  const maxSequence = rows.reduce((highest, row) => {
+    const code = row.location_code?.trim()
+
+    if (!code) {
+      return highest
+    }
+
+    const match = code.match(/-(\d+)$/)
+    const parsedSequence = Number.parseInt(match?.[1] ?? '', 10)
+
+    if (Number.isNaN(parsedSequence)) {
+      return highest
+    }
+
+    return Math.max(highest, parsedSequence)
+  }, 0)
+
+  return `${prefix}-${String(maxSequence + 1).padStart(3, '0')}`
+}
+
 function getRelationName(relation: LocationNameRelation) {
   if (!relation) {
     return null
@@ -147,6 +230,7 @@ function mapLocation(row: SupabaseLocationRow): LocationListItem {
     id: row.id,
     title: row.title,
     slug: row.slug,
+    locationCode: row.location_code,
     coverImageUrl: getCoverImageUrl(row),
     status: row.status,
     published: row.published ?? false,
@@ -202,6 +286,7 @@ export async function getLocations(): Promise<LocationListItem[]> {
         id,
         title,
         slug,
+        location_code,
         location_images(url, is_cover),
         status,
         published,
@@ -236,6 +321,7 @@ export async function getLocationsByCategory(
         id,
         title,
         slug,
+        location_code,
         location_images(url, is_cover),
         status,
         published,
@@ -317,27 +403,54 @@ export async function createLocation(
   const supabase = getSupabaseClient()
   const { selectedFeatureIds, ...locationPayload } = payload
   const uniqueSlug = await getUniqueLocationSlug(locationPayload.slug)
+  let createdRow: CreatedLocationRow | null = null
 
-  const { data, error } = await supabase
-    .from('locations')
-    .insert({
-      ...locationPayload,
-      slug: uniqueSlug,
-    })
-    .select('id')
-    .single()
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const locationCode = locationPayload.category_id
+      ? await getNextLocationCode(locationPayload.category_id)
+      : null
 
-  if (error) {
+    const { data, error } = await supabase
+      .from('locations')
+      .insert({
+        ...locationPayload,
+        slug: uniqueSlug,
+        location_code: locationCode,
+      })
+      .select('id')
+      .single()
+
+    if (!error) {
+      createdRow = data as CreatedLocationRow
+      break
+    }
+
+    if (isLocationCodeUniqueError(error) && attempt < 2) {
+      continue
+    }
+
     if (isLocationSlugUniqueError(error)) {
       throw new Error(
         'Ya existe una locación con un código similar. Intentá guardar nuevamente.',
       )
     }
 
+    if (isLocationCodeUniqueError(error)) {
+      throw new Error(
+        'No pudimos asignar un código único a la locación. Intentá guardar nuevamente.',
+      )
+    }
+
     throw new Error(error.message)
   }
 
-  const locationId = (data as CreatedLocationRow).id
+  if (!createdRow) {
+    throw new Error(
+      'No pudimos asignar un código único a la locación. Intentá guardar nuevamente.',
+    )
+  }
+
+  const locationId = createdRow.id
 
   if (selectedFeatureIds.length > 0) {
     const relationRows: LocationFeatureInsertRow[] = selectedFeatureIds.map(
@@ -371,6 +484,7 @@ export async function getLocationById(
         id,
         title,
         slug,
+        location_code,
         description,
         owner_id,
         category_id,
@@ -401,6 +515,7 @@ export async function getLocationById(
     id: row.id,
     title: row.title,
     slug: row.slug,
+    location_code: row.location_code,
     description: row.description,
     owner_id: row.owner_id,
     category_id: row.category_id,
@@ -426,25 +541,79 @@ export async function updateLocation(
   const supabase = getSupabaseClient()
   const { selectedFeatureIds, ...locationPayload } = payload
   const uniqueSlug = await getUniqueLocationSlug(locationPayload.slug, id)
-
-  const { data, error } = await supabase
+  const { data: currentLocationData, error: currentLocationError } = await supabase
     .from('locations')
-    .update({
-      ...locationPayload,
-      slug: uniqueSlug,
-    })
+    .select('category_id')
     .eq('id', id)
-    .select('id')
     .single()
 
-  if (error) {
+  if (currentLocationError) {
+    throw new Error(currentLocationError.message)
+  }
+
+  const currentCategoryId =
+    ((currentLocationData as { category_id: string | null } | null)?.category_id ??
+      null)
+  const nextCategoryId = locationPayload.category_id
+  const shouldRegenerateLocationCode = currentCategoryId !== nextCategoryId
+  let updatedRow: CreatedLocationRow | null = null
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const nextLocationCode =
+      shouldRegenerateLocationCode && nextCategoryId
+        ? await getNextLocationCode(nextCategoryId)
+        : undefined
+
+    const updatePayload = shouldRegenerateLocationCode
+      ? {
+          ...locationPayload,
+          slug: uniqueSlug,
+          location_code: nextLocationCode ?? null,
+        }
+      : {
+          ...locationPayload,
+          slug: uniqueSlug,
+        }
+
+    const { data, error } = await supabase
+      .from('locations')
+      .update(updatePayload)
+      .eq('id', id)
+      .select('id')
+      .single()
+
+    if (!error) {
+      updatedRow = data as CreatedLocationRow
+      break
+    }
+
+    if (
+      shouldRegenerateLocationCode &&
+      isLocationCodeUniqueError(error) &&
+      attempt < 2
+    ) {
+      continue
+    }
+
     if (isLocationSlugUniqueError(error)) {
       throw new Error(
         'Ya existe una locación con un código similar. Intentá guardar nuevamente.',
       )
     }
 
+    if (isLocationCodeUniqueError(error)) {
+      throw new Error(
+        'No pudimos asignar un código único a la locación. Intentá guardar nuevamente.',
+      )
+    }
+
     throw new Error(error.message)
+  }
+
+  if (!updatedRow) {
+    throw new Error(
+      'No pudimos asignar un código único a la locación. Intentá guardar nuevamente.',
+    )
   }
 
   const { error: deleteRelationsError } = await supabase
@@ -473,7 +642,7 @@ export async function updateLocation(
     }
   }
 
-  return (data as CreatedLocationRow).id
+  return updatedRow.id
 }
 
 async function updateLocationStatus(

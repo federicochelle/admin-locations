@@ -49,7 +49,7 @@ function LocationImageUploader({
     <label
       className={
         variant === 'empty-state'
-          ? 'flex aspect-[16/9] min-h-[240px] w-full cursor-pointer flex-col items-center justify-center gap-4 border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center transition hover:border-slate-400 hover:bg-slate-100'
+          ? 'flex aspect-[16/9] min-h-[240px] w-full cursor-pointer flex-col items-center justify-center gap-4 border border-dashed border-slate-300 bg-slate-50 py-10 text-center transition hover:border-slate-400 hover:bg-slate-100'
           : 'flex w-full cursor-pointer flex-col items-start gap-2'
       }
     >

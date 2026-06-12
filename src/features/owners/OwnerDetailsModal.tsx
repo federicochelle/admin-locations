@@ -10,7 +10,7 @@ type OwnerDetailsModalProps = {
 }
 
 function formatFieldValue(value: string | null) {
-  return value && value.trim().length > 0 ? value : 'Sin dato'
+  return value && value.trim().length > 0 ? value : '-'
 }
 
 function FieldLabel({

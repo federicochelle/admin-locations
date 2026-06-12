@@ -199,6 +199,10 @@ function formatFeatureGroup(group: string | null) {
   return group && group.trim().length > 0 ? group : 'General'
 }
 
+function getFormHeading(mode: LocationFormMode) {
+  return mode === 'edit' ? 'Editar locación' : 'Panel de creación'
+}
+
 function SectionCard({
   actions,
   children,
@@ -211,12 +215,12 @@ function SectionCard({
   title?: string
 }) {
   return (
-    <section className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5">
+    <section className="space-y-5 rounded-2xl bg-transparent p-5">
       {title || description ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
             {title ? (
-              <h3 className="text-base font-semibold text-slate-950">{title}</h3>
+              <h3 className="text-2xl font-semibold text-slate-950">{title}</h3>
             ) : null}
             {description ? (
               <p className="text-sm leading-6 text-slate-600">{description}</p>
@@ -1657,9 +1661,9 @@ function markSaveProgressSuccess() {
           <div className="grid gap-6 xl:grid-cols-2 xl:items-start">
             <div className="space-y-5">
               <div>
-                <span className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-950">
-                  Codigo: XXXX-XXXX
-                </span>
+                <h3 className="text-2xl font-semibold text-slate-950">
+                  {getFormHeading(mode)}
+                </h3>
               </div>
 
               <div>
@@ -1815,6 +1819,28 @@ function markSaveProgressSuccess() {
 
           <div className="grid gap-5 lg:grid-cols-2">
             <div>
+              <FieldLabel htmlFor="address_private" required>
+                Dirección
+              </FieldLabel>
+              <input
+                id="address_private"
+                name="address_private"
+                className={[
+                  inputClassName(),
+                  getFieldErrorInputClassName(fieldErrors.address_private),
+                ].join(' ')}
+                value={values.address_private}
+                onChange={handleTextChange}
+                required
+              />
+              {fieldErrors.address_private ? (
+                <p className="mt-2 text-sm text-red-700">
+                  {fieldErrors.address_private}
+                </p>
+              ) : null}
+            </div>
+
+            <div>
               <FieldLabel htmlFor="owner_id">Dueño</FieldLabel>
               <div className="flex items-start gap-3">
                 <div className="relative flex-1" ref={ownerComboboxRef}>
@@ -1877,28 +1903,6 @@ function markSaveProgressSuccess() {
                   +
                 </button>
               </div>
-            </div>
-
-            <div>
-              <FieldLabel htmlFor="address_private" required>
-                Dirección
-              </FieldLabel>
-              <input
-                id="address_private"
-                name="address_private"
-                className={[
-                  inputClassName(),
-                  getFieldErrorInputClassName(fieldErrors.address_private),
-                ].join(' ')}
-                value={values.address_private}
-                onChange={handleTextChange}
-                required
-              />
-              {fieldErrors.address_private ? (
-                <p className="mt-2 text-sm text-red-700">
-                  {fieldErrors.address_private}
-                </p>
-              ) : null}
             </div>
 
             <div>

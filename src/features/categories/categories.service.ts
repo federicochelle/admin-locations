@@ -30,6 +30,11 @@ type CategoryIdRow = {
   id: string
 }
 
+type SupabaseErrorLike = {
+  code?: string
+  message?: string
+}
+
 type CategoryLocationRow = {
   id: string
   title: string
@@ -83,6 +88,39 @@ function mapParentOption(row: Pick<CategoryRow, 'id' | 'name'>): CategoryParentO
     id: row.id,
     name: row.name,
   }
+}
+
+function getCategoryFriendlyErrorMessage(error: SupabaseErrorLike | null) {
+  if (!error) {
+    return 'No pudimos guardar la categoría.'
+  }
+
+  const normalizedMessage = error.message?.toLocaleLowerCase() ?? ''
+  const isUniqueViolation =
+    error.code === '23505' ||
+    normalizedMessage.includes('duplicate key') ||
+    normalizedMessage.includes('unique constraint') ||
+    normalizedMessage.includes('categories_')
+
+  if (!isUniqueViolation) {
+    return error.message ?? 'No pudimos guardar la categoría.'
+  }
+
+  if (
+    normalizedMessage.includes('name') ||
+    normalizedMessage.includes('categories_name_key')
+  ) {
+    return 'Ya existe una categoría con ese nombre.'
+  }
+
+  if (
+    normalizedMessage.includes('slug') ||
+    normalizedMessage.includes('categories_slug_key')
+  ) {
+    return 'Ya existe una categoría con un nombre similar.'
+  }
+
+  return 'Ya existe una categoría con ese nombre o uno similar.'
 }
 
 export async function getCategories(): Promise<CategoryListItem[]> {
@@ -202,7 +240,7 @@ export async function createCategory(
     .single()
 
   if (error) {
-    throw new Error(error.message)
+    throw new Error(getCategoryFriendlyErrorMessage(error))
   }
 
   return (data as CategoryIdRow).id
@@ -222,7 +260,7 @@ export async function updateCategory(
     .single()
 
   if (error) {
-    throw new Error(error.message)
+    throw new Error(getCategoryFriendlyErrorMessage(error))
   }
 
   return (data as CategoryIdRow).id

@@ -50,13 +50,19 @@ function mapRecordToFormValues(record: LocationEditableRecord): LocationFormValu
   }
 }
 
+function formatLocationCode(locationCode: string | null) {
+  const normalizedCode = locationCode?.trim()
+
+  return normalizedCode ? normalizedCode.replaceAll('-', ' ') : null
+}
+
 function LocationEditPage() {
   const { id } = useParams<{ id: string }>()
   const routerLocation = useLocation()
   const [initialValues, setInitialValues] = useState<LocationFormValues | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [locationTitle, setLocationTitle] = useState<string | null>(null)
+  const [locationIdentifier, setLocationIdentifier] = useState<string | null>(null)
   const navigationState = routerLocation.state as LocationBreadcrumbState | null
   const ownerContext =
     navigationState?.source === 'owner' &&
@@ -85,7 +91,7 @@ function LocationEditPage() {
         }
 
         setInitialValues(mapRecordToFormValues(record))
-        setLocationTitle(record.title)
+        setLocationIdentifier(formatLocationCode(record.location_code))
         setErrorMessage(null)
       })
       .catch((error: unknown) => {
@@ -117,15 +123,15 @@ function LocationEditPage() {
     ? 'Editar locación'
     : isLoading
       ? 'Cargando...'
-      : !errorMessage && locationTitle
-        ? locationTitle
+      : !errorMessage && locationIdentifier
+        ? locationIdentifier
         : 'Editar locación'
   const pageTitle =
-    id && !isLoading && !errorMessage && locationTitle
-      ? locationTitle
+    id && !isLoading && !errorMessage && locationIdentifier
+      ? locationIdentifier
       : 'Editar locación'
   const pageDescription =
-    id && !isLoading && !errorMessage && locationTitle
+    id && !isLoading && !errorMessage && locationIdentifier
       ? 'Editá la información, imágenes y configuración de esta locación.'
       : undefined
   const headerConfig = useMemo(

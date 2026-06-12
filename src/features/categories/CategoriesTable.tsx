@@ -95,10 +95,7 @@ function SortIcon({ isActive }: { isActive: boolean }) {
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      className={[
-        'h-3.5 w-3.5 transition',
-        isActive ? 'text-slate-700' : 'text-slate-400',
-      ].join(' ')}
+      className="h-3.5 w-3.5 transition"
       aria-hidden="true"
     >
       <path
@@ -234,7 +231,7 @@ function CategoriesTable({
         <div className="flex flex-col gap-4 lg:flex-row lg:justify-end">
           <div className="flex flex-col gap-3 sm:ml-auto sm:flex-row sm:items-center">
             <label className="relative block min-w-0 sm:w-80">
-              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
                 <SearchIcon />
               </span>
               <input
@@ -242,7 +239,7 @@ function CategoriesTable({
                 placeholder="Buscar categoría o slug"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                className="w-full rounded-xl border border-slate-300 bg-white/95 py-2.5 pl-10 pr-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-500 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               />
             </label>
 
@@ -259,53 +256,53 @@ function CategoriesTable({
 
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200">
-          <thead className="bg-slate-50">
+          <thead className="bg-[#f3f2ee]">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
                 <button
                   type="button"
                   onClick={() => handleSort('name')}
-                  className="inline-flex items-center gap-3 transition hover:text-slate-700"
+                  className="inline-flex items-center gap-3 transition hover:text-[#C9A227]"
                 >
                   <span>NOMBRE</span>
                   <span
                     className={[
                       'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
                       sortKey === 'name'
-                        ? 'border-slate-300 bg-white text-slate-700'
-                        : 'border-slate-200 bg-white text-slate-400',
+                        ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
+                        : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
                     ].join(' ')}
                   >
                     <SortIcon isActive={sortKey === 'name'} />
                   </span>
                 </button>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
                 <button
                   type="button"
                   onClick={() => handleSort('locationsCount')}
-                  className="inline-flex items-center gap-3 transition hover:text-slate-700"
+                  className="inline-flex items-center gap-3 transition hover:text-[#C9A227]"
                 >
                   <span>LOCACIONES ASOCIADAS</span>
                   <span
                     className={[
                       'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
                       sortKey === 'locationsCount'
-                        ? 'border-slate-300 bg-white text-slate-700'
-                        : 'border-slate-200 bg-white text-slate-400',
+                        ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
+                        : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
                     ].join(' ')}
                   >
                     <SortIcon isActive={sortKey === 'locationsCount'} />
                   </span>
                 </button>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Acciones</th>
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Acciones</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 bg-white">
+          <tbody className="divide-y divide-slate-200 bg-transparent">
             {filteredCategories.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-6 py-8 text-sm text-slate-600">
+                <td colSpan={3} className="px-6 py-8 text-sm text-slate-500">
                   No se encontraron categorías.
                 </td>
               </tr>
@@ -314,8 +311,8 @@ function CategoriesTable({
             {filteredCategories.map((category) => (
               <tr key={category.id} className="align-top">
                 <td className="px-6 py-4 text-sm font-medium text-slate-950">{category.name}</td>
-                <td className="px-6 py-4 text-sm text-slate-600">{category.locationsCount}</td>
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-6 py-4 text-sm text-slate-900">{category.locationsCount}</td>
+                <td className="px-6 py-4 text-sm text-slate-900">
                   <div className="flex flex-wrap gap-2">
                     <Link
                       to={getCategoryEditPath(category.id)}
@@ -343,7 +340,7 @@ function CategoriesTable({
                           ? 'Eliminando...'
                           : 'Eliminar'
                       }
-                      buttonClassName="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100"
+                      buttonClassName="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-50"
                       disabled={activeActionKey !== null}
                       onClick={() => void onDelete(category)}
                     >
