@@ -1,0 +1,171 @@
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
+const MAX_IMAGE_DIMENSION = 3200
+const JPEG_QUALITY_STEPS = [0.9, 0.86] as const
+
+export type OptimizeLocationImageResult = {
+  file: File
+  wasOptimized: boolean
+  originalSize: number
+  optimizedSize: number
+}
+
+export function shouldOptimizeLocationImageFile(file: File) {
+  return file.size > MAX_IMAGE_SIZE_BYTES
+}
+
+function replaceFileExtension(filename: string, extension: string) {
+  const normalizedName = filename.trim()
+
+  if (normalizedName.length === 0) {
+    return `image.${extension}`
+  }
+
+  return normalizedName.replace(/\.[^./\\]+$/, '') + `.${extension}`
+}
+
+function calculateTargetDimensions(width: number, height: number) {
+  const largestSide = Math.max(width, height)
+
+  if (largestSide <= MAX_IMAGE_DIMENSION) {
+    return { width, height }
+  }
+
+  const scale = MAX_IMAGE_DIMENSION / largestSide
+
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  }
+}
+
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  quality: number,
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error('No pudimos optimizar la imagen seleccionada.'))
+          return
+        }
+
+        resolve(blob)
+      },
+      'image/jpeg',
+      quality,
+    )
+  })
+}
+
+async function drawFileToCanvas(file: File) {
+  if (typeof window.createImageBitmap === 'function') {
+    const bitmap = await window.createImageBitmap(file, {
+      imageOrientation: 'from-image',
+    })
+
+    const originalWidth = bitmap.width
+    const originalHeight = bitmap.height
+    const { width, height } = calculateTargetDimensions(originalWidth, originalHeight)
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+
+    const context = canvas.getContext('2d')
+
+    if (!context) {
+      bitmap.close()
+      throw new Error('No pudimos preparar la imagen para optimizarla.')
+    }
+
+    context.drawImage(bitmap, 0, 0, width, height)
+    bitmap.close()
+
+    return {
+      canvas,
+      originalHeight,
+      originalWidth,
+    }
+  }
+
+  const objectUrl = URL.createObjectURL(file)
+
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const nextImage = new Image()
+      nextImage.onload = () => resolve(nextImage)
+      nextImage.onerror = () =>
+        reject(new Error('No pudimos leer la imagen seleccionada.'))
+      nextImage.src = objectUrl
+    })
+
+    const originalWidth = image.naturalWidth
+    const originalHeight = image.naturalHeight
+    const { width, height } = calculateTargetDimensions(
+      originalWidth,
+      originalHeight,
+    )
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+
+    const context = canvas.getContext('2d')
+
+    if (!context) {
+      throw new Error('No pudimos preparar la imagen para optimizarla.')
+    }
+
+    context.drawImage(image, 0, 0, width, height)
+
+    return {
+      canvas,
+      originalHeight,
+      originalWidth,
+    }
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
+export async function optimizeLocationImageFile(
+  file: File,
+): Promise<OptimizeLocationImageResult> {
+  if (!shouldOptimizeLocationImageFile(file)) {
+    return {
+      file,
+      wasOptimized: false,
+      originalSize: file.size,
+      optimizedSize: file.size,
+    }
+  }
+
+  const { canvas } = await drawFileToCanvas(file)
+
+  for (const quality of JPEG_QUALITY_STEPS) {
+    const blob = await canvasToBlob(canvas, quality)
+
+    if (blob.size > MAX_IMAGE_SIZE_BYTES) {
+      continue
+    }
+
+    const optimizedFile = new File(
+      [blob],
+      replaceFileExtension(file.name, 'jpg'),
+      {
+        type: 'image/jpeg',
+        lastModified: file.lastModified,
+      },
+    )
+
+    return {
+      file: optimizedFile,
+      wasOptimized: true,
+      originalSize: file.size,
+      optimizedSize: optimizedFile.size,
+    }
+  }
+
+  throw new Error(
+    `${file.name}: sigue superando el máximo de 10MB después de optimizar.`,
+  )
+}

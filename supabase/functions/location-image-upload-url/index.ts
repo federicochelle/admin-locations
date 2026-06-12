@@ -3,7 +3,6 @@ import {
   assertAllowedContentType,
   createDirectUploadUrl,
 } from '../_shared/cloudflare.ts'
-import { hasEnv } from '../_shared/env.ts'
 import { handleOptions, HttpError, jsonResponse, errorResponse } from '../_shared/http.ts'
 import { assertLocationExists } from '../_shared/locations.ts'
 
@@ -58,38 +57,13 @@ Deno.serve(async (request) => {
   }
 
   try {
-    console.log('[location-image-upload-url] request_started')
-    console.log('[location-image-upload-url] env_check', {
-      hasCloudflareAccountId: hasEnv('CLOUDFLARE_ACCOUNT_ID'),
-      hasCloudflareApiToken: hasEnv('CLOUDFLARE_API_TOKEN'),
-      hasCloudflareDeliveryUrl: hasEnv('CLOUDFLARE_DELIVERY_URL'),
-      hasSupabaseServiceRoleKey: hasEnv('SUPABASE_SERVICE_ROLE_KEY'),
-      hasSupabaseUrl: hasEnv('SUPABASE_URL'),
-    })
-
     const body = (await request.json()) as UploadUrlRequestBody
     const input = parseRequestBody(body)
-    console.log('[location-image-upload-url] payload_validated', {
-      contentType: input.contentType,
-      filename: input.filename,
-      locationId: input.locationId,
-    })
 
     const { adminClient, user } = await assertAdmin(request)
-    console.log('[location-image-upload-url] admin_validated', {
-      userId: user.id,
-    })
 
     await assertLocationExists(adminClient, input.locationId)
-    console.log('[location-image-upload-url] location_validated', {
-      locationId: input.locationId,
-    })
 
-    console.log('[location-image-upload-url] cloudflare_direct_upload_start', {
-      contentType: input.contentType,
-      filename: input.filename,
-      locationId: input.locationId,
-    })
     const cloudflareResult = await createDirectUploadUrl({
       contentType: input.contentType,
       filename: input.filename,
