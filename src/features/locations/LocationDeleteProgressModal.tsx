@@ -5,8 +5,6 @@ type LocationDeleteProgressModalProps = {
 function LocationDeleteProgressModal({
   isOpen,
 }: LocationDeleteProgressModalProps) {
-  console.log('DELETE MODAL IS OPEN', isOpen)
-
   if (!isOpen) {
     return null
   }

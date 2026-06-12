@@ -123,6 +123,18 @@ function getOwnerName(relation: LocationOwnerRelation) {
   return relation.full_name
 }
 
+function getOwnerId(relation: LocationOwnerRelation) {
+  if (!relation) {
+    return null
+  }
+
+  if (Array.isArray(relation)) {
+    return relation[0]?.id ?? null
+  }
+
+  return relation.id
+}
+
 function getCoverImageUrl(row: SupabaseLocationRow) {
   const images = row.location_images ?? []
   const coverImage = images.find((image) => image.is_cover === true)
@@ -143,6 +155,7 @@ function mapLocation(row: SupabaseLocationRow): LocationListItem {
     categoryName: getRelationName(row.categories),
     departmentName: getRelationName(row.departments),
     zoneName: getRelationName(row.zones),
+    ownerId: getOwnerId(row.owners),
     ownerName: getOwnerName(row.owners),
   }
 }
@@ -197,7 +210,7 @@ export async function getLocations(): Promise<LocationListItem[]> {
         categories(name),
         departments(name),
         zones(name),
-        owners(full_name)
+        owners(id, full_name)
       `,
     )
     .order('title', { ascending: true })
@@ -231,7 +244,7 @@ export async function getLocationsByCategory(
         categories(name),
         departments(name),
         zones(name),
-        owners(full_name)
+        owners(id, full_name)
       `,
     )
     .eq('category_id', categoryId)

@@ -12,6 +12,7 @@ export type LocationListItem = {
   categoryName: string | null
   departmentName: string | null
   zoneName: string | null
+  ownerId: string | null
   ownerName: string | null
 }
 
@@ -125,9 +126,11 @@ export type LocationNameRelation =
 
 export type LocationOwnerRelation =
   | {
+      id: string | null
       full_name: string | null
     }
   | {
+      id: string | null
       full_name: string | null
     }[]
   | null

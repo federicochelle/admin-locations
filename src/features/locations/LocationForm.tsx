@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Button from '../../components/ui/Button'
 import { getLocationEditPath, routePaths } from '../../app/router/route-paths'
@@ -36,6 +36,9 @@ import type {
   LocationImageRecord,
   PendingLocationImageFile,
 } from './location-images.types'
+import {
+  optimizeLocationImageFile,
+} from './location-image-optimizer'
 import { useLocationImages } from './useLocationImages'
 
 export type LocationFormMode = 'create' | 'edit'
@@ -46,6 +49,12 @@ type LocationFormProps = {
   locationId?: string
   showImagesSection?: boolean
   showAdvancedSection?: boolean
+}
+
+type LocationFormFieldErrors = {
+  address_private: string | null
+  category_id: string | null
+  department_id: string | null
 }
 
 const defaultInitialValues: LocationFormValues = {
@@ -128,8 +137,62 @@ function FieldLabel({
   )
 }
 
+function ChevronDownIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      className="h-4 w-4"
+    >
+      <path
+        d="m5 7.5 5 5 5-5"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function inputClassName() {
   return 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
+}
+
+function getFieldErrorInputClassName(errorMessage: string | null) {
+  return errorMessage ? 'border-red-300 focus:border-red-400 focus:ring-red-100' : ''
+}
+
+function getDefaultFieldErrors(): LocationFormFieldErrors {
+  return {
+    address_private: null,
+    category_id: null,
+    department_id: null,
+  }
+}
+
+function validateRequiredFields(
+  values: LocationFormValues,
+): LocationFormFieldErrors {
+  return {
+    category_id:
+      values.category_id.trim().length > 0
+        ? null
+        : 'Debe seleccionar una categoría.',
+    department_id:
+      values.department_id.trim().length > 0
+        ? null
+        : 'Debe seleccionar un departamento.',
+    address_private:
+      values.address_private.trim().length > 0
+        ? null
+        : 'Debe ingresar una dirección.',
+  }
+}
+
+function hasFieldErrors(fieldErrors: LocationFormFieldErrors) {
+  return Object.values(fieldErrors).some((errorMessage) => errorMessage !== null)
 }
 
 function formatFeatureGroup(group: string | null) {
@@ -210,6 +273,17 @@ function wait(ms: number) {
   return new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms)
   })
+}
+
+function getSelectedImagesCount(
+  files: FileList | null,
+  isCoverSelection: boolean,
+) {
+  if (!files || files.length === 0) {
+    return 0
+  }
+
+  return isCoverSelection ? 1 : files.length
 }
 
 function buildOwnerQuickCreatePayload(values: LocationOwnerQuickCreateValues) {
@@ -297,14 +371,20 @@ function LocationForm({
     null,
   )
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false)
+  const [isCategoryComboboxOpen, setIsCategoryComboboxOpen] = useState(false)
+  const [categorySearchTerm, setCategorySearchTerm] = useState('')
   const [categoryCreateName, setCategoryCreateName] = useState('')
   const [categoryCreateError, setCategoryCreateError] = useState<string | null>(null)
   const [isCreatingCategory, setIsCreatingCategory] = useState(false)
   const [isZoneModalOpen, setIsZoneModalOpen] = useState(false)
+  const [isZoneComboboxOpen, setIsZoneComboboxOpen] = useState(false)
+  const [zoneSearchTerm, setZoneSearchTerm] = useState('')
   const [zoneCreateName, setZoneCreateName] = useState('')
   const [zoneCreateError, setZoneCreateError] = useState<string | null>(null)
   const [isCreatingZone, setIsCreatingZone] = useState(false)
   const [zoneDepartmentPrompt, setZoneDepartmentPrompt] = useState<string | null>(null)
+  const [isOwnerComboboxOpen, setIsOwnerComboboxOpen] = useState(false)
+  const [ownerSearchTerm, setOwnerSearchTerm] = useState('')
   const [isOwnerModalOpen, setIsOwnerModalOpen] = useState(false)
   const [ownerCreateValues, setOwnerCreateValues] =
     useState<LocationOwnerQuickCreateValues>(defaultOwnerQuickCreateValues)
@@ -316,12 +396,21 @@ function LocationForm({
   const [imageValidationErrors, setImageValidationErrors] = useState<string[]>(
     [],
   )
+  const [fieldErrors, setFieldErrors] = useState<LocationFormFieldErrors>(
+    getDefaultFieldErrors(),
+  )
+  const [isPreparingImages, setIsPreparingImages] = useState(false)
+  const [processedImagesCount, setProcessedImagesCount] = useState(0)
+  const [totalImagesToProcess, setTotalImagesToProcess] = useState(0)
   const pendingImagesRef = useRef<PendingLocationImageFile[]>([])
   const [pendingDeletedPersistedImageIds, setPendingDeletedPersistedImageIds] =
     useState<string[]>([])
   const [editDeleteErrorMessage, setEditDeleteErrorMessage] = useState<string | null>(
     null,
   )
+  const categoryComboboxRef = useRef<HTMLDivElement | null>(null)
+  const ownerComboboxRef = useRef<HTMLDivElement | null>(null)
+  const zoneComboboxRef = useRef<HTMLDivElement | null>(null)
   const locationImages = useLocationImages(
     mode === 'edit' ? locationId ?? null : null,
   )
@@ -394,6 +483,37 @@ function LocationForm({
     }
   }, [])
 
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (
+        categoryComboboxRef.current &&
+        !categoryComboboxRef.current.contains(event.target as Node)
+      ) {
+        setIsCategoryComboboxOpen(false)
+      }
+
+      if (
+        ownerComboboxRef.current &&
+        !ownerComboboxRef.current.contains(event.target as Node)
+      ) {
+        setIsOwnerComboboxOpen(false)
+      }
+
+      if (
+        zoneComboboxRef.current &&
+        !zoneComboboxRef.current.contains(event.target as Node)
+      ) {
+        setIsZoneComboboxOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+    }
+  }, [])
+
   const visiblePersistedImages: LocationImageRecord[] =
     mode === 'edit'
       ? locationImages.images.filter(
@@ -426,8 +546,71 @@ function LocationForm({
   const selectedDepartment =
     options?.departments.find((department) => department.id === values.department_id) ??
     null
-  const filteredZones =
-    options?.zones.filter((zone) => zone.department_id === values.department_id) ?? []
+  const selectedCategoryName =
+    options?.categories.find((category) => category.id === values.category_id)?.name ?? ''
+  const selectedOwnerName =
+    options?.owners.find((owner) => owner.id === values.owner_id)?.full_name ?? ''
+  const filteredZones = useMemo(
+    () =>
+      options?.zones.filter((zone) => zone.department_id === values.department_id) ??
+      [],
+    [options, values.department_id],
+  )
+  const selectedZoneName =
+    filteredZones.find((zone) => zone.id === values.zone_id)?.name ?? ''
+  const categoryInputValue =
+    categorySearchTerm.length > 0 || values.category_id === ''
+      ? categorySearchTerm
+      : selectedCategoryName
+  const ownerInputValue =
+    ownerSearchTerm.length > 0 || values.owner_id === ''
+      ? ownerSearchTerm
+      : selectedOwnerName
+  const zoneInputValue =
+    zoneSearchTerm.length > 0 || values.zone_id === ''
+      ? zoneSearchTerm
+      : selectedZoneName
+  const filteredCategories = useMemo(() => {
+    const normalizedSearch = categorySearchTerm.trim().toLocaleLowerCase()
+
+    if (!options) {
+      return []
+    }
+
+    if (normalizedSearch.length === 0) {
+      return options.categories
+    }
+
+    return options.categories.filter((category) =>
+      category.name.toLocaleLowerCase().startsWith(normalizedSearch),
+    )
+  }, [categorySearchTerm, options])
+  const filteredOwners = useMemo(() => {
+    const normalizedSearch = ownerSearchTerm.trim().toLocaleLowerCase()
+
+    if (!options) {
+      return []
+    }
+
+    if (normalizedSearch.length === 0) {
+      return options.owners
+    }
+
+    return options.owners.filter((owner) =>
+      owner.full_name.toLocaleLowerCase().startsWith(normalizedSearch),
+    )
+  }, [options, ownerSearchTerm])
+  const filteredZoneOptions = useMemo(() => {
+    const normalizedSearch = zoneSearchTerm.trim().toLocaleLowerCase()
+
+    if (normalizedSearch.length === 0) {
+      return filteredZones
+    }
+
+    return filteredZones.filter((zone) =>
+      zone.name.toLocaleLowerCase().startsWith(normalizedSearch),
+    )
+  }, [filteredZones, zoneSearchTerm])
 
   function handleOwnerCreateChange(
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -444,6 +627,137 @@ function LocationForm({
     event: React.ChangeEvent<HTMLInputElement>,
   ) {
     setCategoryCreateName(event.target.value)
+  }
+
+  function handleCategorySearchChange(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const nextValue = event.target.value
+
+    setFieldErrors((currentErrors) => ({
+      ...currentErrors,
+      category_id:
+        nextValue.trim().length > 0 ? null : 'Debe seleccionar una categoría.',
+    }))
+    setCategorySearchTerm(nextValue)
+    setIsCategoryComboboxOpen(true)
+
+    const selectedCategory =
+      options?.categories.find((category) => category.id === values.category_id) ?? null
+
+    if (nextValue.trim().length === 0) {
+      setValues((currentValues) => ({
+        ...currentValues,
+        category_id: '',
+      }))
+      return
+    }
+
+    if (selectedCategory && selectedCategory.name !== nextValue) {
+      setValues((currentValues) => ({
+        ...currentValues,
+        category_id: '',
+      }))
+    }
+  }
+
+  function handleCategorySelect(categoryId: string, categoryName: string) {
+    setFieldErrors((currentErrors) => ({
+      ...currentErrors,
+      category_id: null,
+    }))
+    setValues((currentValues) => ({
+      ...currentValues,
+      category_id: categoryId,
+    }))
+    setCategorySearchTerm(categoryName)
+    setIsCategoryComboboxOpen(false)
+  }
+
+  function handleCategoryDropdownToggle() {
+    setIsCategoryComboboxOpen((currentValue) => !currentValue)
+  }
+
+  function handleOwnerSearchChange(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const nextValue = event.target.value
+
+    setOwnerSearchTerm(nextValue)
+    setIsOwnerComboboxOpen(true)
+
+    const selectedOwner =
+      options?.owners.find((owner) => owner.id === values.owner_id) ?? null
+
+    if (nextValue.trim().length === 0) {
+      setValues((currentValues) => ({
+        ...currentValues,
+        owner_id: '',
+      }))
+      return
+    }
+
+    if (selectedOwner && selectedOwner.full_name !== nextValue) {
+      setValues((currentValues) => ({
+        ...currentValues,
+        owner_id: '',
+      }))
+    }
+  }
+
+  function handleOwnerSelect(ownerId: string, ownerName: string) {
+    setValues((currentValues) => ({
+      ...currentValues,
+      owner_id: ownerId,
+    }))
+    setOwnerSearchTerm(ownerName)
+    setIsOwnerComboboxOpen(false)
+  }
+
+  function handleOwnerDropdownToggle() {
+    setIsOwnerComboboxOpen((currentValue) => !currentValue)
+  }
+
+  function handleZoneSearchChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const nextValue = event.target.value
+
+    setZoneSearchTerm(nextValue)
+    setIsZoneComboboxOpen(true)
+
+    const selectedZone =
+      filteredZones.find((zone) => zone.id === values.zone_id) ?? null
+
+    if (nextValue.trim().length === 0) {
+      setValues((currentValues) => ({
+        ...currentValues,
+        zone_id: '',
+      }))
+      return
+    }
+
+    if (selectedZone && selectedZone.name !== nextValue) {
+      setValues((currentValues) => ({
+        ...currentValues,
+        zone_id: '',
+      }))
+    }
+  }
+
+  function handleZoneSelect(zoneId: string, zoneName: string) {
+    setValues((currentValues) => ({
+      ...currentValues,
+      zone_id: zoneId,
+    }))
+    setZoneSearchTerm(zoneName)
+    setIsZoneComboboxOpen(false)
+  }
+
+  function handleZoneDropdownToggle() {
+    if (!values.department_id) {
+      return
+    }
+
+    setIsZoneComboboxOpen((currentValue) => !currentValue)
   }
 
   function handleZoneCreateChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -518,6 +832,9 @@ function LocationForm({
         ...currentValues,
         category_id: createdCategoryId,
       }))
+      const createdCategory =
+        nextOptions.categories.find((category) => category.id === createdCategoryId) ?? null
+      setCategorySearchTerm(createdCategory?.name ?? trimmedName)
       setIsCategoryModalOpen(false)
       setCategoryCreateName('')
     } catch (error) {
@@ -569,6 +886,9 @@ function LocationForm({
         ...currentValues,
         zone_id: createdZoneId,
       }))
+      const createdZone =
+        nextOptions.zones.find((zone) => zone.id === createdZoneId) ?? null
+      setZoneSearchTerm(createdZone?.name ?? trimmedName)
       setZoneDepartmentPrompt(null)
       setIsZoneModalOpen(false)
       setZoneCreateName('')
@@ -626,6 +946,9 @@ function LocationForm({
         ...currentValues,
         owner_id: createdOwnerId,
       }))
+      const createdOwner =
+        nextOptions.owners.find((owner) => owner.id === createdOwnerId) ?? null
+      setOwnerSearchTerm(createdOwner?.full_name ?? trimmedName)
       setIsOwnerModalOpen(false)
       setOwnerCreateValues(defaultOwnerQuickCreateValues)
     } catch (error) {
@@ -712,6 +1035,31 @@ function markSaveProgressSuccess() {
     >,
   ) {
     const { name, value } = event.target
+    const nextFieldError =
+      name === 'category_id'
+        ? value.trim().length > 0
+          ? null
+          : 'Debe seleccionar una categoría.'
+        : name === 'department_id'
+          ? value.trim().length > 0
+            ? null
+            : 'Debe seleccionar un departamento.'
+          : name === 'address_private'
+            ? value.trim().length > 0
+              ? null
+              : 'Debe ingresar una dirección.'
+            : null
+
+    if (
+      name === 'category_id' ||
+      name === 'department_id' ||
+      name === 'address_private'
+    ) {
+      setFieldErrors((currentErrors) => ({
+        ...currentErrors,
+        [name]: nextFieldError,
+      }))
+    }
 
     if (name === 'title') {
       const nextSlug = slugifyTitle(value)
@@ -726,6 +1074,8 @@ function markSaveProgressSuccess() {
     }
 
     if (name === 'department_id') {
+      setZoneSearchTerm('')
+      setIsZoneComboboxOpen(false)
       setZoneDepartmentPrompt(null)
 
       setValues((currentValues) => ({
@@ -763,7 +1113,7 @@ function markSaveProgressSuccess() {
     }))
   }
 
-  function buildPendingImages(
+  async function buildPendingImages(
     files: FileList | null,
     isCoverSelection: boolean,
   ) {
@@ -778,33 +1128,48 @@ function markSaveProgressSuccess() {
     const nextImages: PendingLocationImageFile[] = []
     const selectedFiles = isCoverSelection ? [files[0]] : Array.from(files)
 
-    selectedFiles.forEach((file, index) => {
+    for (const [index, file] of selectedFiles.entries()) {
       if (!file) {
-        return
+        continue
       }
 
       if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
         nextErrors.push(
           `${file.name}: formato no permitido. Usá JPG, PNG, WEBP o AVIF.`,
         )
-        return
+        continue
       }
 
-      if (file.size > MAX_IMAGE_SIZE_BYTES) {
-        nextErrors.push(
-          `${file.name}: supera el máximo de 10MB por archivo.`,
+      try {
+        const optimizationResult = await optimizeLocationImageFile(file)
+
+        if (optimizationResult.file.size > MAX_IMAGE_SIZE_BYTES) {
+          nextErrors.push(
+            `${file.name}: sigue superando el máximo de 10MB después de optimizar.`,
+          )
+          continue
+        }
+
+        nextImages.push({
+          id: crypto.randomUUID(),
+          file: optimizationResult.file,
+          previewUrl: URL.createObjectURL(optimizationResult.file),
+          isCover: isCoverSelection && index === 0,
+          status: 'pending',
+        })
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : `${file.name}: no pudimos optimizar la imagen seleccionada.`
+
+        nextErrors.push(message)
+      } finally {
+        setProcessedImagesCount((currentCount) =>
+          Math.min(currentCount + 1, selectedFiles.length),
         )
-        return
       }
-
-      nextImages.push({
-        id: crypto.randomUUID(),
-        file,
-        previewUrl: URL.createObjectURL(file),
-        isCover: isCoverSelection && index === 0,
-        status: 'pending',
-      })
-    })
+    }
 
     return {
       errors: nextErrors,
@@ -812,43 +1177,61 @@ function markSaveProgressSuccess() {
     }
   }
 
-  function handleCoverImageSelected(files: FileList | null) {
+  async function handleCoverImageSelected(files: FileList | null) {
     if (!files || files.length === 0) {
       return
     }
 
-    const { errors, images } = buildPendingImages(files, true)
-    setImageValidationErrors(errors)
-    setEditDeleteErrorMessage(null)
+    const totalFiles = getSelectedImagesCount(files, true)
+    setTotalImagesToProcess(totalFiles)
+    setProcessedImagesCount(0)
+    setIsPreparingImages(true)
 
-    if (images.length === 0) {
-      return
+    try {
+      const { errors, images } = await buildPendingImages(files, true)
+      setImageValidationErrors(errors)
+      setEditDeleteErrorMessage(null)
+
+      if (images.length === 0) {
+        return
+      }
+
+      setPendingImages((currentImages) => {
+        const normalizedImages = currentImages.map((image) => ({
+          ...image,
+          isCover: false,
+        }))
+
+        return [...normalizedImages, ...images]
+      })
+    } finally {
+      setIsPreparingImages(false)
     }
-
-    setPendingImages((currentImages) => {
-      const normalizedImages = currentImages.map((image) => ({
-        ...image,
-        isCover: false,
-      }))
-
-      return [...normalizedImages, ...images]
-    })
   }
 
-  function handleGalleryImagesSelected(files: FileList | null) {
+  async function handleGalleryImagesSelected(files: FileList | null) {
     if (!files || files.length === 0) {
       return
     }
 
-    const { errors, images } = buildPendingImages(files, false)
-    setImageValidationErrors(errors)
-    setEditDeleteErrorMessage(null)
+    const totalFiles = getSelectedImagesCount(files, false)
+    setTotalImagesToProcess(totalFiles)
+    setProcessedImagesCount(0)
+    setIsPreparingImages(true)
 
-    if (images.length === 0) {
-      return
+    try {
+      const { errors, images } = await buildPendingImages(files, false)
+      setImageValidationErrors(errors)
+      setEditDeleteErrorMessage(null)
+
+      if (images.length === 0) {
+        return
+      }
+
+      setPendingImages((currentImages) => [...currentImages, ...images])
+    } finally {
+      setIsPreparingImages(false)
     }
-
-    setPendingImages((currentImages) => [...currentImages, ...images])
   }
 
   function handleRemovePendingImage(imageId: string) {
@@ -861,6 +1244,24 @@ function markSaveProgressSuccess() {
 
       return currentImages.filter((image) => image.id !== imageId)
     })
+  }
+
+  function renderImageFeedback() {
+    if (imageValidationErrors.length === 0) {
+      return null
+    }
+
+    return (
+      <div className="space-y-3">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <ul className="space-y-1">
+            {imageValidationErrors.map((error) => (
+              <li key={error}>{error}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    )
   }
 
   function handleSetCoverImage(imageId: string) {
@@ -1042,6 +1443,21 @@ function markSaveProgressSuccess() {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+
+    const nextFieldErrors = validateRequiredFields(values)
+
+    setFieldErrors(nextFieldErrors)
+
+    if (hasFieldErrors(nextFieldErrors)) {
+      const firstErrorMessage =
+        nextFieldErrors.category_id ??
+        nextFieldErrors.department_id ??
+        nextFieldErrors.address_private ??
+        'No pudimos guardar la locación.'
+
+      setSubmitError(firstErrorMessage)
+      return
+    }
 
     try {
       setIsSubmitting(true)
@@ -1247,7 +1663,7 @@ function markSaveProgressSuccess() {
               </div>
 
               <div>
-                <FieldLabel htmlFor="title" required>
+                <FieldLabel htmlFor="title">
                   Título
                 </FieldLabel>
                 <input
@@ -1256,47 +1672,93 @@ function markSaveProgressSuccess() {
                   className={inputClassName()}
                   value={values.title}
                   onChange={handleTextChange}
-                  required
                 />
               </div>
 
               <div>
-                <FieldLabel htmlFor="category_id">Categoría</FieldLabel>
+                <FieldLabel htmlFor="category_id" required>
+                  Categoría
+                </FieldLabel>
                 <div className="flex items-start gap-3">
-                  <select
-                    id="category_id"
-                    name="category_id"
-                    className={inputClassName()}
-                    value={values.category_id}
-                    onChange={handleTextChange}
-                  >
-                    <option value="">Seleccionar categoría</option>
-                    {options.categories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                <button
+                  <div className="relative flex-1" ref={categoryComboboxRef}>
+                    <input
+                      id="category_id"
+                      name="category_id"
+                      type="text"
+                      autoComplete="off"
+                      className={[
+                        inputClassName(),
+                        getFieldErrorInputClassName(fieldErrors.category_id),
+                        'pr-10',
+                      ].join(' ')}
+                      value={categoryInputValue}
+                      placeholder="Buscar categoría"
+                      onChange={handleCategorySearchChange}
+                      onFocus={() => setIsCategoryComboboxOpen(true)}
+                    />
+                    <button
+                      type="button"
+                      aria-label="Mostrar categorías"
+                      onClick={handleCategoryDropdownToggle}
+                      className="absolute inset-y-0 right-0 inline-flex items-center justify-center px-3 text-slate-500 transition hover:text-slate-700"
+                    >
+                      <ChevronDownIcon />
+                    </button>
+                    {isCategoryComboboxOpen ? (
+                      <div className="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+                        {filteredCategories.length > 0 ? (
+                          <div className="category-combobox-scrollbar max-h-[260px] space-y-1 overflow-x-hidden overflow-y-auto pr-1">
+                            {filteredCategories.map((category) => (
+                              <button
+                                key={category.id}
+                                type="button"
+                                onClick={() =>
+                                  handleCategorySelect(category.id, category.name)
+                                }
+                                className={[
+                                  'flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition',
+                                  values.category_id === category.id
+                                    ? 'bg-slate-900 text-white'
+                                    : 'text-slate-700 hover:bg-slate-100',
+                                ].join(' ')}
+                              >
+                                {category.name}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="max-h-[260px] overflow-x-hidden overflow-y-auto px-3 py-2 text-sm text-slate-500">
+                            No se encontraron categorías.
+                          </p>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
                   type="button"
                   aria-label="Crear categoría"
                   disabled={isSubmitting || isCreatingCategory}
                   onClick={handleOpenCategoryModal}
                   className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#0f1723] text-xl font-semibold text-white shadow-sm transition hover:border-[#B8924A] hover:bg-[#162131] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(184,146,74,0.20)] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  +
-                </button>
+                  >
+                    +
+                  </button>
                 </div>
+                {fieldErrors.category_id ? (
+                  <p className="mt-2 text-sm text-red-700">
+                    {fieldErrors.category_id}
+                  </p>
+                ) : null}
               </div>
             </div>
 
             {showImagesSection && mode === 'create' ? (
-              <div className="min-w-0 xl:pl-6 2xl:pl-8">
+              <div className="min-w-0 space-y-4 xl:pl-6 2xl:pl-8">
                 <LocationImagesGrid
                   images={pendingCoverImage ? [pendingCoverImage] : []}
                   emptyCoverAction={
                     <LocationImageUploader
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || isPreparingImages}
                       helperText="Selecciona una sola imagen para portada."
                       label="Subir portada"
                       multiple={false}
@@ -1304,21 +1766,22 @@ function markSaveProgressSuccess() {
                       onFilesSelected={handleCoverImageSelected}
                     />
                   }
-                  isLocked={isSubmitting}
+                  isLocked={isSubmitting || isPreparingImages}
                   onRemove={handleRemovePendingImage}
                   onSetCover={handleSetCoverImage}
                   showCount={false}
                   showGallery={false}
                 />
+                {renderImageFeedback()}
               </div>
             ) : null}
 
             {showImagesSection && mode === 'edit' ? (
-              <div className="min-w-0 xl:pl-6 2xl:pl-8">
+              <div className="min-w-0 space-y-4 xl:pl-6 2xl:pl-8">
                 {pendingCoverImage ? (
                   <LocationImagesGrid
                     images={[pendingCoverImage]}
-                    isLocked={isSubmitting}
+                    isLocked={isSubmitting || isPreparingImages}
                     mode="pending"
                     onRemove={handleRemovePendingImage}
                     onSetCover={handleSetCoverImage}
@@ -1330,7 +1793,7 @@ function markSaveProgressSuccess() {
                     images={persistedCoverImage ? [persistedCoverImage] : []}
                     emptyCoverAction={
                       <LocationImageUploader
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || isPreparingImages}
                         helperText="Selecciona una sola imagen para portada."
                         label="Subir portada"
                         multiple={false}
@@ -1338,13 +1801,14 @@ function markSaveProgressSuccess() {
                         onFilesSelected={handleCoverImageSelected}
                       />
                     }
-                    isLocked={isSubmitting}
+                    isLocked={isSubmitting || isPreparingImages}
                     mode="persisted"
                     onRemove={(imageId) => void handleDeletePersistedImage(imageId)}
                     showCount={false}
                     showGallery={false}
                   />
                 )}
+                {renderImageFeedback()}
               </div>
             ) : null}
           </div>
@@ -1353,20 +1817,56 @@ function markSaveProgressSuccess() {
             <div>
               <FieldLabel htmlFor="owner_id">Dueño</FieldLabel>
               <div className="flex items-start gap-3">
-                <select
-                  id="owner_id"
-                  name="owner_id"
-                  className={inputClassName()}
-                  value={values.owner_id}
-                  onChange={handleTextChange}
-                >
-                  <option value="">Seleccionar dueño</option>
-                  {options.owners.map((owner) => (
-                    <option key={owner.id} value={owner.id}>
-                      {owner.full_name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative flex-1" ref={ownerComboboxRef}>
+                  <input
+                    id="owner_id"
+                    name="owner_id"
+                    type="text"
+                    autoComplete="off"
+                    className={[inputClassName(), 'pr-10'].join(' ')}
+                    value={ownerInputValue}
+                    placeholder="Buscar dueño"
+                    onChange={handleOwnerSearchChange}
+                    onFocus={() => setIsOwnerComboboxOpen(true)}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Mostrar dueños"
+                    onClick={handleOwnerDropdownToggle}
+                    className="absolute inset-y-0 right-0 inline-flex items-center justify-center px-3 text-slate-500 transition hover:text-slate-700"
+                  >
+                    <ChevronDownIcon />
+                  </button>
+                  {isOwnerComboboxOpen ? (
+                    <div className="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+                      {filteredOwners.length > 0 ? (
+                        <div className="category-combobox-scrollbar max-h-[260px] space-y-1 overflow-x-hidden overflow-y-auto pr-1">
+                          {filteredOwners.map((owner) => (
+                            <button
+                              key={owner.id}
+                              type="button"
+                              onClick={() =>
+                                handleOwnerSelect(owner.id, owner.full_name)
+                              }
+                              className={[
+                                'flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition',
+                                values.owner_id === owner.id
+                                  ? 'bg-slate-900 text-white'
+                                  : 'text-slate-700 hover:bg-slate-100',
+                              ].join(' ')}
+                            >
+                              {owner.full_name}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="max-h-[260px] overflow-x-hidden overflow-y-auto px-3 py-2 text-sm text-slate-500">
+                          No se encontraron dueños.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   aria-label="Crear dueño"
@@ -1380,24 +1880,41 @@ function markSaveProgressSuccess() {
             </div>
 
             <div>
-              <FieldLabel htmlFor="address_private">Dirección</FieldLabel>
+              <FieldLabel htmlFor="address_private" required>
+                Dirección
+              </FieldLabel>
               <input
                 id="address_private"
                 name="address_private"
-                className={inputClassName()}
+                className={[
+                  inputClassName(),
+                  getFieldErrorInputClassName(fieldErrors.address_private),
+                ].join(' ')}
                 value={values.address_private}
                 onChange={handleTextChange}
+                required
               />
+              {fieldErrors.address_private ? (
+                <p className="mt-2 text-sm text-red-700">
+                  {fieldErrors.address_private}
+                </p>
+              ) : null}
             </div>
 
             <div>
-              <FieldLabel htmlFor="department_id">Departamento</FieldLabel>
+              <FieldLabel htmlFor="department_id" required>
+                Departamento
+              </FieldLabel>
               <select
                 id="department_id"
                 name="department_id"
-                className={inputClassName()}
+                className={[
+                  inputClassName(),
+                  getFieldErrorInputClassName(fieldErrors.department_id),
+                ].join(' ')}
                 value={values.department_id}
                 onChange={handleTextChange}
+                required
               >
                 <option value="">Seleccionar departamento</option>
                 {options.departments.map((department) => (
@@ -1406,35 +1923,82 @@ function markSaveProgressSuccess() {
                   </option>
                 ))}
               </select>
+              {fieldErrors.department_id ? (
+                <p className="mt-2 text-sm text-red-700">
+                  {fieldErrors.department_id}
+                </p>
+              ) : null}
             </div>
 
             <div>
               <FieldLabel htmlFor="zone_id">Zona</FieldLabel>
               <div className="flex items-start gap-3">
-                <select
-                  id="zone_id"
-                  name="zone_id"
-                  className={[
-                    inputClassName(),
-                    !values.department_id
-                      ? 'border-slate-400 bg-slate-300 text-slate-600'
-                      : '',
-                  ].join(' ')}
-                  value={values.zone_id}
-                  onChange={handleTextChange}
-                  disabled={!values.department_id}
-                >
-                  <option value="">
-                    {values.department_id
-                      ? 'Seleccionar zona'
-                      : 'Seleccioná un departamento primero'}
-                  </option>
-                  {filteredZones.map((zone) => (
-                    <option key={zone.id} value={zone.id}>
-                      {zone.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative flex-1" ref={zoneComboboxRef}>
+                  <input
+                    id="zone_id"
+                    name="zone_id"
+                    type="text"
+                    autoComplete="off"
+                    className={[
+                      inputClassName(),
+                      'pr-10',
+                      !values.department_id
+                        ? 'border-slate-400 bg-slate-300 text-slate-600'
+                        : '',
+                    ].join(' ')}
+                    value={zoneInputValue}
+                    placeholder={
+                      values.department_id
+                        ? 'Buscar zona'
+                        : 'Seleccione un departamento primero'
+                    }
+                    onChange={handleZoneSearchChange}
+                    onFocus={() => {
+                      if (!values.department_id) {
+                        return
+                      }
+
+                      setIsZoneComboboxOpen(true)
+                    }}
+                    disabled={!values.department_id}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Mostrar zonas"
+                    onClick={handleZoneDropdownToggle}
+                    disabled={!values.department_id}
+                    className="absolute inset-y-0 right-0 inline-flex items-center justify-center px-3 text-slate-500 transition hover:text-slate-700 disabled:cursor-not-allowed disabled:text-slate-400"
+                  >
+                    <ChevronDownIcon />
+                  </button>
+                  {isZoneComboboxOpen ? (
+                    <div className="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+                      {filteredZoneOptions.length > 0 ? (
+                        <div className="category-combobox-scrollbar max-h-[260px] space-y-1 overflow-x-hidden overflow-y-auto pr-1">
+                          {filteredZoneOptions.map((zone) => (
+                            <button
+                              key={zone.id}
+                              type="button"
+                              onClick={() => handleZoneSelect(zone.id, zone.name)}
+                              className={[
+                                'flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition',
+                                values.zone_id === zone.id
+                                  ? 'bg-slate-900 text-white'
+                                  : 'text-slate-700 hover:bg-slate-100',
+                              ].join(' ')}
+                            >
+                              {zone.name}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="max-h-[260px] overflow-x-hidden overflow-y-auto px-3 py-2 text-sm text-slate-500">
+                          No se encontraron zonas.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   aria-label="Crear zona"
@@ -1551,7 +2115,7 @@ function markSaveProgressSuccess() {
           title="Galería de imágenes"
           actions={
             <LocationImageUploader
-              disabled={isSubmitting}
+              disabled={isSubmitting || isPreparingImages}
               label="Subir imágenes"
               onFilesSelected={handleGalleryImagesSelected}
             />
@@ -1561,7 +2125,7 @@ function markSaveProgressSuccess() {
             {pendingGalleryImages.length > 0 ? (
               <LocationImagesGrid
                 images={pendingGalleryImages}
-                isLocked={isSubmitting}
+                isLocked={isSubmitting || isPreparingImages}
                 onRemove={handleRemovePendingImage}
                 showCount={false}
                 showCover={false}
@@ -1571,16 +2135,6 @@ function markSaveProgressSuccess() {
                 Todavía no cargaste imágenes de galería.
               </div>
             )}
-
-            {imageValidationErrors.length > 0 ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                <ul className="space-y-1">
-                  {imageValidationErrors.map((error) => (
-                    <li key={error}>{error}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
           </div>
         </SectionCard>
       ) : null}
@@ -1590,7 +2144,7 @@ function markSaveProgressSuccess() {
           title="Galería de imágenes"
           actions={
             <LocationImageUploader
-              disabled={isSubmitting}
+              disabled={isSubmitting || isPreparingImages}
               label="Subir imágenes"
               onFilesSelected={handleGalleryImagesSelected}
             />
@@ -1600,7 +2154,7 @@ function markSaveProgressSuccess() {
             {combinedEditGalleryImages.length > 0 ? (
               <LocationImagesGrid
                 images={combinedEditGalleryImages}
-                isLocked={isSubmitting}
+                isLocked={isSubmitting || isPreparingImages}
                 mode="mixed"
                 onRemovePending={handleRemovePendingImage}
                 onRemovePersisted={(imageId) => void handleDeletePersistedImage(imageId)}
@@ -1614,17 +2168,6 @@ function markSaveProgressSuccess() {
                 Esta locación todavía no tiene imágenes de galería.
               </div>
             ) : null}
-
-            {imageValidationErrors.length > 0 ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                <ul className="space-y-1">
-                  {imageValidationErrors.map((error) => (
-                    <li key={error}>{error}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
             {editDeleteErrorMessage ? (
               <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {editDeleteErrorMessage}
@@ -1680,15 +2223,17 @@ function markSaveProgressSuccess() {
           <Button
             variant="secondary"
             onClick={() => navigate(routePaths.locations)}
-            disabled={isSubmitting}
+            disabled={isSubmitting || isPreparingImages}
           >
             Cancelar
           </Button>
-          <Button type="submit" disabled={isSubmitting}>
+          <Button type="submit" disabled={isSubmitting || isPreparingImages}>
             {isSubmitting
               ? mode === 'edit'
                 ? 'Guardando cambios...'
                 : 'Guardando...'
+              : isPreparingImages
+                ? `Procesando imagenes ${processedImagesCount} de ${totalImagesToProcess}...`
               : mode === 'edit'
                 ? 'Guardar cambios'
                 : 'Guardar locación'}

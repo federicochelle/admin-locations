@@ -58,9 +58,7 @@ export function useLocations(): UseLocationsResult {
     action: () => Promise<string>,
   ) {
     try {
-      console.log('DELETE ACTION START', actionKey)
       setActiveActionKey(actionKey)
-      console.log('ACTIVE ACTION SET', actionKey)
       setActionErrorMessage(null)
 
       await action()

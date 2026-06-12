@@ -10,6 +10,7 @@ import {
   getLocationEditPath,
   routePaths,
 } from '../../app/router/route-paths'
+import OwnerDetailsModal from '../owners/OwnerDetailsModal'
 import type { LocationListItem } from './locations.types'
 
 type LocationEditState = {
@@ -238,6 +239,7 @@ function LocationsTable({
   const [searchTerm, setSearchTerm] = useState('')
   const [sortKey, setSortKey] = useState<LocationSortKey>('departmentName')
   const [sortDirection, setSortDirection] = useState<LocationSortDirection>('asc')
+  const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(null)
   const hasTitle = Boolean(title)
   const normalizedSearchTerm = searchTerm.trim()
   const filteredLocations = useMemo(() => {
@@ -306,8 +308,18 @@ function LocationsTable({
         }
 
   return (
-    <Card className="overflow-hidden p-0">
-      {showToolbar ? (
+    <>
+      {selectedOwnerId ? (
+        <OwnerDetailsModal
+          key={selectedOwnerId}
+          isOpen
+          ownerId={selectedOwnerId}
+          onClose={() => setSelectedOwnerId(null)}
+        />
+      ) : null}
+
+      <Card className="overflow-hidden p-0">
+        {showToolbar ? (
         <div className="border-b border-slate-200 px-6 py-5">
         <div
           className={[
@@ -351,16 +363,16 @@ function LocationsTable({
             </div>
           </div>
         </div>
-      ) : null}
+        ) : null}
 
-      {isEmptyState ? (
+        {isEmptyState ? (
         <div className="p-4 sm:p-6">
           <EmptyState
             title={emptyStateContent.title}
             description={emptyStateContent.description}
           />
         </div>
-      ) : (
+        ) : (
         <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-slate-50">
@@ -369,7 +381,26 @@ function LocationsTable({
                 Portada
               </th>
               <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Título
+                <button
+                  type="button"
+                  onClick={() => handleSort('slug')}
+                  className="inline-flex items-center gap-3 transition hover:text-slate-700"
+                >
+                  <span>CÓDIGO</span>
+                  <span
+                    className={[
+                      'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
+                      sortKey === 'slug'
+                        ? 'border-slate-300 bg-white text-slate-700'
+                        : 'border-slate-200 bg-white text-slate-400',
+                    ].join(' ')}
+                  >
+                    <SortIcon isActive={sortKey === 'slug'} />
+                  </span>
+                </button>
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Categoría
               </th>
               <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 <button
@@ -391,29 +422,7 @@ function LocationsTable({
                 </button>
               </th>
               <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Zona
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Dueño
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                <button
-                  type="button"
-                  onClick={() => handleSort('slug')}
-                  className="inline-flex items-center gap-3 transition hover:text-slate-700"
-                >
-                  <span>CÓDIGO</span>
-                  <span
-                    className={[
-                      'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
-                      sortKey === 'slug'
-                        ? 'border-slate-300 bg-white text-slate-700'
-                        : 'border-slate-200 bg-white text-slate-400',
-                    ].join(' ')}
-                  >
-                    <SortIcon isActive={sortKey === 'slug'} />
-                  </span>
-                </button>
               </th>
               <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Acciones
@@ -437,19 +446,26 @@ function LocationsTable({
                   )}
                 </td>
                 <td className="px-6 py-4 text-sm font-medium text-slate-950">
-                  {location.title}
+                  {formatLocationCode()}
+                </td>
+                <td className="px-6 py-4 text-sm text-slate-600">
+                  {formatCellValue(location.categoryName)}
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-600">
                   {formatCellValue(location.departmentName)}
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-600">
-                  {formatCellValue(location.zoneName)}
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
-                  {formatCellValue(location.ownerName)}
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
-                  {formatLocationCode()}
+                  {location.ownerId && location.ownerName ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedOwnerId(location.ownerId)}
+                      className="font-medium text-slate-900 underline-offset-4 transition hover:underline"
+                    >
+                      {location.ownerName}
+                    </button>
+                  ) : (
+                    formatCellValue(location.ownerName)
+                  )}
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-600">
                   <div className="flex flex-nowrap items-center gap-2">
@@ -484,8 +500,9 @@ function LocationsTable({
           </tbody>
         </table>
         </div>
-      )}
-    </Card>
+        )}
+      </Card>
+    </>
   )
 }
 
