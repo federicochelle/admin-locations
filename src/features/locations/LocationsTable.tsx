@@ -266,6 +266,7 @@ function LocationsTable({
         location.departmentName ?? '',
         location.zoneName ?? '',
         location.ownerName ?? '',
+        location.ownerPhone ?? '',
       ]
 
       return searchableFields.some((field) =>
@@ -410,9 +411,6 @@ function LocationsTable({
                 </button>
               </th>
               <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
-                Categoría
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
                 <button
                   type="button"
                   onClick={() => handleSort('departmentName')}
@@ -433,6 +431,9 @@ function LocationsTable({
               </th>
               <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
                 Dueño
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                Teléfono
               </th>
               <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
                 Acciones
@@ -459,9 +460,6 @@ function LocationsTable({
                   {formatLocationCode(location.locationCode)}
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-900">
-                  {formatCellValue(location.categoryName)}
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-900">
                   {formatCellValue(location.departmentName)}
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-900">
@@ -476,6 +474,9 @@ function LocationsTable({
                   ) : (
                     formatCellValue(location.ownerName)
                   )}
+                </td>
+                <td className="px-6 py-4 text-sm text-slate-900">
+                  {formatCellValue(location.ownerPhone)}
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-900">
                   <div className="flex flex-nowrap items-center gap-2">
