@@ -2,6 +2,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import Button from '../../components/ui/Button'
 import { getLocationEditPath, routePaths } from '../../app/router/route-paths'
 import { createOwner, updateOwner } from './owners.service'
+import useAuth from '../auth/useAuth'
 import type {
   OwnerCreatePayload,
   OwnerFormValues,
@@ -195,6 +196,7 @@ function OwnerForm({
   onDeleteLocation,
 }: OwnerFormProps) {
   const navigate = useNavigate()
+  const { profile } = useAuth()
   const [values, setValues] = useState<OwnerFormValues>(initialValues)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -226,9 +228,13 @@ function OwnerForm({
           throw new Error('Falta el identificador del dueño a editar.')
         }
 
-        await updateOwner(ownerId, payload)
+        await updateOwner(ownerId, payload, {
+          actorProfileId: profile?.id ?? null,
+        })
       } else {
-        await createOwner(payload)
+        await createOwner(payload, {
+          actorProfileId: profile?.id ?? null,
+        })
       }
 
       navigate(routePaths.owners)

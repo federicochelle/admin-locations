@@ -49,6 +49,7 @@ export type OwnerEditableRecord = {
 
 export type OwnerLocationListItem = {
   id: string
+  locationCode: string | null
   title: string
   coverImageUrl: string | null
   departmentName: string | null

@@ -13,6 +13,7 @@ import OwnerEditPage from '../../features/owners/OwnerEditPage'
 import CategoriesPage from '../../features/categories/CategoriesPage'
 import CategoryCreatePage from '../../features/categories/CategoryCreatePage'
 import CategoryEditPage from '../../features/categories/CategoryEditPage'
+import ActivityHistoryPage from '../../features/activity/ActivityHistoryPage'
 import FeaturesPage from '../../features/features-admin/FeaturesPage'
 import FeatureCreatePage from '../../features/features-admin/FeatureCreatePage'
 import FeatureEditPage from '../../features/features-admin/FeatureEditPage'
@@ -73,6 +74,10 @@ export const router = createBrowserRouter([
           {
             path: routePaths.categoryEditPattern.slice(1),
             element: <CategoryEditPage />,
+          },
+          {
+            path: routePaths.activity.slice(1),
+            element: <ActivityHistoryPage />,
           },
           {
             path: routePaths.features.slice(1),

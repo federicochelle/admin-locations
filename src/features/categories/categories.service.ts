@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../../lib/supabase'
+import { createActivityLog } from '../activity/activity-logs.service'
 import type {
   CategoryCreatePayload,
   CategoryEditableRecord,
@@ -37,6 +38,7 @@ type SupabaseErrorLike = {
 
 type CategoryLocationRow = {
   id: string
+  location_code: string | null
   title: string
   departments:
     | {
@@ -157,6 +159,7 @@ export async function getCategoryLocations(
     .select(
       `
         id,
+        location_code,
         title,
         departments(name),
         zones(name)
@@ -173,6 +176,7 @@ export async function getCategoryLocations(
 
   return rows.map((row) => ({
     id: row.id,
+    locationCode: row.location_code,
     title: row.title,
     departmentName: getRelationName(row.departments),
     zoneName: getRelationName(row.zones),
@@ -230,6 +234,7 @@ export async function getCategoryFormOptions(): Promise<CategoryFormOptions> {
 
 export async function createCategory(
   payload: CategoryCreatePayload,
+  options?: { actorProfileId?: string | null },
 ): Promise<string> {
   const supabase = getSupabaseClient()
 
@@ -243,12 +248,31 @@ export async function createCategory(
     throw new Error(getCategoryFriendlyErrorMessage(error))
   }
 
-  return (data as CategoryIdRow).id
+  const categoryId = (data as CategoryIdRow).id
+
+  if (options?.actorProfileId) {
+    try {
+      await createActivityLog({
+        actorProfileId: options.actorProfileId,
+        action: 'created',
+        entityType: 'category',
+        entityId: categoryId,
+        entityName: payload.name.trim(),
+      })
+    } catch (error) {
+      console.warn('No pudimos registrar activity_log para category.', error)
+    }
+  } else {
+    console.warn('No se registró activity_log para category porque falta actorProfileId.')
+  }
+
+  return categoryId
 }
 
 export async function updateCategory(
   id: string,
   payload: CategoryUpdatePayload,
+  options?: { actorProfileId?: string | null },
 ): Promise<string> {
   const supabase = getSupabaseClient()
 
@@ -263,7 +287,25 @@ export async function updateCategory(
     throw new Error(getCategoryFriendlyErrorMessage(error))
   }
 
-  return (data as CategoryIdRow).id
+  const categoryId = (data as CategoryIdRow).id
+
+  if (options?.actorProfileId) {
+    try {
+      await createActivityLog({
+        actorProfileId: options.actorProfileId,
+        action: 'updated',
+        entityType: 'category',
+        entityId: categoryId,
+        entityName: payload.name.trim(),
+      })
+    } catch (error) {
+      console.warn('No pudimos registrar activity_log de edición para category.', error)
+    }
+  } else {
+    console.warn('No se registró activity_log de edición para category porque falta actorProfileId.')
+  }
+
+  return categoryId
 }
 
 export async function archiveCategory(id: string): Promise<string> {

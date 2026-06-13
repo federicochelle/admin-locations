@@ -6,6 +6,7 @@ export type CategoryListItem = {
 
 export type CategoryLocationListItem = {
   id: string
+  locationCode: string | null
   title: string
   departmentName: string | null
   zoneName: string | null

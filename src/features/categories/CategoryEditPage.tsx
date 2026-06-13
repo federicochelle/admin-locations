@@ -21,6 +21,20 @@ function mapRecordToFormValues(record: CategoryEditableRecord): CategoryFormValu
   }
 }
 
+function isMissingCategoryError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const normalizedMessage = error.message.toLocaleLowerCase()
+
+  return (
+    normalizedMessage.includes('cannot coerce the result to a single json object') ||
+    normalizedMessage.includes('no rows returned') ||
+    normalizedMessage.includes('not found')
+  )
+}
+
 function CategoryEditPage() {
   const { id } = useParams<{ id: string }>()
   const [initialValues, setInitialValues] = useState<CategoryFormValues | null>(null)
@@ -50,9 +64,11 @@ function CategoryEditPage() {
           return
         }
 
+        console.error('No pudimos cargar la categoría en CategoryEditPage.', error)
+
         const message =
-          error instanceof Error
-            ? error.message
+          isMissingCategoryError(error)
+            ? 'CATEGORY_NOT_FOUND'
             : 'No pudimos cargar la categoría.'
 
         setErrorMessage(message)
@@ -139,10 +155,14 @@ function CategoryEditPage() {
         {!isLoading && errorMessage ? (
           <div>
             <h2 className="text-lg font-semibold text-slate-950">
-              No pudimos cargar la categoría
+              {errorMessage === 'CATEGORY_NOT_FOUND'
+                ? 'Categoría no encontrada'
+                : 'No pudimos cargar la categoría'}
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              {errorMessage}
+              {errorMessage === 'CATEGORY_NOT_FOUND'
+                ? 'La categoría que intentás visualizar no existe o fue eliminada.'
+                : errorMessage}
             </p>
           </div>
         ) : null}

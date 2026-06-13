@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../../lib/supabase'
+import { createActivityLog } from '../activity/activity-logs.service'
 import type {
   LocationCategoryOption,
   LocationCreatePayload,
@@ -399,16 +400,19 @@ export async function getLocationFormOptions(): Promise<LocationFormOptions> {
 
 export async function createLocation(
   payload: LocationCreatePayload,
+  options?: { actorProfileId?: string | null },
 ): Promise<string> {
   const supabase = getSupabaseClient()
   const { selectedFeatureIds, ...locationPayload } = payload
   const uniqueSlug = await getUniqueLocationSlug(locationPayload.slug)
   let createdRow: CreatedLocationRow | null = null
+  let generatedLocationCode: string | null = null
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const locationCode = locationPayload.category_id
       ? await getNextLocationCode(locationPayload.category_id)
       : null
+    generatedLocationCode = locationCode
 
     const { data, error } = await supabase
       .from('locations')
@@ -467,6 +471,24 @@ export async function createLocation(
     if (relationError) {
       throw new Error(relationError.message)
     }
+  }
+
+  if (options?.actorProfileId) {
+    try {
+      const locationTitle = locationPayload.title.trim()
+
+      await createActivityLog({
+        actorProfileId: options.actorProfileId,
+        action: 'created',
+        entityType: 'location',
+        entityId: locationId,
+        entityName: generatedLocationCode ?? (locationTitle || 'Sin código'),
+      })
+    } catch (error) {
+      console.warn('No pudimos registrar activity_log para location.', error)
+    }
+  } else {
+    console.warn('No se registró activity_log para location porque falta actorProfileId.')
   }
 
   return locationId
@@ -537,13 +559,14 @@ export async function getLocationById(
 export async function updateLocation(
   id: string,
   payload: LocationUpdatePayload,
+  options?: { actorProfileId?: string | null },
 ): Promise<string> {
   const supabase = getSupabaseClient()
   const { selectedFeatureIds, ...locationPayload } = payload
   const uniqueSlug = await getUniqueLocationSlug(locationPayload.slug, id)
   const { data: currentLocationData, error: currentLocationError } = await supabase
     .from('locations')
-    .select('category_id')
+    .select('category_id, location_code')
     .eq('id', id)
     .single()
 
@@ -554,15 +577,23 @@ export async function updateLocation(
   const currentCategoryId =
     ((currentLocationData as { category_id: string | null } | null)?.category_id ??
       null)
+  const currentLocationCode =
+    ((currentLocationData as { location_code: string | null } | null)?.location_code ??
+      null)
   const nextCategoryId = locationPayload.category_id
   const shouldRegenerateLocationCode = currentCategoryId !== nextCategoryId
   let updatedRow: CreatedLocationRow | null = null
+  let finalLocationCode = currentLocationCode
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const nextLocationCode =
       shouldRegenerateLocationCode && nextCategoryId
         ? await getNextLocationCode(nextCategoryId)
         : undefined
+
+    if (shouldRegenerateLocationCode) {
+      finalLocationCode = nextLocationCode ?? null
+    }
 
     const updatePayload = shouldRegenerateLocationCode
       ? {
@@ -640,6 +671,24 @@ export async function updateLocation(
     if (relationError) {
       throw new Error(relationError.message)
     }
+  }
+
+  if (options?.actorProfileId) {
+    try {
+      const locationTitle = locationPayload.title.trim()
+
+      await createActivityLog({
+        actorProfileId: options.actorProfileId,
+        action: 'updated',
+        entityType: 'location',
+        entityId: updatedRow.id,
+        entityName: finalLocationCode ?? (locationTitle || 'Sin código'),
+      })
+    } catch (error) {
+      console.warn('No pudimos registrar activity_log de edición para location.', error)
+    }
+  } else {
+    console.warn('No se registró activity_log de edición para location porque falta actorProfileId.')
   }
 
   return updatedRow.id

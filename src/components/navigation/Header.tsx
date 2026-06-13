@@ -3,11 +3,12 @@ import { useLayoutHeaderContext } from '../../app/layouts/LayoutHeaderContext'
 import Button from '../ui/Button'
 import PageHeader from '../ui/PageHeader'
 import { routePaths } from '../../app/router/route-paths'
-import { signOut } from '../../features/auth/auth.service'
+import useAuth from '../../features/auth/useAuth'
 
 function Header() {
   const navigate = useNavigate()
   const { header } = useLayoutHeaderContext()
+  const { signOut } = useAuth()
 
   async function handleSignOut() {
     try {

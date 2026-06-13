@@ -27,7 +27,7 @@ type LocationsTableProps = {
   showToolbar?: boolean
   title?: string | null
   getLocationEditState?: (location: LocationListItem) => LocationEditState | undefined
-  onDelete: (id: string) => Promise<void>
+  onDelete: (location: LocationListItem) => Promise<void>
 }
 
 type LocationSortKey = 'departmentName' | 'locationCode'
@@ -499,7 +499,7 @@ function LocationsTable({
                       }
                       buttonClassName="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-50"
                       disabled={activeActionKey !== null}
-                      onClick={() => void onDelete(location.id)}
+                      onClick={() => void onDelete(location)}
                     >
                       <DeleteIcon />
                     </ActionIconButton>

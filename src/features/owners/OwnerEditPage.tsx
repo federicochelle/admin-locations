@@ -15,6 +15,18 @@ import type {
   OwnerLocationListItem,
 } from './owners.types'
 
+function formatLocationIdentifier(location: Pick<OwnerLocationListItem, 'locationCode' | 'title'>) {
+  const locationCode = location.locationCode?.trim()
+
+  if (locationCode) {
+    return locationCode.replaceAll('-', ' ')
+  }
+
+  const title = location.title.trim()
+
+  return title.length > 0 ? title : 'esta locación'
+}
+
 function mapRecordToFormValues(record: OwnerEditableRecord): OwnerFormValues {
   return {
     full_name: record.full_name,
@@ -26,6 +38,21 @@ function mapRecordToFormValues(record: OwnerEditableRecord): OwnerFormValues {
     notes: record.notes ?? '',
     status: record.status ?? 'active',
   }
+}
+
+function isMissingOwnerError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const normalizedMessage = error.message.toLocaleLowerCase()
+
+  return (
+    error.message === 'OWNER_NOT_FOUND' ||
+    normalizedMessage.includes('cannot coerce the result to a single json object') ||
+    normalizedMessage.includes('no rows returned') ||
+    normalizedMessage.includes('not found')
+  )
 }
 
 function OwnerEditPage() {
@@ -65,9 +92,11 @@ function OwnerEditPage() {
           return
         }
 
+        console.error('No pudimos cargar el dueño en OwnerEditPage.', error)
+
         const message =
-          error instanceof Error
-            ? error.message
+          isMissingOwnerError(error)
+            ? 'OWNER_NOT_FOUND'
             : 'No pudimos cargar el dueño.'
 
         setErrorMessage(message)
@@ -86,7 +115,14 @@ function OwnerEditPage() {
   }, [id])
 
   async function handleDeleteLocation(locationId: string) {
-    if (!window.confirm('¿Seguro que querés eliminar esta locación?')) {
+    const locationToDelete =
+      ownerLocations.find((location) => location.id === locationId) ?? null
+
+    if (
+      !window.confirm(
+        `¿Seguro que querés eliminar la locación "${locationToDelete ? formatLocationIdentifier(locationToDelete) : 'esta locación'}"?\n\nEsta acción no se puede deshacer.`,
+      )
+    ) {
       return
     }
 
@@ -164,10 +200,14 @@ function OwnerEditPage() {
         {!isLoading && errorMessage ? (
           <div>
             <h2 className="text-lg font-semibold text-slate-950">
-              No pudimos cargar el dueño
+              {errorMessage === 'OWNER_NOT_FOUND'
+                ? 'Dueño no encontrado'
+                : 'No pudimos cargar el dueño'}
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              {errorMessage}
+              {errorMessage === 'OWNER_NOT_FOUND'
+                ? 'El dueño que intentás visualizar no existe o fue eliminado.'
+                : errorMessage}
             </p>
           </div>
         ) : null}

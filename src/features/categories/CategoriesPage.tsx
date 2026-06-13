@@ -16,6 +16,18 @@ import type { LocationListItem } from '../locations/locations.types'
 import type { CategoryListItem } from './categories.types'
 import { useCategories } from './useCategories'
 
+function formatLocationIdentifier(location: Pick<LocationListItem, 'locationCode' | 'title'>) {
+  const locationCode = location.locationCode?.trim()
+
+  if (locationCode) {
+    return locationCode.replaceAll('-', ' ')
+  }
+
+  const title = location.title.trim()
+
+  return title.length > 0 ? title : 'esta locación'
+}
+
 function CategoriesPage() {
   const {
     actionErrorMessage,
@@ -107,16 +119,16 @@ function CategoriesPage() {
     }
   }
 
-  async function handleDeleteLocation(id: string) {
+  async function handleDeleteLocation(location: LocationListItem) {
     const shouldDelete = window.confirm(
-      '¿Seguro que querés eliminar esta locación? Esta acción no se puede deshacer y también puede eliminar relaciones asociadas.',
+      `¿Seguro que querés eliminar la locación "${formatLocationIdentifier(location)}"?\n\nEsta acción no se puede deshacer.`,
     )
 
     if (!shouldDelete) {
       return
     }
 
-    await runLocationAction(`delete:${id}`, () => deleteLocation(id))
+    await runLocationAction(`delete:${location.id}`, () => deleteLocation(location.id))
   }
 
   const headerConfig = useMemo(

@@ -10,6 +10,7 @@ export const routePaths = {
   categories: '/categories',
   categoryNew: '/categories/new',
   categoryEditPattern: '/categories/:id/edit',
+  activity: '/activity',
   features: '/features',
   featureNew: '/features/new',
   featureEditPattern: '/features/:id/edit',
