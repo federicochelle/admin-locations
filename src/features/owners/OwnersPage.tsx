@@ -4,10 +4,13 @@ import Card from '../../components/ui/Card'
 import EmptyState from '../../components/ui/EmptyState'
 import PageContainer from '../../components/ui/PageContainer'
 import Button from '../../components/ui/Button'
+import { createActivityLog } from '../activity/activity-logs.service'
+import useAuth from '../auth/useAuth'
 import OwnersTable from './OwnersTable'
 import { useOwners } from './useOwners'
 
 function OwnersPage() {
+  const { profile } = useAuth()
   const {
     actionErrorMessage,
     activeActionKey,
@@ -20,6 +23,7 @@ function OwnersPage() {
 
   async function handleDelete(owner: {
     id: string
+    full_name?: string | null
     locations_count: number
   }) {
     if (owner.locations_count > 0) {
@@ -30,6 +34,22 @@ function OwnersPage() {
       if (!shouldDelete) {
         return
       }
+    }
+
+    if (profile?.id) {
+      try {
+        await createActivityLog({
+          actorProfileId: profile.id,
+          action: 'deleted',
+          entityType: 'owner',
+          entityId: owner.id,
+          entityName: owner.full_name?.trim() || 'Sin nombre',
+        })
+      } catch (error) {
+        console.warn('No pudimos registrar activity_log de eliminación para owner.', error)
+      }
+    } else {
+      console.warn('No se registró activity_log de eliminación para owner porque falta actorProfileId.')
     }
 
     await remove(owner.id)

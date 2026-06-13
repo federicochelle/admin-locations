@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../../lib/supabase'
+import { createActivityLog } from '../activity/activity-logs.service'
 import type {
   OwnerCreatePayload,
   OwnerEditableDetails,
@@ -41,6 +42,7 @@ type NameRelation =
 
 type OwnerLocationRow = {
   id: string
+  location_code: string | null
   title: string
   location_images:
     | {
@@ -134,6 +136,7 @@ function mapOwnerLocation(row: OwnerLocationRow): OwnerLocationListItem {
 
   return {
     id: row.id,
+    locationCode: row.location_code,
     title: row.title,
     coverImageUrl: coverImage?.url ?? null,
     departmentName: getRelationName(row.departments),
@@ -191,6 +194,7 @@ export async function getOwnerById(id: string): Promise<OwnerEditableDetails> {
         status,
         locations(
           id,
+          location_code,
           title,
           location_images(url, is_cover),
           published,
@@ -201,10 +205,14 @@ export async function getOwnerById(id: string): Promise<OwnerEditableDetails> {
       `,
     )
     .eq('id', id)
-    .single()
+    .maybeSingle()
 
   if (error) {
     throw new Error(error.message)
+  }
+
+  if (!data) {
+    throw new Error('OWNER_NOT_FOUND')
   }
 
   const row = data as OwnerDetailRow
@@ -230,7 +238,10 @@ export async function getOwnerById(id: string): Promise<OwnerEditableDetails> {
   }
 }
 
-export async function createOwner(payload: OwnerCreatePayload): Promise<string> {
+export async function createOwner(
+  payload: OwnerCreatePayload,
+  options?: { actorProfileId?: string | null },
+): Promise<string> {
   const supabase = getSupabaseClient()
 
   const { data, error } = await supabase
@@ -243,12 +254,31 @@ export async function createOwner(payload: OwnerCreatePayload): Promise<string> 
     throw new Error(getOwnerFriendlyErrorMessage(error))
   }
 
-  return (data as OwnerIdRow).id
+  const ownerId = (data as OwnerIdRow).id
+
+  if (options?.actorProfileId) {
+    try {
+      await createActivityLog({
+        actorProfileId: options.actorProfileId,
+        action: 'created',
+        entityType: 'owner',
+        entityId: ownerId,
+        entityName: payload.full_name.trim(),
+      })
+    } catch (error) {
+      console.warn('No pudimos registrar activity_log para owner.', error)
+    }
+  } else {
+    console.warn('No se registró activity_log para owner porque falta actorProfileId.')
+  }
+
+  return ownerId
 }
 
 export async function updateOwner(
   id: string,
   payload: OwnerUpdatePayload,
+  options?: { actorProfileId?: string | null },
 ): Promise<string> {
   const supabase = getSupabaseClient()
 
@@ -263,7 +293,25 @@ export async function updateOwner(
     throw new Error(getOwnerFriendlyErrorMessage(error))
   }
 
-  return (data as OwnerIdRow).id
+  const ownerId = (data as OwnerIdRow).id
+
+  if (options?.actorProfileId) {
+    try {
+      await createActivityLog({
+        actorProfileId: options.actorProfileId,
+        action: 'updated',
+        entityType: 'owner',
+        entityId: ownerId,
+        entityName: payload.full_name.trim(),
+      })
+    } catch (error) {
+      console.warn('No pudimos registrar activity_log de edición para owner.', error)
+    }
+  } else {
+    console.warn('No se registró activity_log de edición para owner porque falta actorProfileId.')
+  }
+
+  return ownerId
 }
 
 export async function archiveOwner(id: string): Promise<string> {

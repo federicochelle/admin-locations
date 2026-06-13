@@ -1,172 +1,73 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import Card from '../../components/ui/Card'
 import PageContainer from '../../components/ui/PageContainer'
-import { getSupabaseClient } from '../../lib/supabase'
-
-type RecentActivityItem = {
-  createdAt: string
-  entityLabel: 'Locación' | 'Dueño' | 'Categoría' | 'Zona'
-  message: string
-}
+import type { Profile } from '../auth/auth-context'
+import useAuth from '../auth/useAuth'
+import {
+  formatActivityEntityName,
+  formatRelativeCreatedAt,
+  getActivityActionLabel,
+  getActivityEntityPath,
+} from '../activity/activity-logs.helpers'
+import {
+  getActivityLogs,
+  type ActivityLogListItem,
+} from '../activity/activity-logs.service'
 
 type RecentActivityAudit = {
-  items: RecentActivityItem[]
+  items: ActivityLogListItem[]
   unavailableSources: string[]
 }
 
-type RecentLocationRow = {
-  title: string | null
-  created_at: string | null
-}
-
-type RecentOwnerRow = {
-  full_name: string | null
-  created_at: string | null
-}
-
-type RecentCategoryRow = {
-  name: string | null
-  created_at: string | null
-}
-
-type RecentZoneRow = {
-  name: string | null
-  created_at: string | null
-}
-
-function formatRelativeCreatedAt(value: string) {
-  const createdAt = new Date(value)
-  const diffMs = Date.now() - createdAt.getTime()
-
-  if (Number.isNaN(createdAt.getTime()) || diffMs < 0) {
-    return 'Hace instantes'
-  }
-
-  const minute = 60 * 1000
-  const hour = 60 * minute
-  const day = 24 * hour
-
-  if (diffMs < hour) {
-    const minutes = Math.max(1, Math.floor(diffMs / minute))
-    return `Hace ${minutes} ${minutes === 1 ? 'minuto' : 'minutos'}`
-  }
-
-  if (diffMs < day) {
-    const hours = Math.floor(diffMs / hour)
-    return `Hace ${hours} ${hours === 1 ? 'hora' : 'horas'}`
-  }
-
-  const days = Math.floor(diffMs / day)
-  return `Hace ${days} ${days === 1 ? 'día' : 'días'}`
-}
-
 async function loadRecentActivityAudit(): Promise<RecentActivityAudit> {
-  const supabase = getSupabaseClient()
+  const items = await getActivityLogs({ limit: 5 })
 
-  const [locationsResult, ownersResult, categoriesResult, zonesResult] =
-    await Promise.all([
-      supabase
-        .from('locations')
-        .select('title, created_at')
-        .not('created_at', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(5),
-      supabase
-        .from('owners')
-        .select('full_name, created_at')
-        .not('created_at', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(5),
-      supabase
-        .from('categories')
-        .select('name, created_at')
-        .not('created_at', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(5),
-      supabase
-        .from('zones')
-        .select('name, created_at')
-        .not('created_at', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(5),
-    ])
+  return { items, unavailableSources: [] }
+}
 
-  const unavailableSources: string[] = []
-  const items: RecentActivityItem[] = []
+function getDashboardWelcomeTitle(
+  profile: Profile | null,
+  userMetadata: Record<string, unknown> | null | undefined,
+  email: string | undefined,
+) {
+  const profileFullName = profile?.full_name?.trim() ?? ''
 
-  if (locationsResult.error) {
-    unavailableSources.push(`locations: ${locationsResult.error.message}`)
-  } else {
-    const rows = (locationsResult.data ?? []) as RecentLocationRow[]
-    items.push(
-      ...rows
-        .filter((row) => row.title && row.created_at)
-        .map((row) => ({
-          createdAt: row.created_at as string,
-          entityLabel: 'Locación' as const,
-          message: `Locación creada: ${row.title}`,
-        })),
-    )
+  if (profileFullName.length > 0) {
+    return `Bienvenido al panel administrativo, ${profileFullName}!`
   }
 
-  if (ownersResult.error) {
-    unavailableSources.push(`owners: ${ownersResult.error.message}`)
-  } else {
-    const rows = (ownersResult.data ?? []) as RecentOwnerRow[]
-    items.push(
-      ...rows
-        .filter((row) => row.full_name && row.created_at)
-        .map((row) => ({
-          createdAt: row.created_at as string,
-          entityLabel: 'Dueño' as const,
-          message: `Dueño creado: ${row.full_name}`,
-        })),
-    )
+  const profileEmail = profile?.email?.trim() ?? ''
+
+  if (profileEmail.length > 0) {
+    return `Bienvenido al Panel Administrativo, ${profileEmail}!`
   }
 
-  if (categoriesResult.error) {
-    unavailableSources.push(`categories: ${categoriesResult.error.message}`)
-  } else {
-    const rows = (categoriesResult.data ?? []) as RecentCategoryRow[]
-    items.push(
-      ...rows
-        .filter((row) => row.name && row.created_at)
-        .map((row) => ({
-          createdAt: row.created_at as string,
-          entityLabel: 'Categoría' as const,
-          message: `Categoría creada: ${row.name}`,
-        })),
-    )
+  const fullName =
+    typeof userMetadata?.full_name === 'string' ? userMetadata.full_name.trim() : ''
+
+  if (fullName.length > 0) {
+    return `Bienvenido al Panel Administrativo, ${fullName}!`
   }
 
-  if (zonesResult.error) {
-    unavailableSources.push(`zones: ${zonesResult.error.message}`)
-  } else {
-    const rows = (zonesResult.data ?? []) as RecentZoneRow[]
-    items.push(
-      ...rows
-        .filter((row) => row.name && row.created_at)
-        .map((row) => ({
-          createdAt: row.created_at as string,
-          entityLabel: 'Zona' as const,
-          message: `Zona creada: ${row.name}`,
-        })),
-    )
+  const name = typeof userMetadata?.name === 'string' ? userMetadata.name.trim() : ''
+
+  if (name.length > 0) {
+    return `Bienvenido al panel administrativo, ${name}!`
   }
 
-  const recentItems = [...items]
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-    .slice(0, 5)
-
-  return {
-    items: recentItems,
-    unavailableSources,
+  if (email && email.trim().length > 0) {
+    return `Bienvenido al panel administrativo, ${email}!`
   }
+
+  return 'Bienvenido al panel administrativo'
 }
 
 function DashboardPage() {
-  const [recentActivityItems, setRecentActivityItems] = useState<RecentActivityItem[]>([])
+  const navigate = useNavigate()
+  const { currentUser, profile } = useAuth()
+  const [recentActivityItems, setRecentActivityItems] = useState<ActivityLogListItem[]>([])
   const [recentActivityIssues, setRecentActivityIssues] = useState<string[]>([])
   const [isRecentActivityLoading, setIsRecentActivityLoading] = useState(true)
 
@@ -208,19 +109,29 @@ function DashboardPage() {
     }
   }, [])
 
+  const welcomeTitle = useMemo(
+    () =>
+      getDashboardWelcomeTitle(
+        profile,
+        currentUser?.user_metadata,
+        currentUser?.email,
+      ),
+    [currentUser?.email, currentUser?.user_metadata, profile],
+  )
+
   const headerConfig = useMemo(
     () => ({
-      breadcrumbItems: [{ label: 'Bienvenido al Panel Administrativo' }],
-      title: 'Bienvenido al Panel Administrativo',
+      breadcrumbItems: [{ label: welcomeTitle }],
+      title: welcomeTitle,
     }),
-    [],
+    [welcomeTitle],
   )
 
   useLayoutHeader(headerConfig)
 
   return (
     <PageContainer
-      title="Bienvenido al Panel Administrativo"
+      title={welcomeTitle}
       description="Vista general del panel administrativo. Acá vamos a concentrar métricas, actividad reciente y accesos rápidos."
       hideHeader
     >
@@ -240,7 +151,7 @@ function DashboardPage() {
             <ul className="mt-4 divide-y divide-slate-200 text-sm leading-6 text-slate-600">
               {recentActivityItems.map((item) => (
                 <li
-                  key={`${item.entityLabel}-${item.createdAt}-${item.message}`}
+                  key={item.id}
                   className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
                 >
                   <span
@@ -248,9 +159,29 @@ function DashboardPage() {
                     className="mt-2.5 h-2 w-2 shrink-0 rounded-full bg-[#B8924A]"
                   />
                   <div className="min-w-0">
-                    <p>{item.message}</p>
+                    <p>
+                      <span>{item.actor_name || 'Alguien'} </span>
+                      <span>{getActivityActionLabel(item.action)} </span>
+                      {getActivityEntityPath(item) ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const path = getActivityEntityPath(item)
+
+                            if (path) {
+                              navigate(path)
+                            }
+                          }}
+                          className="font-medium text-slate-900 underline-offset-4 transition hover:cursor-pointer hover:underline"
+                        >
+                          {formatActivityEntityName(item)}
+                        </button>
+                      ) : (
+                        <span>{formatActivityEntityName(item)}</span>
+                      )}
+                    </p>
                     <p className="text-xs text-slate-500">
-                      {formatRelativeCreatedAt(item.createdAt)}
+                      {formatRelativeCreatedAt(item.created_at)}
                     </p>
                   </div>
                 </li>

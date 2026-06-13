@@ -56,6 +56,20 @@ function formatLocationCode(locationCode: string | null) {
   return normalizedCode ? normalizedCode.replaceAll('-', ' ') : null
 }
 
+function isMissingLocationError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const normalizedMessage = error.message.toLocaleLowerCase()
+
+  return (
+    normalizedMessage.includes('cannot coerce the result to a single json object') ||
+    normalizedMessage.includes('no rows returned') ||
+    normalizedMessage.includes('not found')
+  )
+}
+
 function LocationEditPage() {
   const { id } = useParams<{ id: string }>()
   const routerLocation = useLocation()
@@ -99,9 +113,11 @@ function LocationEditPage() {
           return
         }
 
+        console.error('No pudimos cargar la locación en LocationEditPage.', error)
+
         const message =
-          error instanceof Error
-            ? error.message
+          isMissingLocationError(error)
+            ? 'LOCATION_NOT_FOUND'
             : 'No pudimos cargar la locación.'
 
         setErrorMessage(message)
@@ -209,10 +225,14 @@ function LocationEditPage() {
         {!isLoading && errorMessage ? (
           <div>
             <h2 className="text-lg font-semibold text-slate-950">
-              No pudimos cargar la locación
+              {errorMessage === 'LOCATION_NOT_FOUND'
+                ? 'Locación no encontrada'
+                : 'No pudimos cargar la locación'}
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              {errorMessage}
+              {errorMessage === 'LOCATION_NOT_FOUND'
+                ? 'La locación que intentás visualizar no existe o fue eliminada.'
+                : errorMessage}
             </p>
           </div>
         ) : null}

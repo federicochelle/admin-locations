@@ -7,6 +7,7 @@ import {
   getCategoryFormOptions,
   updateCategory,
 } from './categories.service'
+import useAuth from '../auth/useAuth'
 import type {
   CategoryCreatePayload,
   CategoryFormValues,
@@ -82,6 +83,7 @@ function CategoryForm({
   categoryId,
 }: CategoryFormProps) {
   const navigate = useNavigate()
+  const { profile } = useAuth()
   const [values, setValues] = useState<CategoryFormValues>(initialValues)
   const [isOptionsLoading, setIsOptionsLoading] = useState(true)
   const [optionsError, setOptionsError] = useState<string | null>(null)
@@ -182,9 +184,13 @@ function CategoryForm({
           throw new Error('Falta el identificador de la categoría a editar.')
         }
 
-        await updateCategory(categoryId, payload)
+        await updateCategory(categoryId, payload, {
+          actorProfileId: profile?.id ?? null,
+        })
       } else {
-        await createCategory(payload)
+        await createCategory(payload, {
+          actorProfileId: profile?.id ?? null,
+        })
       }
 
       navigate(routePaths.categories)

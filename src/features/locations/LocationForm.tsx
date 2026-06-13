@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Button from '../../components/ui/Button'
 import { getLocationEditPath, routePaths } from '../../app/router/route-paths'
+import useAuth from '../auth/useAuth'
 import { createCategory } from '../categories/categories.service'
 import { createOwner } from '../owners/owners.service'
 import { createZone } from '../zones/zones.service'
@@ -377,6 +378,7 @@ function LocationForm({
   showAdvancedSection = mode === 'edit',
 }: LocationFormProps) {
   const navigate = useNavigate()
+  const { profile } = useAuth()
   const [values, setValues] = useState<LocationFormValues>(initialValues)
   const [options, setOptions] = useState<LocationFormOptions | null>(null)
   const [isOptionsLoading, setIsOptionsLoading] = useState(true)
@@ -840,6 +842,8 @@ function LocationForm({
         parent_id: null,
         sort_order: 0,
         active: true,
+      }, {
+        actorProfileId: profile?.id ?? null,
       })
       const nextOptions = await getLocationFormOptions()
 
@@ -894,6 +898,8 @@ function LocationForm({
         department: selectedDepartment.name,
         lat: null,
         lng: null,
+      }, {
+        actorProfileId: profile?.id ?? null,
       })
       const nextOptions = await getLocationFormOptions()
 
@@ -954,6 +960,9 @@ function LocationForm({
 
       const createdOwnerId = await createOwner(
         buildOwnerQuickCreatePayload(ownerCreateValues),
+        {
+          actorProfileId: profile?.id ?? null,
+        },
       )
       const nextOptions = await getLocationFormOptions()
 
@@ -1489,7 +1498,9 @@ function markSaveProgressSuccess() {
           throw new Error('Falta el identificador de la locación a editar.')
         }
 
-        await updateLocation(locationId, payload)
+        await updateLocation(locationId, payload, {
+          actorProfileId: profile?.id ?? null,
+        })
         updateStageStatus('location', 'done')
 
         await runPendingImageDeletes(locationId)
@@ -1516,7 +1527,9 @@ function markSaveProgressSuccess() {
         await wait(SAVE_SUCCESS_DELAY_MS)
         navigate(routePaths.locations)
       } else {
-        const createdLocationId = await createLocation(payload)
+        const createdLocationId = await createLocation(payload, {
+          actorProfileId: profile?.id ?? null,
+        })
         updateStageStatus('location', 'done')
 
         await runPendingImageDeletes(createdLocationId)

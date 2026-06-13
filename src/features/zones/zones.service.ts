@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../../lib/supabase'
+import { createActivityLog } from '../activity/activity-logs.service'
 import type { ZoneCreatePayload } from './zones.types'
 
 type ZoneIdRow = {
@@ -36,7 +37,10 @@ function buildInsertCandidates(payload: ZoneCreatePayload): ZoneInsertCandidate[
   ]
 }
 
-export async function createZone(payload: ZoneCreatePayload): Promise<string> {
+export async function createZone(
+  payload: ZoneCreatePayload,
+  options?: { actorProfileId?: string | null },
+): Promise<string> {
   const supabase = getSupabaseClient()
   const candidates = buildInsertCandidates(payload)
   let lastErrorMessage = 'No pudimos crear la zona.'
@@ -49,7 +53,25 @@ export async function createZone(payload: ZoneCreatePayload): Promise<string> {
       .single()
 
     if (!error && data) {
-      return (data as ZoneIdRow).id
+      const zoneId = (data as ZoneIdRow).id
+
+      if (options?.actorProfileId) {
+        try {
+          await createActivityLog({
+            actorProfileId: options.actorProfileId,
+            action: 'created',
+            entityType: 'zone',
+            entityId: zoneId,
+            entityName: payload.name.trim(),
+          })
+        } catch (error) {
+          console.warn('No pudimos registrar activity_log para zone.', error)
+        }
+      } else {
+        console.warn('No se registró activity_log para zone porque falta actorProfileId.')
+      }
+
+      return zoneId
     }
 
     if (error) {

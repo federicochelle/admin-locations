@@ -3,11 +3,27 @@ import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import PageContainer from '../../components/ui/PageContainer'
+import useAuth from '../auth/useAuth'
+import { createActivityLog } from '../activity/activity-logs.service'
 import LocationDeleteProgressModal from './LocationDeleteProgressModal'
 import LocationsTable from './LocationsTable'
+import type { LocationListItem } from './locations.types'
 import { useLocations } from './useLocations'
 
+function formatLocationIdentifier(location: Pick<LocationListItem, 'locationCode' | 'title'>) {
+  const locationCode = location.locationCode?.trim()
+
+  if (locationCode) {
+    return locationCode.replaceAll('-', ' ')
+  }
+
+  const title = location.title.trim()
+
+  return title.length > 0 ? title : 'esta locación'
+}
+
 function LocationsPage() {
+  const { profile } = useAuth()
   const {
     actionErrorMessage,
     activeActionKey,
@@ -18,16 +34,36 @@ function LocationsPage() {
     retry,
   } = useLocations()
 
-  async function handleDelete(id: string) {
+  async function handleDelete(location: LocationListItem) {
     const shouldDelete = window.confirm(
-      '¿Seguro que querés eliminar esta locación? Esta acción no se puede deshacer y también puede eliminar relaciones asociadas.',
+      `¿Seguro que querés eliminar la locación "${formatLocationIdentifier(location)}"?\n\nEsta acción no se puede deshacer.`,
     )
 
     if (!shouldDelete) {
       return
     }
 
-    await remove(id)
+    const locationCode = location.locationCode?.trim() ?? ''
+    const locationTitle = location.title.trim()
+    const entityName = locationCode || locationTitle || 'Sin código'
+
+    if (profile?.id) {
+      try {
+        await createActivityLog({
+          actorProfileId: profile.id,
+          action: 'deleted',
+          entityType: 'location',
+          entityId: location.id,
+          entityName,
+        })
+      } catch (error) {
+        console.warn('No pudimos registrar activity_log para delete de location.', error)
+      }
+    } else {
+      console.warn('No se registró activity_log para delete de location porque falta actorProfileId.')
+    }
+
+    await remove(location.id)
   }
 
   const headerConfig = useMemo(
