@@ -15,6 +15,7 @@ export type LocationListItem = {
   zoneName: string | null
   ownerId: string | null
   ownerName: string | null
+  ownerPhone: string | null
 }
 
 export type LocationOwnerOption = {
@@ -130,10 +131,12 @@ export type LocationOwnerRelation =
   | {
       id: string | null
       full_name: string | null
+      phone: string | null
     }
   | {
       id: string | null
       full_name: string | null
+      phone: string | null
     }[]
   | null
 

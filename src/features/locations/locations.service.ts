@@ -207,6 +207,18 @@ function getOwnerName(relation: LocationOwnerRelation) {
   return relation.full_name
 }
 
+function getOwnerPhone(relation: LocationOwnerRelation) {
+  if (!relation) {
+    return null
+  }
+
+  if (Array.isArray(relation)) {
+    return relation[0]?.phone ?? null
+  }
+
+  return relation.phone
+}
+
 function getOwnerId(relation: LocationOwnerRelation) {
   if (!relation) {
     return null
@@ -242,6 +254,7 @@ function mapLocation(row: SupabaseLocationRow): LocationListItem {
     zoneName: getRelationName(row.zones),
     ownerId: getOwnerId(row.owners),
     ownerName: getOwnerName(row.owners),
+    ownerPhone: getOwnerPhone(row.owners),
   }
 }
 
@@ -296,7 +309,7 @@ export async function getLocations(): Promise<LocationListItem[]> {
         categories(name),
         departments(name),
         zones(name),
-        owners(id, full_name)
+        owners(id, full_name, phone)
       `,
     )
     .order('title', { ascending: true })
@@ -331,7 +344,7 @@ export async function getLocationsByCategory(
         categories(name),
         departments(name),
         zones(name),
-        owners(id, full_name)
+        owners(id, full_name, phone)
       `,
     )
     .eq('category_id', categoryId)
