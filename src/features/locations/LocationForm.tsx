@@ -203,6 +203,18 @@ function getFormHeading(mode: LocationFormMode) {
   return mode === 'edit' ? 'Editar locación' : 'Panel de creación'
 }
 
+function getGalleryUploadLabel(
+  isPreparingImages: boolean,
+  processedImagesCount: number,
+  totalImagesToProcess: number,
+) {
+  if (!isPreparingImages) {
+    return 'Subir imágenes'
+  }
+
+  return `Procesando imágenes ${processedImagesCount} de ${totalImagesToProcess}...`
+}
+
 function SectionCard({
   actions,
   children,
@@ -2120,7 +2132,11 @@ function markSaveProgressSuccess() {
           actions={
             <LocationImageUploader
               disabled={isSubmitting || isPreparingImages}
-              label="Subir imágenes"
+              label={getGalleryUploadLabel(
+                isPreparingImages,
+                processedImagesCount,
+                totalImagesToProcess,
+              )}
               onFilesSelected={handleGalleryImagesSelected}
             />
           }
@@ -2149,7 +2165,11 @@ function markSaveProgressSuccess() {
           actions={
             <LocationImageUploader
               disabled={isSubmitting || isPreparingImages}
-              label="Subir imágenes"
+              label={getGalleryUploadLabel(
+                isPreparingImages,
+                processedImagesCount,
+                totalImagesToProcess,
+              )}
               onFilesSelected={handleGalleryImagesSelected}
             />
           }

@@ -1,4 +1,8 @@
 import type { ChangeEvent } from 'react'
+import {
+  buttonBaseClassName,
+  buttonVariantClasses,
+} from '../../components/ui/button.styles'
 
 const ACCEPTED_TYPES = 'image/jpeg,image/png,image/webp,image/avif'
 
@@ -30,9 +34,6 @@ function UploadIcon() {
   )
 }
 
-const triggerButtonClassName =
-  'inline-flex items-center justify-center rounded-xl border border-white/10 bg-[#0f1723] px-4 py-2 text-sm font-medium text-white transition hover:border-[#B8924A] hover:bg-[#162131] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(184,146,74,0.20)]'
-
 function LocationImageUploader({
   disabled = false,
   label,
@@ -50,7 +51,9 @@ function LocationImageUploader({
       className={
         variant === 'empty-state'
           ? 'flex aspect-[16/9] min-h-[240px] w-full cursor-pointer flex-col items-center justify-center gap-4 border border-dashed border-slate-300 bg-slate-50 py-10 text-center transition hover:border-slate-400 hover:bg-slate-100'
-          : 'flex w-full cursor-pointer flex-col items-start gap-2'
+          : disabled
+            ? 'flex w-full cursor-not-allowed flex-col items-start gap-2'
+            : 'flex w-full cursor-pointer flex-col items-start gap-2'
       }
     >
       {variant === 'empty-state' ? (
@@ -62,7 +65,15 @@ function LocationImageUploader({
         </>
       ) : (
         <>
-          <span className={triggerButtonClassName}>
+          <span
+            className={[
+              buttonBaseClassName,
+              buttonVariantClasses.primary,
+              disabled
+                ? 'cursor-not-allowed opacity-60 hover:border-white/10 hover:bg-[#0f1723]'
+                : '',
+            ].join(' ')}
+          >
             {label}
           </span>
         </>
