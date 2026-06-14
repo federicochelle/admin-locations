@@ -19,6 +19,21 @@ type LocationEditState = {
   categoryName: string
 }
 
+type OwnerLocationEditState = {
+  source: 'owner'
+  ownerId: string
+  ownerName: string
+}
+
+type VisibleColumns = {
+  cover?: boolean
+  code?: boolean
+  department?: boolean
+  owner?: boolean
+  phone?: boolean
+  actions?: boolean
+}
+
 type LocationsTableProps = {
   locations: LocationListItem[]
   activeActionKey: string | null
@@ -26,7 +41,10 @@ type LocationsTableProps = {
   searchPlaceholder?: string
   showToolbar?: boolean
   title?: string | null
-  getLocationEditState?: (location: LocationListItem) => LocationEditState | undefined
+  visibleColumns?: VisibleColumns
+  getLocationEditState?: (
+    location: LocationListItem,
+  ) => LocationEditState | OwnerLocationEditState | undefined
   onDelete: (location: LocationListItem) => Promise<void>
 }
 
@@ -51,6 +69,34 @@ function formatLocationCode(locationCode: string | null) {
   }
 
   return normalizedCode.replaceAll('-', ' ')
+}
+
+function normalizePhoneForWhatsapp(phone: string): string | null {
+  const normalized = phone.replace(/[\s\-()]/g, '').replace(/\+/g, '')
+
+  if (normalized.length === 0) {
+    return null
+  }
+
+  let normalizedPhone = normalized
+
+  if (normalizedPhone.startsWith('0')) {
+    normalizedPhone = `598${normalizedPhone.slice(1)}`
+  } else if (!normalizedPhone.startsWith('598')) {
+    normalizedPhone = `598${normalizedPhone}`
+  }
+
+  return normalizedPhone.length >= 11 ? normalizedPhone : null
+}
+
+function getWhatsappUrl(phone: string | null) {
+  if (!phone || phone.trim().length === 0) {
+    return null
+  }
+
+  const normalizedPhone = normalizePhoneForWhatsapp(phone)
+
+  return normalizedPhone ? `https://wa.me/${normalizedPhone}` : null
 }
 
 function CoverPlaceholder() {
@@ -242,6 +288,7 @@ function LocationsTable({
   searchPlaceholder = 'Buscar locación, categoría o zona',
   showToolbar = true,
   title = 'Listado de locaciones',
+  visibleColumns,
   getLocationEditState,
   onDelete,
 }: LocationsTableProps) {
@@ -250,6 +297,14 @@ function LocationsTable({
   const [sortDirection, setSortDirection] = useState<LocationSortDirection>('asc')
   const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(null)
   const hasTitle = Boolean(title)
+  const resolvedVisibleColumns: Required<VisibleColumns> = {
+    cover: visibleColumns?.cover ?? true,
+    code: visibleColumns?.code ?? true,
+    department: visibleColumns?.department ?? true,
+    owner: visibleColumns?.owner ?? true,
+    phone: visibleColumns?.phone ?? true,
+    actions: visibleColumns?.actions ?? true,
+  }
   const normalizedSearchTerm = searchTerm.trim()
   const filteredLocations = useMemo(() => {
     const normalizedSearch = normalizedSearchTerm.toLocaleLowerCase()
@@ -389,123 +444,166 @@ function LocationsTable({
           <thead className="bg-[#f3f2ee]">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
-                Portada
+                {resolvedVisibleColumns.cover ? 'Portada' : null}
               </th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
-                <button
-                  type="button"
-                  onClick={() => handleSort('locationCode')}
-                  className="inline-flex items-center gap-3 transition hover:text-[#C9A227]"
-                >
-                  <span>CÓDIGO</span>
-                  <span
-                    className={[
-                      'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
-                      sortKey === 'locationCode'
-                        ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
-                        : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
-                    ].join(' ')}
+              {resolvedVisibleColumns.code ? (
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('locationCode')}
+                    className="inline-flex items-center gap-3 transition hover:text-[#C9A227]"
                   >
-                    <SortIcon isActive={sortKey === 'locationCode'} />
-                  </span>
-                </button>
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
-                <button
-                  type="button"
-                  onClick={() => handleSort('departmentName')}
-                  className="inline-flex items-center gap-3 transition hover:text-[#C9A227]"
-                >
-                  <span>DEPARTAMENTO</span>
-                  <span
-                    className={[
-                      'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
-                      sortKey === 'departmentName'
-                        ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
-                        : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
-                    ].join(' ')}
+                    <span>CÓDIGO</span>
+                    <span
+                      className={[
+                        'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
+                        sortKey === 'locationCode'
+                          ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
+                          : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
+                      ].join(' ')}
+                    >
+                      <SortIcon isActive={sortKey === 'locationCode'} />
+                    </span>
+                  </button>
+                </th>
+              ) : null}
+              {resolvedVisibleColumns.department ? (
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('departmentName')}
+                    className="inline-flex items-center gap-3 transition hover:text-[#C9A227]"
                   >
-                    <SortIcon isActive={sortKey === 'departmentName'} />
-                  </span>
-                </button>
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
-                Dueño
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
-                Teléfono
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
-                Acciones
-              </th>
+                    <span>DEPARTAMENTO</span>
+                    <span
+                      className={[
+                        'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
+                        sortKey === 'departmentName'
+                          ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
+                          : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
+                      ].join(' ')}
+                    >
+                      <SortIcon isActive={sortKey === 'departmentName'} />
+                    </span>
+                  </button>
+                </th>
+              ) : null}
+              {resolvedVisibleColumns.owner ? (
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                  Dueño
+                </th>
+              ) : null}
+              {resolvedVisibleColumns.phone ? (
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                  Teléfono
+                </th>
+              ) : null}
+              {resolvedVisibleColumns.actions ? (
+                <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                  Acciones
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-transparent">
             {sortedLocations.map((location) => (
               <tr key={location.id} className="align-top">
-                <td className="px-6 py-4">
-                  {location.coverImageUrl ? (
-                    <div className="h-14 w-20 overflow-hidden border border-slate-200 bg-slate-100">
-                      <img
-                        src={location.coverImageUrl}
-                        alt={`Portada de ${location.title}`}
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                  ) : (
-                    <CoverPlaceholder />
-                  )}
-                </td>
-                <td className="px-6 py-4 text-sm font-medium text-slate-950">
-                  {formatLocationCode(location.locationCode)}
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-900">
-                  {formatCellValue(location.departmentName)}
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-900">
-                  {location.ownerId && location.ownerName ? (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedOwnerId(location.ownerId)}
-                      className="font-medium text-slate-900 underline-offset-4 transition hover:underline"
-                    >
-                      {location.ownerName}
-                    </button>
-                  ) : (
-                    formatCellValue(location.ownerName)
-                  )}
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-900">
-                  {formatCellValue(location.ownerPhone)}
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-900">
-                  <div className="flex flex-nowrap items-center gap-2">
-                    <Link
-                      to={getLocationEditPath(location.id)}
-                      state={getLocationEditState?.(location)}
-                      aria-label="Editar"
-                      className="group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700 transition hover:border-sky-300 hover:bg-sky-100"
-                    >
-                      <EditIcon />
-                      <span className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-950 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-sm transition group-hover:opacity-100">
-                        Editar
-                      </span>
-                    </Link>
+                {resolvedVisibleColumns.cover ? (
+                  <td className="px-6 py-4">
+                    {location.coverImageUrl ? (
+                      <div className="h-14 w-20 overflow-hidden border border-slate-200 bg-slate-100">
+                        <img
+                          src={location.coverImageUrl}
+                          alt={`Portada de ${location.title}`}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <CoverPlaceholder />
+                    )}
+                  </td>
+                ) : null}
+                {resolvedVisibleColumns.code ? (
+                  <td className="px-6 py-4 text-sm font-medium text-slate-950">
+                    {formatLocationCode(location.locationCode)}
+                  </td>
+                ) : null}
+                {resolvedVisibleColumns.department ? (
+                  <td className="px-6 py-4 text-sm text-slate-900">
+                    {formatCellValue(location.departmentName)}
+                  </td>
+                ) : null}
+                {resolvedVisibleColumns.owner ? (
+                  <td className="px-6 py-4 text-sm text-slate-900">
+                    {location.ownerId && location.ownerName ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedOwnerId(location.ownerId)}
+                        className="font-medium text-slate-900 underline-offset-4 transition hover:underline"
+                      >
+                        {location.ownerName}
+                      </button>
+                    ) : (
+                      formatCellValue(location.ownerName)
+                    )}
+                  </td>
+                ) : null}
+                {resolvedVisibleColumns.phone ? (
+                  <td className="px-6 py-4 text-sm text-slate-900">
+                    {(() => {
+                      const whatsappUrl = getWhatsappUrl(location.ownerPhone)
 
-                    <ActionIconButton
-                      actionLabel={
-                        activeActionKey === `delete:${location.id}`
-                          ? 'Eliminando...'
-                          : 'Eliminar'
+                      if (!location.ownerPhone || location.ownerPhone.trim().length === 0) {
+                        return formatCellValue(location.ownerPhone)
                       }
-                      buttonClassName="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-50"
-                      disabled={activeActionKey !== null}
-                      onClick={() => void onDelete(location)}
-                    >
-                      <DeleteIcon />
-                    </ActionIconButton>
-                  </div>
-                </td>
+
+                      if (!whatsappUrl) {
+                        return <span>{location.ownerPhone}</span>
+                      }
+
+                      return (
+                        <a
+                          href={whatsappUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-slate-900 underline-offset-4 transition hover:cursor-pointer hover:underline"
+                        >
+                          {location.ownerPhone}
+                        </a>
+                      )
+                    })()}
+                  </td>
+                ) : null}
+                {resolvedVisibleColumns.actions ? (
+                  <td className="px-6 py-4 text-sm text-slate-900">
+                    <div className="flex flex-nowrap items-center gap-2">
+                      <Link
+                        to={getLocationEditPath(location.id)}
+                        state={getLocationEditState?.(location)}
+                        aria-label="Editar"
+                        className="group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700 transition hover:border-sky-300 hover:bg-sky-100"
+                      >
+                        <EditIcon />
+                        <span className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-950 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-sm transition group-hover:opacity-100">
+                          Editar
+                        </span>
+                      </Link>
+
+                      <ActionIconButton
+                        actionLabel={
+                          activeActionKey === `delete:${location.id}`
+                            ? 'Eliminando...'
+                            : 'Eliminar'
+                        }
+                        buttonClassName="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-50"
+                        disabled={activeActionKey !== null}
+                        onClick={() => void onDelete(location)}
+                      >
+                        <DeleteIcon />
+                      </ActionIconButton>
+                    </div>
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>
