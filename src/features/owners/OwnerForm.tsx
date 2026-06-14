@@ -1,15 +1,17 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Button from '../../components/ui/Button'
-import { getLocationEditPath, routePaths } from '../../app/router/route-paths'
+import { routePaths } from '../../app/router/route-paths'
 import { createOwner, updateOwner } from './owners.service'
 import useAuth from '../auth/useAuth'
+import LocationsTable from '../locations/LocationsTable'
+import type { LocationListItem } from '../locations/locations.types'
 import type {
   OwnerCreatePayload,
   OwnerFormValues,
   OwnerLocationListItem,
   OwnerUpdatePayload,
 } from './owners.types'
-import { useState } from 'react'
 
 export type OwnerFormMode = 'create' | 'edit'
 
@@ -76,116 +78,6 @@ function inputClassName() {
   return 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
 }
 
-function formatCellValue(value: string | null) {
-  return value && value.trim().length > 0 ? value : '-'
-}
-
-function formatLocationCode() {
-  return 'xxxx-xxxx'
-}
-
-function CoverPlaceholder() {
-  return (
-    <div className="flex h-14 w-20 items-center justify-center border border-slate-300 bg-slate-50 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
-      Sin foto
-    </div>
-  )
-}
-
-function ActionIconButton({
-  actionLabel,
-  buttonClassName = '',
-  children,
-  disabled = false,
-  onClick,
-}: {
-  actionLabel: string
-  buttonClassName?: string
-  children: React.ReactNode
-  disabled?: boolean
-  onClick?: () => void
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={actionLabel}
-      disabled={disabled}
-      onClick={onClick}
-      className={[
-        'group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border bg-white transition disabled:cursor-not-allowed disabled:opacity-60',
-        buttonClassName,
-      ].join(' ')}
-    >
-      {children}
-      <span className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-950 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-sm transition group-hover:opacity-100">
-        {actionLabel}
-      </span>
-    </button>
-  )
-}
-
-function EditIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      className="h-4 w-4"
-      aria-hidden="true"
-    >
-      <path
-        d="M12 20h9"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function DeleteIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      className="h-4 w-4"
-      aria-hidden="true"
-    >
-      <path
-        d="M3 6h18"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M8 6V4h8v2"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M19 6l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M10 11v6M14 11v6"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
 function OwnerForm({
   mode = 'create',
   initialValues = defaultInitialValues,
@@ -200,6 +92,27 @@ function OwnerForm({
   const [values, setValues] = useState<OwnerFormValues>(initialValues)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const ownerLocationsAsLocationListItems = useMemo<LocationListItem[]>(
+    () =>
+      locations.map((location) => ({
+        id: location.id,
+        title: location.title,
+        locationCode: location.locationCode,
+        coverImageUrl: location.coverImageUrl,
+        departmentName: location.departmentName,
+        zoneName: location.zoneName,
+        categoryName: null,
+        ownerId: ownerId ?? null,
+        ownerName: values.full_name.trim() || ownerName || null,
+        ownerPhone: values.phone.trim() || null,
+        slug: '',
+        featured: false,
+        premium: false,
+        status: location.status,
+        published: location.published,
+      })),
+    [locations, ownerId, ownerName, values.full_name, values.phone],
+  )
 
   function handleTextChange(
     event: React.ChangeEvent<
@@ -321,8 +234,8 @@ function OwnerForm({
         </div>
 
         {mode === 'edit' ? (
-          <div className="md:col-span-2 overflow-hidden rounded-2xl border border-slate-200 bg-white/95 backdrop-blur-sm">
-            <div className="border-b border-slate-200 px-6 py-5">
+          <div className="md:col-span-2">
+            <div className="px-6 py-5">
               <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
                 Locaciones asociadas
               </h2>
@@ -333,99 +246,30 @@ function OwnerForm({
                 No hay locaciones asociadas a este dueño.
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        Portada
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        Título
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        Departamento
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        Zona
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        Código
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        Acciones
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white/95 backdrop-blur-sm">
-                    {locations.map((location) => (
-                      <tr key={location.id} className="align-top">
-                        <td className="px-6 py-4">
-                          {location.coverImageUrl ? (
-                            <div className="h-14 w-20 overflow-hidden border border-slate-200 bg-slate-100">
-                              <img
-                                src={location.coverImageUrl}
-                                alt={`Portada de ${location.title}`}
-                                className="h-full w-full object-cover"
-                              />
-                            </div>
-                          ) : (
-                            <CoverPlaceholder />
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-sm font-medium text-slate-950">
-                          {location.title}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-600">
-                          {formatCellValue(location.departmentName)}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-600">
-                          {formatCellValue(location.zoneName)}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-600">
-                          {formatLocationCode()}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-slate-600">
-                          <div className="flex flex-nowrap items-center gap-2">
-                            <Link
-                              to={getLocationEditPath(location.id)}
-                              state={
-                                ownerId && ownerName
-                                  ? {
-                                      source: 'owner',
-                                      ownerId,
-                                      ownerName,
-                                    }
-                                  : undefined
-                              }
-                              aria-label="Editar"
-                              className="group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700 transition hover:border-sky-300 hover:bg-sky-100"
-                            >
-                              <EditIcon />
-                              <span className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-950 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-sm transition group-hover:opacity-100">
-                                Editar
-                              </span>
-                            </Link>
-
-                            <ActionIconButton
-                              actionLabel={
-                                activeLocationActionKey === `delete:${location.id}`
-                                  ? 'Eliminando...'
-                                  : 'Eliminar'
-                              }
-                              buttonClassName="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-50"
-                              disabled={activeLocationActionKey !== null}
-                              onClick={() => void onDeleteLocation?.(location.id)}
-                            >
-                              <DeleteIcon />
-                            </ActionIconButton>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <LocationsTable
+                locations={ownerLocationsAsLocationListItems}
+                activeActionKey={activeLocationActionKey}
+                showToolbar={false}
+                title={null}
+                visibleColumns={{
+                  cover: true,
+                  code: true,
+                  department: true,
+                  owner: false,
+                  phone: false,
+                  actions: true,
+                }}
+                getLocationEditState={() =>
+                  ownerId && ownerName
+                    ? {
+                        source: 'owner',
+                        ownerId,
+                        ownerName,
+                      }
+                    : undefined
+                }
+                onDelete={(location) => onDeleteLocation?.(location.id) ?? Promise.resolve()}
+              />
             )}
           </div>
         ) : null}
