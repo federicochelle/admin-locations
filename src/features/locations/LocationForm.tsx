@@ -1783,7 +1783,7 @@ function markSaveProgressSuccess() {
                       <ChevronDownIcon />
                     </button>
                     {isCategoryComboboxOpen ? (
-                      <div className="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+                      <div className="absolute z-40 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
                         {filteredCategories.length > 0 ? (
                           <div className="category-combobox-scrollbar max-h-[260px] space-y-1 overflow-x-hidden overflow-y-auto pr-1">
                             {filteredCategories.map((category) => (
@@ -1853,7 +1853,7 @@ function markSaveProgressSuccess() {
                       <ChevronDownIcon />
                     </button>
                     {isOwnerComboboxOpen ? (
-                      <div className="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+                      <div className="absolute z-40 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
                         {filteredOwners.length > 0 ? (
                           <div className="category-combobox-scrollbar max-h-[260px] space-y-1 overflow-x-hidden overflow-y-auto pr-1">
                             {filteredOwners.map((owner) => (
@@ -2071,7 +2071,7 @@ function markSaveProgressSuccess() {
                     <ChevronDownIcon />
                   </button>
                   {isZoneComboboxOpen ? (
-                    <div className="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+                    <div className="absolute z-40 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
                       {filteredZoneOptions.length > 0 ? (
                         <div className="category-combobox-scrollbar max-h-[260px] space-y-1 overflow-x-hidden overflow-y-auto pr-1">
                           {filteredZoneOptions.map((zone) => (
