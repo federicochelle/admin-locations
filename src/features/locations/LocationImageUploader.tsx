@@ -3,6 +3,10 @@ import {
   buttonBaseClassName,
   buttonVariantClasses,
 } from '../../components/ui/button.styles'
+import {
+  LOCATION_TOP_STACK_PANEL_HEIGHT_CLASS,
+  LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
+} from './location-top-stack.styles'
 
 const ACCEPTED_TYPES = 'image/jpeg,image/png,image/webp,image/avif'
 
@@ -50,7 +54,11 @@ function LocationImageUploader({
     <label
       className={
         variant === 'empty-state'
-          ? 'flex aspect-[16/9] min-h-[240px] w-full cursor-pointer flex-col items-center justify-center gap-4 border border-dashed border-slate-300 bg-slate-50 py-10 text-center transition hover:border-slate-400 hover:bg-slate-100'
+          ? [
+              'flex cursor-pointer flex-col items-center justify-center gap-4 py-10 text-center transition hover:border-slate-300 hover:bg-slate-100',
+              LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
+              LOCATION_TOP_STACK_PANEL_HEIGHT_CLASS,
+            ].join(' ')
           : disabled
             ? 'flex w-full cursor-not-allowed flex-col items-start gap-2'
             : 'flex w-full cursor-pointer flex-col items-start gap-2'
