@@ -69,6 +69,15 @@ export type LocationCreatePayload = {
   visibility_level: string
   address_private: string | null
   address_public: string | null
+  google_place_id: string | null
+  formatted_address: string | null
+  google_department_name: string | null
+  google_zone_name: string | null
+  address_components: unknown | null
+  lat: number | null
+  lng: number | null
+  approx_lat: number | null
+  approx_lng: number | null
   show_exact_location: boolean
   map_visibility: string
   selectedFeatureIds: string[]
@@ -91,6 +100,15 @@ export type LocationFormValues = {
   visibility_level: string
   address_private: string
   address_public: string
+  google_place_id: string | null
+  formatted_address: string | null
+  google_department_name: string | null
+  google_zone_name: string | null
+  address_components: unknown | null
+  lat: number | null
+  lng: number | null
+  approx_lat: number | null
+  approx_lng: number | null
   show_exact_location: boolean
   map_visibility: string
   selectedFeatureIds: string[]
@@ -113,6 +131,15 @@ export type LocationEditableRecord = {
   visibility_level: string | null
   address_private: string | null
   address_public: string | null
+  google_place_id: string | null
+  formatted_address: string | null
+  google_department_name: string | null
+  google_zone_name: string | null
+  address_components: unknown | null
+  lat: number | null
+  lng: number | null
+  approx_lat: number | null
+  approx_lng: number | null
   show_exact_location: boolean | null
   map_visibility: string | null
   selectedFeatureIds: string[]

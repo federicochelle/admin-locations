@@ -1,4 +1,8 @@
 import { useState } from 'react'
+import {
+  LOCATION_TOP_STACK_PANEL_HEIGHT_CLASS,
+  LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
+} from './location-top-stack.styles'
 import type {
   LocationImageRecord,
   PendingLocationImageFile,
@@ -209,6 +213,9 @@ function LocationImagesGrid(
   const title = props.title
   const showCount = props.showCount !== false && orderedItems.length > 0
   const showHeader = Boolean(title) || showCount
+  const gridClassName = showGallery
+    ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'
+    : 'grid grid-cols-1 gap-4'
 
   function handleCoverDragOver(event: React.DragEvent<HTMLElement>) {
     if (!canDragToCover) {
@@ -295,17 +302,18 @@ function LocationImagesGrid(
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className={gridClassName}>
         {showCover && coverItem ? (
           <article
-            className="flex aspect-[16/9] min-h-[240px] items-center justify-center bg-slate-50 px-6"
+            className={['flex w-full items-center justify-center', LOCATION_TOP_STACK_PANEL_HEIGHT_CLASS].join(' ')}
             onDragLeave={handleCoverDragLeave}
             onDragOver={handleCoverDragOver}
             onDrop={handleCoverDrop}
           >
             <div
               className={[
-                'group relative aspect-[16/9] min-h-[240px] w-full overflow-hidden border border-dashed border-slate-300 bg-slate-100',
+                'group relative',
+                LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
                 coverDropActive ? 'border-sky-500 bg-sky-50' : '',
               ].join(' ')}
             >
@@ -348,7 +356,7 @@ function LocationImagesGrid(
             ) : null}
           </article>
         ) : showCover && props.emptyCoverAction ? (
-          <div className="flex aspect-[16/9] min-h-[240px] items-center justify-center border border-dashed border-slate-300 bg-slate-50 px-6 text-center">
+          <div className={['flex w-full items-center justify-center text-center', LOCATION_TOP_STACK_PANEL_HEIGHT_CLASS].join(' ')}>
             <div className="w-full">{props.emptyCoverAction}</div>
           </div>
         ) : null}

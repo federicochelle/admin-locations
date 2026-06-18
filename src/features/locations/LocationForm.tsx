@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { APIProvider } from '@vis.gl/react-google-maps'
 import Button from '../../components/ui/Button'
 import { getLocationEditPath, routePaths } from '../../app/router/route-paths'
 import useAuth from '../auth/useAuth'
+import { getGoogleMapsApiKey } from '../../lib/env'
 import { createCategory } from '../categories/categories.service'
 import { createOwner } from '../owners/owners.service'
 import { createZone } from '../zones/zones.service'
@@ -26,6 +28,8 @@ import LocationSaveProgressModal, {
   type LocationSaveStageKey,
   type LocationSaveStageStatus,
 } from './LocationSaveProgressModal'
+import LocationAddressPicker from './LocationAddressPicker'
+import LocationMapPreview from './LocationMapPreview'
 import LocationZoneQuickCreateModal from './LocationZoneQuickCreateModal'
 import type {
   LocationCreatePayload,
@@ -37,6 +41,7 @@ import type {
   LocationImageRecord,
   PendingLocationImageFile,
 } from './location-images.types'
+import type { ParsedGooglePlaceAddress } from './location-address-parser'
 import {
   optimizeLocationImageFile,
 } from './location-image-optimizer'
@@ -55,7 +60,6 @@ type LocationFormProps = {
 type LocationFormFieldErrors = {
   address_private: string | null
   category_id: string | null
-  department_id: string | null
 }
 
 const defaultInitialValues: LocationFormValues = {
@@ -73,6 +77,15 @@ const defaultInitialValues: LocationFormValues = {
   visibility_level: 'public',
   address_private: '',
   address_public: '',
+  google_place_id: null,
+  formatted_address: null,
+  google_department_name: null,
+  google_zone_name: null,
+  address_components: null,
+  lat: null,
+  lng: null,
+  approx_lat: null,
+  approx_lng: null,
   show_exact_location: false,
   map_visibility: 'public',
   selectedFeatureIds: [],
@@ -112,10 +125,60 @@ function buildPayload(
     visibility_level: values.visibility_level,
     address_private: toNullableString(values.address_private),
     address_public: toNullableString(values.address_public),
+    google_place_id: values.google_place_id,
+    formatted_address: values.formatted_address,
+    google_department_name: values.google_department_name,
+    google_zone_name: values.google_zone_name,
+    address_components: values.address_components,
+    lat: values.lat,
+    lng: values.lng,
+    approx_lat: values.approx_lat,
+    approx_lng: values.approx_lng,
     show_exact_location: values.show_exact_location,
     map_visibility: values.map_visibility,
     selectedFeatureIds: values.selectedFeatureIds,
   }
+}
+
+function getLocationAddressPickerValue(values: LocationFormValues) {
+  return values.formatted_address ?? values.address_private
+}
+
+function renderGoogleLocationFallback(inputClassNameValue: string) {
+  return (
+    <div className="space-y-2">
+      <input
+        type="text"
+        value=""
+        disabled
+        placeholder="Buscar dirección..."
+        autoComplete="off"
+        className={inputClassNameValue}
+        readOnly
+      />
+      <p className="text-sm text-slate-600">
+        Google Places no está configurado. Puedes seguir usando la dirección manual.
+      </p>
+    </div>
+  )
+}
+
+function LocationGoogleProvider({
+  apiKey,
+  children,
+}: {
+  apiKey: string | null
+  children: React.ReactNode
+}) {
+  if (!apiKey) {
+    return <>{children}</>
+  }
+
+  return (
+    <APIProvider apiKey={apiKey} libraries={['places']}>
+      {children}
+    </APIProvider>
+  )
 }
 
 function FieldLabel({
@@ -169,7 +232,6 @@ function getDefaultFieldErrors(): LocationFormFieldErrors {
   return {
     address_private: null,
     category_id: null,
-    department_id: null,
   }
 }
 
@@ -181,10 +243,6 @@ function validateRequiredFields(
       values.category_id.trim().length > 0
         ? null
         : 'Debe seleccionar una categoría.',
-    department_id:
-      values.department_id.trim().length > 0
-        ? null
-        : 'Debe seleccionar un departamento.',
     address_private:
       values.address_private.trim().length > 0
         ? null
@@ -194,10 +252,6 @@ function validateRequiredFields(
 
 function hasFieldErrors(fieldErrors: LocationFormFieldErrors) {
   return Object.values(fieldErrors).some((errorMessage) => errorMessage !== null)
-}
-
-function formatFeatureGroup(group: string | null) {
-  return group && group.trim().length > 0 ? group : 'General'
 }
 
 function getFormHeading(mode: LocationFormMode) {
@@ -432,6 +486,15 @@ function LocationForm({
   const locationImages = useLocationImages(
     mode === 'edit' ? locationId ?? null : null,
   )
+  const googleMapsApiKey = useMemo(() => {
+    try {
+      return getGoogleMapsApiKey()
+    } catch (error) {
+      console.error('No pudimos leer la API key de Google Maps.', error)
+
+      return null
+    }
+  }, [])
 
   async function loadFormOptions() {
     try {
@@ -1065,21 +1128,13 @@ function markSaveProgressSuccess() {
         ? value.trim().length > 0
           ? null
           : 'Debe seleccionar una categoría.'
-        : name === 'department_id'
-          ? value.trim().length > 0
-            ? null
-            : 'Debe seleccionar un departamento.'
-          : name === 'address_private'
+        : name === 'address_private'
             ? value.trim().length > 0
               ? null
               : 'Debe ingresar una dirección.'
             : null
 
-    if (
-      name === 'category_id' ||
-      name === 'department_id' ||
-      name === 'address_private'
-    ) {
+    if (name === 'category_id' || name === 'address_private') {
       setFieldErrors((currentErrors) => ({
         ...currentErrors,
         [name]: nextFieldError,
@@ -1127,14 +1182,22 @@ function markSaveProgressSuccess() {
     }))
   }
 
-  function handleFeatureToggle(featureId: string, checked: boolean) {
+  function handleGooglePlaceSelected(place: ParsedGooglePlaceAddress) {
+    setFieldErrors((currentErrors) => ({
+      ...currentErrors,
+      address_private: place.formatted_address ? null : currentErrors.address_private,
+    }))
     setValues((currentValues) => ({
       ...currentValues,
-      selectedFeatureIds: checked
-        ? [...currentValues.selectedFeatureIds, featureId]
-        : currentValues.selectedFeatureIds.filter(
-            (selectedId) => selectedId !== featureId,
-          ),
+      address_private:
+        place.formatted_address ?? currentValues.address_private,
+      formatted_address: place.formatted_address,
+      google_place_id: place.google_place_id,
+      google_department_name: place.google_department_name,
+      google_zone_name: place.google_zone_name,
+      address_components: place.address_components,
+      lat: place.lat,
+      lng: place.lng,
     }))
   }
 
@@ -1476,7 +1539,6 @@ function markSaveProgressSuccess() {
     if (hasFieldErrors(nextFieldErrors)) {
       const firstErrorMessage =
         nextFieldErrors.category_id ??
-        nextFieldErrors.department_id ??
         nextFieldErrors.address_private ??
         'No pudimos guardar la locación.'
 
@@ -1628,20 +1690,6 @@ function markSaveProgressSuccess() {
     )
   }
 
-  const featuresByGroup = options.features.reduce<
-    Record<string, LocationFormOptions['features']>
-  >((groups, feature) => {
-    const groupName = formatFeatureGroup(feature.group)
-
-    if (!groups[groupName]) {
-      groups[groupName] = []
-    }
-
-    groups[groupName].push(feature)
-
-    return groups
-  }, {})
-
   return (
     <>
       <LocationSaveProgressModal progress={saveProgress} />
@@ -1682,6 +1730,7 @@ function markSaveProgressSuccess() {
         ) : null}
 
       <SectionCard>
+        <LocationGoogleProvider apiKey={googleMapsApiKey}>
         <div className="space-y-6">
           <div className="grid gap-6 xl:grid-cols-2 xl:items-start">
             <div className="space-y-5">
@@ -1779,6 +1828,93 @@ function markSaveProgressSuccess() {
                   </p>
                 ) : null}
               </div>
+
+              <div>
+                <FieldLabel htmlFor="owner_id">Dueño</FieldLabel>
+                <div className="flex items-start gap-3">
+                  <div className="relative flex-1" ref={ownerComboboxRef}>
+                    <input
+                      id="owner_id"
+                      name="owner_id"
+                      type="text"
+                      autoComplete="off"
+                      className={[inputClassName(), 'pr-10'].join(' ')}
+                      value={ownerInputValue}
+                      placeholder="Buscar dueño"
+                      onChange={handleOwnerSearchChange}
+                      onFocus={() => setIsOwnerComboboxOpen(true)}
+                    />
+                    <button
+                      type="button"
+                      aria-label="Mostrar dueños"
+                      onClick={handleOwnerDropdownToggle}
+                      className="absolute inset-y-0 right-0 inline-flex items-center justify-center px-3 text-slate-500 transition hover:text-slate-700"
+                    >
+                      <ChevronDownIcon />
+                    </button>
+                    {isOwnerComboboxOpen ? (
+                      <div className="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+                        {filteredOwners.length > 0 ? (
+                          <div className="category-combobox-scrollbar max-h-[260px] space-y-1 overflow-x-hidden overflow-y-auto pr-1">
+                            {filteredOwners.map((owner) => (
+                              <button
+                                key={owner.id}
+                                type="button"
+                                onClick={() =>
+                                  handleOwnerSelect(owner.id, owner.full_name)
+                                }
+                                className={[
+                                  'flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition',
+                                  values.owner_id === owner.id
+                                    ? 'bg-slate-900 text-white'
+                                    : 'text-slate-700 hover:bg-slate-100',
+                                ].join(' ')}
+                              >
+                                {owner.full_name}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="max-h-[260px] overflow-x-hidden overflow-y-auto px-3 py-2 text-sm text-slate-500">
+                            No se encontraron dueños.
+                          </p>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Crear dueño"
+                    disabled={isSubmitting || isCreatingOwner}
+                    onClick={handleOpenOwnerModal}
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#0f1723] text-xl font-semibold text-white shadow-sm transition hover:border-[#B8924A] hover:bg-[#162131] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(184,146,74,0.20)] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <FieldLabel htmlFor="google-location-search" required>
+                  Dirección
+                </FieldLabel>
+                {googleMapsApiKey ? (
+                  <LocationAddressPicker
+                    formattedAddress={values.formatted_address}
+                    value={getLocationAddressPickerValue(values)}
+                    disabled={isSubmitting}
+                    error={fieldErrors.address_private}
+                    onPlaceSelected={handleGooglePlaceSelected}
+                  />
+                ) : (
+                  renderGoogleLocationFallback(inputClassName())
+                )}
+                {fieldErrors.address_private ? (
+                  <p className="mt-2 text-sm text-red-700">
+                    {fieldErrors.address_private}
+                  </p>
+                ) : null}
+              </div>
             </div>
 
             {showImagesSection && mode === 'create' ? (
@@ -1802,6 +1938,20 @@ function markSaveProgressSuccess() {
                   showGallery={false}
                 />
                 {renderImageFeedback()}
+                {googleMapsApiKey ? (
+                  <LocationMapPreview
+                    lat={values.lat}
+                    lng={values.lng}
+                    disabled={isSubmitting}
+                  />
+                ) : (
+                  <LocationMapPreview
+                    lat={values.lat}
+                    lng={values.lng}
+                    disabled={isSubmitting}
+                    mapEnabled={false}
+                  />
+                )}
               </div>
             ) : null}
 
@@ -1838,100 +1988,27 @@ function markSaveProgressSuccess() {
                   />
                 )}
                 {renderImageFeedback()}
+                {googleMapsApiKey ? (
+                  <LocationMapPreview
+                    lat={values.lat}
+                    lng={values.lng}
+                    disabled={isSubmitting}
+                  />
+                ) : (
+                  <LocationMapPreview
+                    lat={values.lat}
+                    lng={values.lng}
+                    disabled={isSubmitting}
+                    mapEnabled={false}
+                  />
+                )}
               </div>
             ) : null}
           </div>
 
-          <div className="grid gap-5 lg:grid-cols-2">
+          <div className="hidden">
             <div>
-              <FieldLabel htmlFor="address_private" required>
-                Dirección
-              </FieldLabel>
-              <input
-                id="address_private"
-                name="address_private"
-                className={[
-                  inputClassName(),
-                  getFieldErrorInputClassName(fieldErrors.address_private),
-                ].join(' ')}
-                value={values.address_private}
-                onChange={handleTextChange}
-                required
-              />
-              {fieldErrors.address_private ? (
-                <p className="mt-2 text-sm text-red-700">
-                  {fieldErrors.address_private}
-                </p>
-              ) : null}
-            </div>
-
-            <div>
-              <FieldLabel htmlFor="owner_id">Dueño</FieldLabel>
-              <div className="flex items-start gap-3">
-                <div className="relative flex-1" ref={ownerComboboxRef}>
-                  <input
-                    id="owner_id"
-                    name="owner_id"
-                    type="text"
-                    autoComplete="off"
-                    className={[inputClassName(), 'pr-10'].join(' ')}
-                    value={ownerInputValue}
-                    placeholder="Buscar dueño"
-                    onChange={handleOwnerSearchChange}
-                    onFocus={() => setIsOwnerComboboxOpen(true)}
-                  />
-                  <button
-                    type="button"
-                    aria-label="Mostrar dueños"
-                    onClick={handleOwnerDropdownToggle}
-                    className="absolute inset-y-0 right-0 inline-flex items-center justify-center px-3 text-slate-500 transition hover:text-slate-700"
-                  >
-                    <ChevronDownIcon />
-                  </button>
-                  {isOwnerComboboxOpen ? (
-                    <div className="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
-                      {filteredOwners.length > 0 ? (
-                        <div className="category-combobox-scrollbar max-h-[260px] space-y-1 overflow-x-hidden overflow-y-auto pr-1">
-                          {filteredOwners.map((owner) => (
-                            <button
-                              key={owner.id}
-                              type="button"
-                              onClick={() =>
-                                handleOwnerSelect(owner.id, owner.full_name)
-                              }
-                              className={[
-                                'flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition',
-                                values.owner_id === owner.id
-                                  ? 'bg-slate-900 text-white'
-                                  : 'text-slate-700 hover:bg-slate-100',
-                              ].join(' ')}
-                            >
-                              {owner.full_name}
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="max-h-[260px] overflow-x-hidden overflow-y-auto px-3 py-2 text-sm text-slate-500">
-                          No se encontraron dueños.
-                        </p>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  aria-label="Crear dueño"
-                  disabled={isSubmitting || isCreatingOwner}
-                  onClick={handleOpenOwnerModal}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#0f1723] text-xl font-semibold text-white shadow-sm transition hover:border-[#B8924A] hover:bg-[#162131] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(184,146,74,0.20)] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <FieldLabel htmlFor="department_id" required>
+              <FieldLabel htmlFor="department_id">
                 Departamento
               </FieldLabel>
               <select
@@ -1939,11 +2016,9 @@ function markSaveProgressSuccess() {
                 name="department_id"
                 className={[
                   inputClassName(),
-                  getFieldErrorInputClassName(fieldErrors.department_id),
                 ].join(' ')}
                 value={values.department_id}
                 onChange={handleTextChange}
-                required
               >
                 <option value="">Seleccionar departamento</option>
                 {options.departments.map((department) => (
@@ -1952,11 +2027,6 @@ function markSaveProgressSuccess() {
                   </option>
                 ))}
               </select>
-              {fieldErrors.department_id ? (
-                <p className="mt-2 text-sm text-red-700">
-                  {fieldErrors.department_id}
-                </p>
-              ) : null}
             </div>
 
             <div>
@@ -2042,20 +2112,21 @@ function markSaveProgressSuccess() {
                 <p className="mt-2 text-sm text-amber-700">{zoneDepartmentPrompt}</p>
               ) : null}
             </div>
+          </div>
 
-            <div className="lg:col-span-2">
-              <FieldLabel htmlFor="description">Descripción</FieldLabel>
-              <textarea
-                id="description"
-                name="description"
-                className={inputClassName()}
-                value={values.description}
-                onChange={handleTextChange}
-                rows={5}
-              />
-            </div>
+          <div>
+            <FieldLabel htmlFor="description">Notas internas</FieldLabel>
+            <textarea
+              id="description"
+              name="description"
+              className={inputClassName()}
+              value={values.description}
+              onChange={handleTextChange}
+              rows={5}
+            />
           </div>
         </div>
+        </LocationGoogleProvider>
       </SectionCard>
 
       {showAdvancedSection ? (
@@ -2126,6 +2197,12 @@ function markSaveProgressSuccess() {
           onChange={handleTextChange}
         />
         <input
+          type="hidden"
+          name="address_private"
+          value={values.address_private}
+          onChange={handleTextChange}
+        />
+        <input
           type="checkbox"
           name="published"
           checked={values.published}
@@ -2164,7 +2241,7 @@ function markSaveProgressSuccess() {
                 showCover={false}
               />
             ) : (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
                 Todavía no cargaste imágenes de galería.
               </div>
             )}
@@ -2201,7 +2278,7 @@ function markSaveProgressSuccess() {
             ) : null}
 
             {combinedEditGalleryImages.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
                 Esta locación todavía no tiene imágenes de galería.
               </div>
             ) : null}
@@ -2213,48 +2290,6 @@ function markSaveProgressSuccess() {
           </div>
         </SectionCard>
       ) : null}
-
-      <CollapsibleSection title="Características (opcional)">
-        {options.features.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-600">
-            No hay features activas disponibles para asociar.
-          </div>
-        ) : (
-          <div className="space-y-5">
-            {Object.entries(featuresByGroup).map(([groupName, features]) => (
-              <div key={groupName} className="space-y-3">
-                <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  {groupName}
-                </h4>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {features.map((feature) => {
-                    const isChecked = values.selectedFeatureIds.includes(
-                      feature.id,
-                    )
-
-                    return (
-                      <label
-                        key={feature.id}
-                        className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(event) =>
-                            handleFeatureToggle(feature.id, event.target.checked)
-                          }
-                          className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-300"
-                        />
-                        <span>{feature.name}</span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </CollapsibleSection>
 
         <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center sm:justify-end">
           <Button
