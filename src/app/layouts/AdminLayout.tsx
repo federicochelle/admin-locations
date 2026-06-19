@@ -6,9 +6,9 @@ import { LayoutHeaderProvider } from './LayoutHeaderContext'
 function AdminLayout() {
   return (
     <LayoutHeaderProvider>
-      <div className="min-h-screen bg-[#121c2a] text-slate-900">
+      <div className="min-h-screen bg-black text-slate-900">
         <Sidebar />
-        <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(184,146,74,0.12),_transparent_28%),linear-gradient(180deg,_#1a2636_0%,_#162131_52%,_#121c2a_100%)] md:ml-72">
+        <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(184,146,74,0.10),_transparent_24%),linear-gradient(180deg,_#111111_0%,_#151515_52%,_#1a1a1a_100%)] md:ml-72">
           <Header />
           <main className="relative px-6 py-4 sm:px-8 sm:py-5">
             <Outlet />

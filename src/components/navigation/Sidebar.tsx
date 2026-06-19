@@ -7,14 +7,14 @@ function Sidebar() {
     <aside
       className="border-b border-white/10 text-slate-100 md:fixed md:inset-y-0 md:left-0 md:w-72 md:overflow-y-auto md:border-b-0 md:border-r"
       style={{
-        backgroundColor: '#0f1723',
+        backgroundColor: '#000000',
         backgroundImage:
-          'radial-gradient(circle at top left, rgba(184,146,74,.08), transparent 35%), linear-gradient(180deg, #0b0f17 0%, #0f1723 100%)',
+          'radial-gradient(circle at top left, rgba(184,146,74,.10), transparent 35%), linear-gradient(180deg, #000000 0%, #050505 100%)',
       }}
     >
       <div className="flex h-full flex-col">
-        <div className="border-b border-white/10 px-6 py-6">
-          <img src={logo} alt="Logo" className="h-auto w-full max-w-[180px]" />
+        <div className="flex justify-center border-b border-white/10 px-6 py-6">
+          <img src={logo} alt="Logo" className="h-auto w-full max-w-[90px]" />
         </div>
 
         <nav className="flex gap-2 overflow-x-auto px-4 py-4 md:flex-1 md:flex-col md:overflow-x-visible md:overflow-y-visible">

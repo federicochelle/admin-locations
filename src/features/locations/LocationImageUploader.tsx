@@ -60,8 +60,8 @@ function LocationImageUploader({
               LOCATION_TOP_STACK_PANEL_HEIGHT_CLASS,
             ].join(' ')
           : disabled
-            ? 'flex w-full cursor-not-allowed flex-col items-start gap-2'
-            : 'flex w-full cursor-pointer flex-col items-start gap-2'
+            ? 'inline-flex cursor-not-allowed flex-col items-start gap-2'
+            : 'inline-flex cursor-pointer flex-col items-start gap-2'
       }
     >
       {variant === 'empty-state' ? (
@@ -78,7 +78,7 @@ function LocationImageUploader({
               buttonBaseClassName,
               buttonVariantClasses.primary,
               disabled
-                ? 'cursor-not-allowed opacity-60 hover:border-white/10 hover:bg-[#0f1723]'
+                ? 'cursor-not-allowed opacity-60 hover:border-[#B8924A] hover:bg-[#B8924A]'
                 : '',
             ].join(' ')}
           >

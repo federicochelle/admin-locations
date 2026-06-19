@@ -42,7 +42,9 @@ export type LocationZoneOption = {
 export type LocationFeatureOption = {
   id: string
   name: string
+  slug: string
   group: string | null
+  type: string | null
   active: boolean | null
 }
 

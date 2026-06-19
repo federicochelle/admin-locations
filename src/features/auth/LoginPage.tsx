@@ -97,7 +97,7 @@ function LoginPage() {
             <img
               src={logo}
               alt="Film Locations UY"
-              className="h-auto w-full max-w-md"
+              className="h-auto w-full max-w-[14rem]"
             />
           </section>
 
