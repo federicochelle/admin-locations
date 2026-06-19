@@ -376,7 +376,7 @@ export async function getLocationFormOptions(): Promise<LocationFormOptions> {
       supabase.from('zones').select('id, name, department_id').order('name'),
       supabase
         .from('features')
-        .select('id, name, group, active')
+        .select('id, name, slug, group, type, active')
         .eq('active', true)
         .order('group', { ascending: true })
         .order('name', { ascending: true }),

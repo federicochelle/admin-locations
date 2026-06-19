@@ -26,7 +26,7 @@ function LocationCreatePage() {
       description="Completá la información principal y las imágenes de la locación."
       hideHeader
     >
-      <Card>
+      <Card className="border-0 bg-[radial-gradient(circle_at_top_left,_rgba(184,146,74,0.10),_transparent_24%),linear-gradient(180deg,_#111111_0%,_#151515_52%,_#1a1a1a_100%)] p-6 shadow-none backdrop-blur-0">
         <LocationForm />
       </Card>
     </PageContainer>

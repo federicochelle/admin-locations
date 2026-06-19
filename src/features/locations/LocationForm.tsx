@@ -110,6 +110,10 @@ function slugifyTitle(value: string) {
 function buildPayload(
   values: LocationFormValues,
 ): LocationCreatePayload | LocationUpdatePayload {
+  const deduplicatedSelectedFeatureIds = Array.from(
+    new Set(values.selectedFeatureIds),
+  )
+
   return {
     title: values.title.trim(),
     slug: values.slug.trim(),
@@ -136,12 +140,44 @@ function buildPayload(
     approx_lng: values.approx_lng,
     show_exact_location: values.show_exact_location,
     map_visibility: values.map_visibility,
-    selectedFeatureIds: values.selectedFeatureIds,
+    selectedFeatureIds: deduplicatedSelectedFeatureIds,
   }
 }
 
 function getLocationAddressPickerValue(values: LocationFormValues) {
   return values.formatted_address ?? values.address_private
+}
+
+function formatFeatureGroupLabel(group: string | null) {
+  const normalizedGroup = group?.trim()
+
+  if (!normalizedGroup) {
+    return 'Otras características'
+  }
+
+  const featureGroupLabels: Record<string, string> = {
+    visual_style: 'Estilo visual',
+    environment: 'Entorno',
+    amenities: 'Comodidades',
+    lighting: 'Iluminación',
+    production_use: 'Uso para producción',
+    logistics: 'Logística',
+    interior_spaces: 'Espacios interiores',
+    special_spaces: 'Espacios especiales',
+  }
+
+  if (featureGroupLabels[normalizedGroup]) {
+    return featureGroupLabels[normalizedGroup]
+  }
+
+  return normalizedGroup
+    .split('_')
+    .map((segment) =>
+      segment.length > 0
+        ? `${segment.charAt(0).toUpperCase()}${segment.slice(1)}`
+        : segment,
+    )
+    .join(' ')
 }
 
 function renderGoogleLocationFallback(inputClassNameValue: string) {
@@ -208,11 +244,30 @@ function ChevronDownIcon() {
       viewBox="0 0 20 20"
       fill="none"
       stroke="currentColor"
-      className="h-4 w-4"
+      className="h-6 w-6"
     >
       <path
         d="m5 7.5 5 5 5-5"
-        strokeWidth="1.8"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function ChevronUpIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      className="h-6 w-6"
+    >
+      <path
+        d="m5 12.5 5-5 5 5"
+        strokeWidth="2.4"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -282,7 +337,7 @@ function SectionCard({
   title?: string
 }) {
   return (
-    <section className="space-y-5 rounded-2xl bg-transparent p-5">
+    <section className="-mx-6 w-[calc(100%+3rem)] space-y-5 rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-sm backdrop-blur-sm sm:p-6 lg:p-7">
       {title || description ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
@@ -301,25 +356,59 @@ function SectionCard({
   )
 }
 
-function CollapsibleSection({
+function AccordionSectionCard({
+  actions,
   children,
-  defaultOpen = false,
+  description,
+  isOpen,
+  onToggle,
   title,
 }: {
+  actions?: React.ReactNode
   children: React.ReactNode
-  defaultOpen?: boolean
+  description?: string
+  isOpen: boolean
+  onToggle: () => void
   title: string
 }) {
   return (
-    <details
-      open={defaultOpen}
-      className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4"
-    >
-      <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
-        <span>{title}</span>
-      </summary>
-      <div className="mt-4">{children}</div>
-    </details>
+    <section className="-mx-6 w-[calc(100%+3rem)] space-y-5 rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-sm backdrop-blur-sm sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 items-start justify-between gap-4 rounded-2xl px-1 py-1 text-left transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
+          aria-expanded={isOpen}
+        >
+          <div className="min-w-0 space-y-1">
+            <h3 className="text-2xl font-semibold text-slate-950">{title}</h3>
+            {description ? (
+              <p className="text-sm leading-6 text-slate-600">{description}</p>
+            ) : null}
+          </div>
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-slate-950 transition duration-300 ease-out">
+            {isOpen ? <ChevronUpIcon /> : <ChevronDownIcon />}
+          </span>
+        </button>
+        {actions ? <div className="shrink-0 sm:ml-auto">{actions}</div> : null}
+      </div>
+      <div
+        className={[
+          'grid overflow-hidden border-t border-slate-100 transition-[grid-template-rows,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]',
+          isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
+        ].join(' ')}
+        aria-hidden={!isOpen}
+      >
+        <div
+          className={[
+            'min-h-0 pt-1 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]',
+            isOpen ? 'translate-y-0' : '-translate-y-1',
+          ].join(' ')}
+        >
+          {children}
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -439,6 +528,8 @@ function LocationForm({
   const [optionsError, setOptionsError] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isFeaturesSectionOpen, setIsFeaturesSectionOpen] = useState(false)
+  const [isGallerySectionOpen, setIsGallerySectionOpen] = useState(false)
   const [saveProgress, setSaveProgress] = useState<LocationSaveProgressState | null>(
     null,
   )
@@ -692,6 +783,44 @@ function LocationForm({
       zone.name.toLocaleLowerCase().startsWith(normalizedSearch),
     )
   }, [filteredZones, zoneSearchTerm])
+  const featureGroups = useMemo(() => {
+    if (!options) {
+      return []
+    }
+
+    const groups = new Map<
+      string,
+      {
+        group: string | null
+        items: LocationFormOptions['features']
+      }
+    >()
+
+    for (const feature of options.features) {
+      if (feature.active !== true) {
+        continue
+      }
+
+      if (feature.type && feature.type !== 'boolean') {
+        continue
+      }
+
+      const key = feature.group?.trim() || 'ungrouped'
+      const existingGroup = groups.get(key)
+
+      if (existingGroup) {
+        existingGroup.items.push(feature)
+        continue
+      }
+
+      groups.set(key, {
+        group: feature.group,
+        items: [feature],
+      })
+    }
+
+    return Array.from(groups.values())
+  }, [options])
 
   function handleOwnerCreateChange(
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -1180,6 +1309,23 @@ function markSaveProgressSuccess() {
       ...currentValues,
       [name]: checked,
     }))
+  }
+
+  function handleFeatureToggle(featureId: string) {
+    setValues((currentValues) => {
+      const nextSelectedFeatureIds = new Set(currentValues.selectedFeatureIds)
+
+      if (nextSelectedFeatureIds.has(featureId)) {
+        nextSelectedFeatureIds.delete(featureId)
+      } else {
+        nextSelectedFeatureIds.add(featureId)
+      }
+
+      return {
+        ...currentValues,
+        selectedFeatureIds: Array.from(nextSelectedFeatureIds),
+      }
+    })
   }
 
   function handleGooglePlaceSelected(place: ParsedGooglePlaceAddress) {
@@ -1722,7 +1868,7 @@ function markSaveProgressSuccess() {
         onSubmit={handleOwnerQuickCreateSubmit}
       />
 
-      <form className="space-y-8" onSubmit={handleSubmit}>
+      <form className="space-y-6 sm:space-y-7" onSubmit={handleSubmit}>
         {submitError ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {submitError}
@@ -1817,7 +1963,7 @@ function markSaveProgressSuccess() {
                   aria-label="Crear categoría"
                   disabled={isSubmitting || isCreatingCategory}
                   onClick={handleOpenCategoryModal}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#0f1723] text-xl font-semibold text-white shadow-sm transition hover:border-[#B8924A] hover:bg-[#162131] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(184,146,74,0.20)] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#B8924A] bg-[#B8924A] text-xl font-semibold text-white shadow-sm transition hover:border-[#A37C2E] hover:bg-[#A37C2E] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(184,146,74,0.20)] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     +
                   </button>
@@ -1887,7 +2033,7 @@ function markSaveProgressSuccess() {
                     aria-label="Crear dueño"
                     disabled={isSubmitting || isCreatingOwner}
                     onClick={handleOpenOwnerModal}
-                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#0f1723] text-xl font-semibold text-white shadow-sm transition hover:border-[#B8924A] hover:bg-[#162131] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(184,146,74,0.20)] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#B8924A] bg-[#B8924A] text-xl font-semibold text-white shadow-sm transition hover:border-[#A37C2E] hover:bg-[#A37C2E] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(184,146,74,0.20)] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     +
                   </button>
@@ -2103,7 +2249,7 @@ function markSaveProgressSuccess() {
                   aria-label="Crear zona"
                   disabled={isSubmitting || isCreatingZone}
                   onClick={handleOpenZoneModal}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#0f1723] text-xl font-semibold text-white shadow-sm transition hover:border-[#B8924A] hover:bg-[#162131] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(184,146,74,0.20)] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#B8924A] bg-[#B8924A] text-xl font-semibold text-white shadow-sm transition hover:border-[#A37C2E] hover:bg-[#A37C2E] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(184,146,74,0.20)] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   +
                 </button>
@@ -2129,50 +2275,93 @@ function markSaveProgressSuccess() {
         </LocationGoogleProvider>
       </SectionCard>
 
-      {showAdvancedSection ? (
-        <CollapsibleSection title="Configuración avanzada">
-          <div className="grid gap-5 lg:grid-cols-3">
-            <div>
-              <FieldLabel htmlFor="status">Estado</FieldLabel>
-              <select
-                id="status"
-                name="status"
-                className={inputClassName()}
-                value={values.status}
-                onChange={handleTextChange}
+      <AccordionSectionCard
+        title="Características"
+        isOpen={isFeaturesSectionOpen}
+        onToggle={() => setIsFeaturesSectionOpen((currentValue) => !currentValue)}
+      >
+        {featureGroups.length > 0 ? (
+          <div className="space-y-6">
+            {featureGroups.map((featureGroup) => (
+              <div
+                key={featureGroup.group ?? 'ungrouped'}
+                className="space-y-4 py-1"
               >
-                <option value="draft">draft</option>
-                <option value="published">published</option>
-                <option value="archived">archived</option>
-              </select>
-            </div>
+                <div>
+                  <h4 className="text-base font-bold uppercase tracking-[0.14em] text-slate-950">
+                    {formatFeatureGroupLabel(featureGroup.group)}
+                  </h4>
+                </div>
 
-            <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                name="premium"
-                checked={values.premium}
-                onChange={handleCheckboxChange}
-                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-300"
-              />
-              Premium
-            </label>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {featureGroup.items.map((feature) => {
+                    const isSelected = values.selectedFeatureIds.includes(feature.id)
 
-            <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                name="featured"
-                checked={values.featured}
-                onChange={handleCheckboxChange}
-                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-300"
-              />
-              Destacada
-            </label>
+                    return (
+                      <label
+                        key={feature.id}
+                        className={[
+                          'flex min-w-0 cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3 text-sm transition',
+                          isSelected
+                            ? 'border-[#B8924A] bg-[#0f1723] text-[#B8924A] shadow-sm'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
+                        ].join(' ')}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleFeatureToggle(feature.id)}
+                          disabled={isSubmitting || isPreparingImages}
+                          className={[
+                            'mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300',
+                            isSelected
+                              ? 'border-[#B8924A] text-[#B8924A] focus:ring-[rgba(184,146,74,0.20)]'
+                              : 'text-slate-900 focus:ring-slate-300',
+                          ].join(' ')}
+                        />
+                        <span className="min-w-0">
+                          <span className="block font-medium">{feature.name}</span>
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
-        </CollapsibleSection>
-      ) : null}
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
+            No hay features booleanas activas disponibles.
+          </div>
+        )}
+      </AccordionSectionCard>
 
       <div className="hidden">
+        {showAdvancedSection ? (
+          <>
+            <select
+              name="status"
+              value={values.status}
+              onChange={handleTextChange}
+            >
+              <option value="draft">draft</option>
+              <option value="published">published</option>
+              <option value="archived">archived</option>
+            </select>
+            <input
+              type="checkbox"
+              name="premium"
+              checked={values.premium}
+              onChange={handleCheckboxChange}
+            />
+            <input
+              type="checkbox"
+              name="featured"
+              checked={values.featured}
+              onChange={handleCheckboxChange}
+            />
+          </>
+        ) : null}
         <select
           name="visibility_level"
           value={values.visibility_level}
@@ -2217,21 +2406,23 @@ function markSaveProgressSuccess() {
       </div>
 
       {showImagesSection && mode === 'create' ? (
-        <SectionCard
+        <AccordionSectionCard
           title="Galería de imágenes"
-          actions={
-            <LocationImageUploader
-              disabled={isSubmitting || isPreparingImages}
-              label={getGalleryUploadLabel(
-                isPreparingImages,
-                processedImagesCount,
-                totalImagesToProcess,
-              )}
-              onFilesSelected={handleGalleryImagesSelected}
-            />
-          }
+          isOpen={isGallerySectionOpen}
+          onToggle={() => setIsGallerySectionOpen((currentValue) => !currentValue)}
         >
           <div className="space-y-4">
+            <div className="flex justify-end">
+              <LocationImageUploader
+                disabled={isSubmitting || isPreparingImages}
+                label={getGalleryUploadLabel(
+                  isPreparingImages,
+                  processedImagesCount,
+                  totalImagesToProcess,
+                )}
+                onFilesSelected={handleGalleryImagesSelected}
+              />
+            </div>
             {pendingGalleryImages.length > 0 ? (
               <LocationImagesGrid
                 images={pendingGalleryImages}
@@ -2246,25 +2437,27 @@ function markSaveProgressSuccess() {
               </div>
             )}
           </div>
-        </SectionCard>
+        </AccordionSectionCard>
       ) : null}
 
       {showImagesSection && mode === 'edit' ? (
-        <SectionCard
+        <AccordionSectionCard
           title="Galería de imágenes"
-          actions={
-            <LocationImageUploader
-              disabled={isSubmitting || isPreparingImages}
-              label={getGalleryUploadLabel(
-                isPreparingImages,
-                processedImagesCount,
-                totalImagesToProcess,
-              )}
-              onFilesSelected={handleGalleryImagesSelected}
-            />
-          }
+          isOpen={isGallerySectionOpen}
+          onToggle={() => setIsGallerySectionOpen((currentValue) => !currentValue)}
         >
           <div className="space-y-4">
+            <div className="flex justify-end">
+              <LocationImageUploader
+                disabled={isSubmitting || isPreparingImages}
+                label={getGalleryUploadLabel(
+                  isPreparingImages,
+                  processedImagesCount,
+                  totalImagesToProcess,
+                )}
+                onFilesSelected={handleGalleryImagesSelected}
+              />
+            </div>
             {combinedEditGalleryImages.length > 0 ? (
               <LocationImagesGrid
                 images={combinedEditGalleryImages}
@@ -2288,7 +2481,7 @@ function markSaveProgressSuccess() {
               </div>
             ) : null}
           </div>
-        </SectionCard>
+        </AccordionSectionCard>
       ) : null}
 
         <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center sm:justify-end">
