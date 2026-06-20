@@ -11,8 +11,11 @@ export type LocationListItem = {
   featured: boolean
   premium: boolean
   categoryName: string | null
+  googleDepartmentName?: string | null
+  googleZoneName?: string | null
   departmentName: string | null
   zoneName: string | null
+  formattedAddress?: string | null
   ownerId: string | null
   ownerName: string | null
   ownerPhone: string | null
@@ -174,6 +177,9 @@ export type SupabaseLocationRow = {
   title: string
   slug: string
   location_code: string | null
+  google_department_name: string | null
+  google_zone_name: string | null
+  formatted_address: string | null
   location_images:
     | {
         url: string | null

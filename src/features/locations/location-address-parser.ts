@@ -43,6 +43,18 @@ const ZONE_COMPONENT_PRIORITY = [
   'locality',
 ] as const
 
+function normalizeDepartmentName(value: string | null | undefined) {
+  const trimmedValue = value?.trim()
+
+  if (!trimmedValue) {
+    return null
+  }
+
+  const normalizedValue = trimmedValue.replace(/^departamento de\s+/i, '').trim()
+
+  return normalizedValue.length > 0 ? normalizedValue : null
+}
+
 function getComponentNameByType(
   components: GooglePlaceAddressComponent[],
   type: string,
@@ -79,9 +91,11 @@ export function parseGooglePlaceResult(
   const lat = getCoordinate(geometryLocation?.lat)
   const lng = getCoordinate(geometryLocation?.lng)
   const departmentName = normalizedAddressComponents
-    ? getComponentNameByType(
-        normalizedAddressComponents,
-        'administrative_area_level_1',
+    ? normalizeDepartmentName(
+        getComponentNameByType(
+          normalizedAddressComponents,
+          'administrative_area_level_1',
+        ),
       )
     : null
   const zoneName = normalizedAddressComponents
