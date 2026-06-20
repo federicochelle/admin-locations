@@ -36,7 +36,10 @@ function ActionIconButton({
       type="button"
       aria-label={actionLabel}
       disabled={disabled}
-      onClick={onClick}
+      onClick={(event) => {
+        event.stopPropagation()
+        onClick?.()
+      }}
       className={[
         'group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border bg-white transition disabled:cursor-not-allowed disabled:opacity-60',
         buttonClassName,
@@ -144,25 +147,6 @@ function EditIcon() {
   )
 }
 
-function ViewIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-4 w-4" aria-hidden="true">
-      <path
-        d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
 function DeleteIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-4 w-4" aria-hidden="true">
@@ -223,6 +207,29 @@ function CategoriesTable({
 
     setSortKey(nextSortKey)
     setSortDirection('asc')
+  }
+
+  function isInteractiveEventTarget(target: EventTarget | null) {
+    if (!(target instanceof Element)) {
+      return false
+    }
+
+    return Boolean(
+      target.closest(
+        'button, a, input, select, textarea, [role="button"]',
+      ),
+    )
+  }
+
+  function handleRowView(
+    category: CategoryListItem,
+    event: React.MouseEvent<HTMLTableRowElement> | React.KeyboardEvent<HTMLTableRowElement>,
+  ) {
+    if (isInteractiveEventTarget(event.target)) {
+      return
+    }
+
+    onView(category)
   }
 
   return (
@@ -309,13 +316,27 @@ function CategoriesTable({
             ) : null}
 
             {filteredCategories.map((category) => (
-              <tr key={category.id} className="align-top">
+              <tr
+                key={category.id}
+                className="cursor-pointer align-top transition hover:bg-[rgba(184,146,74,0.10)] focus:bg-[rgba(184,146,74,0.10)] focus:outline-none"
+                onClick={(event) => handleRowView(category, event)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') {
+                    return
+                  }
+
+                  event.preventDefault()
+                  handleRowView(category, event)
+                }}
+                tabIndex={0}
+              >
                 <td className="px-6 py-4 text-sm font-medium text-slate-950">{category.name}</td>
                 <td className="px-6 py-4 text-sm text-slate-900">{category.locationsCount}</td>
                 <td className="px-6 py-4 text-sm text-slate-900">
                   <div className="flex flex-wrap gap-2">
                     <Link
                       to={getCategoryEditPath(category.id)}
+                      onClick={(event) => event.stopPropagation()}
                       aria-label="Editar"
                       className="group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700 transition hover:border-sky-300 hover:bg-sky-100"
                     >
@@ -324,15 +345,6 @@ function CategoriesTable({
                         Editar
                       </span>
                     </Link>
-
-                    <ActionIconButton
-                      actionLabel="Ver locaciones"
-                      buttonClassName="border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300 hover:bg-amber-100"
-                      disabled={activeActionKey !== null}
-                      onClick={() => onView(category)}
-                    >
-                      <ViewIcon />
-                    </ActionIconButton>
 
                     <ActionIconButton
                       actionLabel={

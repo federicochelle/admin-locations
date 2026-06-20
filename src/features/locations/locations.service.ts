@@ -239,6 +239,12 @@ function getCoverImageUrl(row: SupabaseLocationRow) {
 }
 
 function mapLocation(row: SupabaseLocationRow): LocationListItem {
+  const googleDepartmentName = row.google_department_name?.trim() || null
+  const googleZoneName = row.google_zone_name?.trim() || null
+  const formattedAddress = row.formatted_address?.trim() || null
+  const fallbackDepartmentName = getRelationName(row.departments)
+  const fallbackZoneName = getRelationName(row.zones)
+
   return {
     id: row.id,
     title: row.title,
@@ -250,8 +256,11 @@ function mapLocation(row: SupabaseLocationRow): LocationListItem {
     featured: row.featured ?? false,
     premium: row.premium ?? false,
     categoryName: getRelationName(row.categories),
-    departmentName: getRelationName(row.departments),
-    zoneName: getRelationName(row.zones),
+    googleDepartmentName,
+    googleZoneName,
+    departmentName: googleDepartmentName ?? fallbackDepartmentName,
+    zoneName: googleZoneName ?? fallbackZoneName,
+    formattedAddress,
     ownerId: getOwnerId(row.owners),
     ownerName: getOwnerName(row.owners),
     ownerPhone: getOwnerPhone(row.owners),
@@ -301,6 +310,9 @@ export async function getLocations(): Promise<LocationListItem[]> {
         title,
         slug,
         location_code,
+        google_department_name,
+        google_zone_name,
+        formatted_address,
         location_images(url, is_cover),
         status,
         published,
@@ -336,6 +348,9 @@ export async function getLocationsByCategory(
         title,
         slug,
         location_code,
+        google_department_name,
+        google_zone_name,
+        formatted_address,
         location_images(url, is_cover),
         status,
         published,

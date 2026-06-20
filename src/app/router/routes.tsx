@@ -5,6 +5,7 @@ import ProtectedRoute from './ProtectedRoute'
 import DashboardPage from '../../features/dashboard/DashboardPage'
 import LocationsPage from '../../features/locations/LocationsPage'
 import LocationCreatePage from '../../features/locations/LocationCreatePage'
+import LocationViewPage from '../../features/locations/LocationViewPage'
 import LocationEditPage from '../../features/locations/LocationEditPage'
 import LoginPage from '../../features/auth/LoginPage'
 import OwnersPage from '../../features/owners/OwnersPage'
@@ -46,6 +47,10 @@ export const router = createBrowserRouter([
           {
             path: routePaths.locationNew.slice(1),
             element: <LocationCreatePage />,
+          },
+          {
+            path: routePaths.locationDetailPattern.slice(1),
+            element: <LocationViewPage />,
           },
           {
             path: routePaths.locationEditPattern.slice(1),

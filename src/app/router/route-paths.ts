@@ -3,6 +3,7 @@ export const routePaths = {
   dashboard: '/dashboard',
   locations: '/locations',
   locationNew: '/locations/new',
+  locationDetailPattern: '/locations/:id',
   locationEditPattern: '/locations/:id/edit',
   owners: '/owners',
   ownerNew: '/owners/new',
@@ -16,6 +17,10 @@ export const routePaths = {
   featureEditPattern: '/features/:id/edit',
   settings: '/settings',
 } as const
+
+export function getLocationDetailPath(id: string) {
+  return `/locations/${id}`
+}
 
 export function getLocationEditPath(id: string) {
   return `/locations/${id}/edit`

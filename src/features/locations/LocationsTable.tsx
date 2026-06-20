@@ -5,8 +5,9 @@ import {
   buttonBaseClassName,
   buttonVariantClasses,
 } from '../../components/ui/button.styles'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
+  getLocationDetailPath,
   getLocationEditPath,
   routePaths,
 } from '../../app/router/route-paths'
@@ -205,7 +206,10 @@ function ActionIconButton({
       type="button"
       aria-label={actionLabel}
       disabled={disabled}
-      onClick={onClick}
+      onClick={(event) => {
+        event.stopPropagation()
+        onClick?.()
+      }}
       className={[
         'group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border bg-white transition disabled:cursor-not-allowed disabled:opacity-60',
         buttonClassName,
@@ -292,6 +296,7 @@ function LocationsTable({
   getLocationEditState,
   onDelete,
 }: LocationsTableProps) {
+  const navigate = useNavigate()
   const [searchTerm, setSearchTerm] = useState('')
   const [sortKey, setSortKey] = useState<LocationSortKey>('departmentName')
   const [sortDirection, setSortDirection] = useState<LocationSortDirection>('asc')
@@ -320,6 +325,7 @@ function LocationsTable({
         location.categoryName ?? '',
         location.departmentName ?? '',
         location.zoneName ?? '',
+        location.formattedAddress ?? '',
         location.ownerName ?? '',
         location.ownerPhone ?? '',
       ]
@@ -359,6 +365,29 @@ function LocationsTable({
 
     setSortKey(nextSortKey)
     setSortDirection('asc')
+  }
+
+  function isInteractiveEventTarget(target: EventTarget | null) {
+    if (!(target instanceof Element)) {
+      return false
+    }
+
+    return Boolean(
+      target.closest(
+        'button, a, input, select, textarea, [role="button"]',
+      ),
+    )
+  }
+
+  function handleRowNavigation(
+    locationId: string,
+    event: React.MouseEvent<HTMLTableRowElement> | React.KeyboardEvent<HTMLTableRowElement>,
+  ) {
+    if (isInteractiveEventTarget(event.target)) {
+      return
+    }
+
+    navigate(getLocationDetailPath(locationId))
   }
 
   const isEmptyState = sortedLocations.length === 0
@@ -507,7 +536,20 @@ function LocationsTable({
           </thead>
           <tbody className="divide-y divide-slate-200 bg-transparent">
             {sortedLocations.map((location) => (
-              <tr key={location.id} className="align-top">
+              <tr
+                key={location.id}
+                className="cursor-pointer align-top transition hover:bg-[rgba(184,146,74,0.10)] focus:bg-[rgba(184,146,74,0.10)] focus:outline-none"
+                onClick={(event) => handleRowNavigation(location.id, event)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' && event.key !== ' ') {
+                    return
+                  }
+
+                  event.preventDefault()
+                  handleRowNavigation(location.id, event)
+                }}
+                tabIndex={0}
+              >
                 {resolvedVisibleColumns.cover ? (
                   <td className="px-6 py-4">
                     {location.coverImageUrl ? (
@@ -538,7 +580,10 @@ function LocationsTable({
                     {location.ownerId && location.ownerName ? (
                       <button
                         type="button"
-                        onClick={() => setSelectedOwnerId(location.ownerId)}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setSelectedOwnerId(location.ownerId)
+                        }}
                         className="font-medium text-slate-900 underline-offset-4 transition hover:underline"
                       >
                         {location.ownerName}
@@ -566,6 +611,7 @@ function LocationsTable({
                           href={whatsappUrl}
                           target="_blank"
                           rel="noopener noreferrer"
+                          onClick={(event) => event.stopPropagation()}
                           className="font-medium text-slate-900 underline-offset-4 transition hover:cursor-pointer hover:underline"
                         >
                           {location.ownerPhone}
@@ -580,6 +626,7 @@ function LocationsTable({
                       <Link
                         to={getLocationEditPath(location.id)}
                         state={getLocationEditState?.(location)}
+                        onClick={(event) => event.stopPropagation()}
                         aria-label="Editar"
                         className="group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700 transition hover:border-sky-300 hover:bg-sky-100"
                       >

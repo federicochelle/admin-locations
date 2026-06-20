@@ -45,9 +45,10 @@ import type { ParsedGooglePlaceAddress } from './location-address-parser'
 import {
   optimizeLocationImageFile,
 } from './location-image-optimizer'
+import { LOCATION_TOP_STACK_PLACEHOLDER_CLASS } from './location-top-stack.styles'
 import { useLocationImages } from './useLocationImages'
 
-export type LocationFormMode = 'create' | 'edit'
+export type LocationFormMode = 'create' | 'edit' | 'view'
 
 type LocationFormProps = {
   mode?: LocationFormMode
@@ -310,7 +311,15 @@ function hasFieldErrors(fieldErrors: LocationFormFieldErrors) {
 }
 
 function getFormHeading(mode: LocationFormMode) {
-  return mode === 'edit' ? 'Editar locación' : 'Panel de creación'
+  if (mode === 'edit') {
+    return 'Editar locación'
+  }
+
+  if (mode === 'view') {
+    return 'Detalle de locación'
+  }
+
+  return 'Panel de creación'
 }
 
 function getGalleryUploadLabel(
@@ -323,6 +332,33 @@ function getGalleryUploadLabel(
   }
 
   return `Procesando imágenes ${processedImagesCount} de ${totalImagesToProcess}...`
+}
+
+function ReadOnlyImagePlaceholder({ message }: { message: string }) {
+  return (
+    <div
+      className={[
+        LOCATION_TOP_STACK_PLACEHOLDER_CLASS,
+        'rounded-none border-solid border-slate-300 text-sm text-slate-600',
+      ].join(' ')}
+    >
+      <p>{message}</p>
+    </div>
+  )
+}
+
+function ReadOnlyFieldValue({
+  value,
+}: {
+  value: string | null | undefined
+}) {
+  const normalizedValue = value?.trim()
+
+  return (
+    <div className="min-h-[44px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm">
+      {normalizedValue && normalizedValue.length > 0 ? normalizedValue : '-'}
+    </div>
+  )
 }
 
 function SectionCard({
@@ -520,6 +556,7 @@ function LocationForm({
   showImagesSection = mode === 'create',
   showAdvancedSection = mode === 'edit',
 }: LocationFormProps) {
+  const isReadOnly = mode === 'view'
   const navigate = useNavigate()
   const { profile } = useAuth()
   const [values, setValues] = useState<LocationFormValues>(initialValues)
@@ -575,7 +612,7 @@ function LocationForm({
   const ownerComboboxRef = useRef<HTMLDivElement | null>(null)
   const zoneComboboxRef = useRef<HTMLDivElement | null>(null)
   const locationImages = useLocationImages(
-    mode === 'edit' ? locationId ?? null : null,
+    mode !== 'create' ? locationId ?? null : null,
   )
   const googleMapsApiKey = useMemo(() => {
     try {
@@ -686,18 +723,19 @@ function LocationForm({
     }
   }, [])
 
+  const hasPersistedImagesMode = mode === 'edit' || mode === 'view'
   const visiblePersistedImages: LocationImageRecord[] =
-    mode === 'edit'
+    hasPersistedImagesMode
       ? locationImages.images.filter(
           (image) => !pendingDeletedPersistedImageIds.includes(image.id),
         )
       : []
   const persistedCoverImage: LocationImageRecord | null =
-    mode === 'edit'
+    hasPersistedImagesMode
       ? visiblePersistedImages.find((image) => image.is_cover === true) ?? null
       : null
   const persistedGalleryImages: LocationImageRecord[] =
-    mode === 'edit'
+    hasPersistedImagesMode
       ? persistedCoverImage
         ? visiblePersistedImages.filter((image) => image.id !== persistedCoverImage.id)
         : visiblePersistedImages
@@ -742,6 +780,10 @@ function LocationForm({
     zoneSearchTerm.length > 0 || values.zone_id === ''
       ? zoneSearchTerm
       : selectedZoneName
+  const resolvedViewAddress =
+    values.formatted_address?.trim() ||
+    values.address_private.trim() ||
+    null
   const filteredCategories = useMemo(() => {
     const normalizedSearch = categorySearchTerm.trim().toLocaleLowerCase()
 
@@ -805,6 +847,10 @@ function LocationForm({
         continue
       }
 
+      if (isReadOnly && !values.selectedFeatureIds.includes(feature.id)) {
+        continue
+      }
+
       const key = feature.group?.trim() || 'ungrouped'
       const existingGroup = groups.get(key)
 
@@ -820,11 +866,15 @@ function LocationForm({
     }
 
     return Array.from(groups.values())
-  }, [options])
+  }, [isReadOnly, options, values.selectedFeatureIds])
 
   function handleOwnerCreateChange(
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
+    if (isReadOnly) {
+      return
+    }
+
     const { name, value } = event.target
 
     setOwnerCreateValues((currentValues) => ({
@@ -836,12 +886,20 @@ function LocationForm({
   function handleCategoryCreateChange(
     event: React.ChangeEvent<HTMLInputElement>,
   ) {
+    if (isReadOnly) {
+      return
+    }
+
     setCategoryCreateName(event.target.value)
   }
 
   function handleCategorySearchChange(
     event: React.ChangeEvent<HTMLInputElement>,
   ) {
+    if (isReadOnly) {
+      return
+    }
+
     const nextValue = event.target.value
 
     setFieldErrors((currentErrors) => ({
@@ -872,6 +930,10 @@ function LocationForm({
   }
 
   function handleCategorySelect(categoryId: string, categoryName: string) {
+    if (isReadOnly) {
+      return
+    }
+
     setFieldErrors((currentErrors) => ({
       ...currentErrors,
       category_id: null,
@@ -885,12 +947,20 @@ function LocationForm({
   }
 
   function handleCategoryDropdownToggle() {
+    if (isReadOnly) {
+      return
+    }
+
     setIsCategoryComboboxOpen((currentValue) => !currentValue)
   }
 
   function handleOwnerSearchChange(
     event: React.ChangeEvent<HTMLInputElement>,
   ) {
+    if (isReadOnly) {
+      return
+    }
+
     const nextValue = event.target.value
 
     setOwnerSearchTerm(nextValue)
@@ -916,6 +986,10 @@ function LocationForm({
   }
 
   function handleOwnerSelect(ownerId: string, ownerName: string) {
+    if (isReadOnly) {
+      return
+    }
+
     setValues((currentValues) => ({
       ...currentValues,
       owner_id: ownerId,
@@ -925,10 +999,18 @@ function LocationForm({
   }
 
   function handleOwnerDropdownToggle() {
+    if (isReadOnly) {
+      return
+    }
+
     setIsOwnerComboboxOpen((currentValue) => !currentValue)
   }
 
   function handleZoneSearchChange(event: React.ChangeEvent<HTMLInputElement>) {
+    if (isReadOnly) {
+      return
+    }
+
     const nextValue = event.target.value
 
     setZoneSearchTerm(nextValue)
@@ -954,6 +1036,10 @@ function LocationForm({
   }
 
   function handleZoneSelect(zoneId: string, zoneName: string) {
+    if (isReadOnly) {
+      return
+    }
+
     setValues((currentValues) => ({
       ...currentValues,
       zone_id: zoneId,
@@ -963,6 +1049,10 @@ function LocationForm({
   }
 
   function handleZoneDropdownToggle() {
+    if (isReadOnly) {
+      return
+    }
+
     if (!values.department_id) {
       return
     }
@@ -971,10 +1061,18 @@ function LocationForm({
   }
 
   function handleZoneCreateChange(event: React.ChangeEvent<HTMLInputElement>) {
+    if (isReadOnly) {
+      return
+    }
+
     setZoneCreateName(event.target.value)
   }
 
   function handleOpenCategoryModal() {
+    if (isReadOnly) {
+      return
+    }
+
     setCategoryCreateError(null)
     setCategoryCreateName('')
     setIsCategoryModalOpen(true)
@@ -991,6 +1089,10 @@ function LocationForm({
   }
 
   function handleOpenZoneModal() {
+    if (isReadOnly) {
+      return
+    }
+
     if (!values.department_id) {
       setZoneDepartmentPrompt('Primero seleccioná un departamento.')
       return
@@ -1016,6 +1118,10 @@ function LocationForm({
     event: React.FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault()
+
+    if (isReadOnly) {
+      return
+    }
 
     const trimmedName = categoryCreateName.trim()
 
@@ -1065,6 +1171,10 @@ function LocationForm({
     event: React.FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault()
+
+    if (isReadOnly) {
+      return
+    }
 
     const trimmedName = zoneCreateName.trim()
 
@@ -1119,6 +1229,10 @@ function LocationForm({
   }
 
   function handleOpenOwnerModal() {
+    if (isReadOnly) {
+      return
+    }
+
     setOwnerCreateError(null)
     setOwnerCreateValues(defaultOwnerQuickCreateValues)
     setIsOwnerModalOpen(true)
@@ -1138,6 +1252,10 @@ function LocationForm({
     event: React.FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault()
+
+    if (isReadOnly) {
+      return
+    }
 
     const trimmedName = ownerCreateValues.full_name.trim()
 
@@ -1251,6 +1369,10 @@ function markSaveProgressSuccess() {
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
     >,
   ) {
+    if (isReadOnly) {
+      return
+    }
+
     const { name, value } = event.target
     const nextFieldError =
       name === 'category_id'
@@ -1303,6 +1425,10 @@ function markSaveProgressSuccess() {
   }
 
   function handleCheckboxChange(event: React.ChangeEvent<HTMLInputElement>) {
+    if (isReadOnly) {
+      return
+    }
+
     const { checked, name } = event.target
 
     setValues((currentValues) => ({
@@ -1312,6 +1438,10 @@ function markSaveProgressSuccess() {
   }
 
   function handleFeatureToggle(featureId: string) {
+    if (isReadOnly) {
+      return
+    }
+
     setValues((currentValues) => {
       const nextSelectedFeatureIds = new Set(currentValues.selectedFeatureIds)
 
@@ -1329,6 +1459,10 @@ function markSaveProgressSuccess() {
   }
 
   function handleGooglePlaceSelected(place: ParsedGooglePlaceAddress) {
+    if (isReadOnly) {
+      return
+    }
+
     setFieldErrors((currentErrors) => ({
       ...currentErrors,
       address_private: place.formatted_address ? null : currentErrors.address_private,
@@ -1412,6 +1546,10 @@ function markSaveProgressSuccess() {
   }
 
   async function handleCoverImageSelected(files: FileList | null) {
+    if (isReadOnly) {
+      return
+    }
+
     if (!files || files.length === 0) {
       return
     }
@@ -1444,6 +1582,10 @@ function markSaveProgressSuccess() {
   }
 
   async function handleGalleryImagesSelected(files: FileList | null) {
+    if (isReadOnly) {
+      return
+    }
+
     if (!files || files.length === 0) {
       return
     }
@@ -1469,6 +1611,10 @@ function markSaveProgressSuccess() {
   }
 
   function handleRemovePendingImage(imageId: string) {
+    if (isReadOnly) {
+      return
+    }
+
     setPendingImages((currentImages) => {
       const imageToRemove = currentImages.find((image) => image.id === imageId)
 
@@ -1499,6 +1645,10 @@ function markSaveProgressSuccess() {
   }
 
   function handleSetCoverImage(imageId: string) {
+    if (isReadOnly) {
+      return
+    }
+
     setPendingImages((currentImages) =>
       currentImages.map((image) => ({
         ...image,
@@ -1508,7 +1658,7 @@ function markSaveProgressSuccess() {
   }
 
   async function handleDeletePersistedImage(imageId: string) {
-    if (mode !== 'edit' || !locationId) {
+    if (isReadOnly || mode !== 'edit' || !locationId) {
       return
     }
 
@@ -1678,6 +1828,10 @@ function markSaveProgressSuccess() {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
+    if (isReadOnly) {
+      return
+    }
+
     const nextFieldErrors = validateRequiredFields(values)
 
     setFieldErrors(nextFieldErrors)
@@ -1838,35 +1992,41 @@ function markSaveProgressSuccess() {
 
   return (
     <>
-      <LocationSaveProgressModal progress={saveProgress} />
-      <LocationZoneQuickCreateModal
-        departmentName={selectedDepartment?.name ?? ''}
-        errorMessage={zoneCreateError}
-        isOpen={isZoneModalOpen}
-        isSubmitting={isCreatingZone}
-        name={zoneCreateName}
-        onChange={handleZoneCreateChange}
-        onClose={handleCloseZoneModal}
-        onSubmit={handleZoneQuickCreateSubmit}
-      />
-      <LocationCategoryQuickCreateModal
-        errorMessage={categoryCreateError}
-        isOpen={isCategoryModalOpen}
-        isSubmitting={isCreatingCategory}
-        name={categoryCreateName}
-        onChange={handleCategoryCreateChange}
-        onClose={handleCloseCategoryModal}
-        onSubmit={handleCategoryQuickCreateSubmit}
-      />
-      <LocationOwnerQuickCreateModal
-        errorMessage={ownerCreateError}
-        isOpen={isOwnerModalOpen}
-        isSubmitting={isCreatingOwner}
-        values={ownerCreateValues}
-        onChange={handleOwnerCreateChange}
-        onClose={handleCloseOwnerModal}
-        onSubmit={handleOwnerQuickCreateSubmit}
-      />
+      {!isReadOnly ? <LocationSaveProgressModal progress={saveProgress} /> : null}
+      {!isReadOnly ? (
+        <LocationZoneQuickCreateModal
+          departmentName={selectedDepartment?.name ?? ''}
+          errorMessage={zoneCreateError}
+          isOpen={isZoneModalOpen}
+          isSubmitting={isCreatingZone}
+          name={zoneCreateName}
+          onChange={handleZoneCreateChange}
+          onClose={handleCloseZoneModal}
+          onSubmit={handleZoneQuickCreateSubmit}
+        />
+      ) : null}
+      {!isReadOnly ? (
+        <LocationCategoryQuickCreateModal
+          errorMessage={categoryCreateError}
+          isOpen={isCategoryModalOpen}
+          isSubmitting={isCreatingCategory}
+          name={categoryCreateName}
+          onChange={handleCategoryCreateChange}
+          onClose={handleCloseCategoryModal}
+          onSubmit={handleCategoryQuickCreateSubmit}
+        />
+      ) : null}
+      {!isReadOnly ? (
+        <LocationOwnerQuickCreateModal
+          errorMessage={ownerCreateError}
+          isOpen={isOwnerModalOpen}
+          isSubmitting={isCreatingOwner}
+          values={ownerCreateValues}
+          onChange={handleOwnerCreateChange}
+          onClose={handleCloseOwnerModal}
+          onSubmit={handleOwnerQuickCreateSubmit}
+        />
+      ) : null}
 
       <form className="space-y-6 sm:space-y-7" onSubmit={handleSubmit}>
         {submitError ? (
@@ -1896,6 +2056,7 @@ function markSaveProgressSuccess() {
                   className={inputClassName()}
                   value={values.title}
                   onChange={handleTextChange}
+                  readOnly={isReadOnly}
                 />
               </div>
 
@@ -1903,71 +2064,85 @@ function markSaveProgressSuccess() {
                 <FieldLabel htmlFor="category_id" required>
                   Categoría
                 </FieldLabel>
-                <div className="flex items-start gap-3">
-                  <div className="relative flex-1" ref={categoryComboboxRef}>
-                    <input
-                      id="category_id"
-                      name="category_id"
-                      type="text"
-                      autoComplete="off"
-                      className={[
-                        inputClassName(),
-                        getFieldErrorInputClassName(fieldErrors.category_id),
-                        'pr-10',
-                      ].join(' ')}
-                      value={categoryInputValue}
-                      placeholder="Buscar categoría"
-                      onChange={handleCategorySearchChange}
-                      onFocus={() => setIsCategoryComboboxOpen(true)}
-                    />
-                    <button
-                      type="button"
-                      aria-label="Mostrar categorías"
-                      onClick={handleCategoryDropdownToggle}
-                      className="absolute inset-y-0 right-0 inline-flex items-center justify-center px-3 text-slate-500 transition hover:text-slate-700"
-                    >
-                      <ChevronDownIcon />
-                    </button>
-                    {isCategoryComboboxOpen ? (
-                      <div className="absolute z-40 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
-                        {filteredCategories.length > 0 ? (
-                          <div className="category-combobox-scrollbar max-h-[260px] space-y-1 overflow-x-hidden overflow-y-auto pr-1">
-                            {filteredCategories.map((category) => (
-                              <button
-                                key={category.id}
-                                type="button"
-                                onClick={() =>
-                                  handleCategorySelect(category.id, category.name)
-                                }
-                                className={[
-                                  'flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition',
-                                  values.category_id === category.id
-                                    ? 'bg-slate-900 text-white'
-                                    : 'text-slate-700 hover:bg-slate-100',
-                                ].join(' ')}
-                              >
-                                {category.name}
-                              </button>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="max-h-[260px] overflow-x-hidden overflow-y-auto px-3 py-2 text-sm text-slate-500">
-                            No se encontraron categorías.
-                          </p>
-                        )}
-                      </div>
+                {isReadOnly ? (
+                  <ReadOnlyFieldValue value={selectedCategoryName} />
+                ) : (
+                  <div className="flex items-start gap-3">
+                    <div className="relative flex-1" ref={categoryComboboxRef}>
+                      <input
+                        id="category_id"
+                        name="category_id"
+                        type="text"
+                        autoComplete="off"
+                        className={[
+                          inputClassName(),
+                          getFieldErrorInputClassName(fieldErrors.category_id),
+                          'pr-10',
+                        ].join(' ')}
+                        value={categoryInputValue}
+                        readOnly={isReadOnly}
+                        placeholder="Buscar categoría"
+                        onChange={handleCategorySearchChange}
+                        onFocus={() => {
+                          if (isReadOnly) {
+                            return
+                          }
+
+                          setIsCategoryComboboxOpen(true)
+                        }}
+                      />
+                      <button
+                        type="button"
+                        aria-label="Mostrar categorías"
+                        onClick={handleCategoryDropdownToggle}
+                        disabled={isReadOnly}
+                        className="absolute inset-y-0 right-0 inline-flex items-center justify-center px-3 text-slate-500 transition hover:text-slate-700"
+                      >
+                        <ChevronDownIcon />
+                      </button>
+                      {!isReadOnly && isCategoryComboboxOpen ? (
+                        <div className="absolute z-40 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+                          {filteredCategories.length > 0 ? (
+                            <div className="category-combobox-scrollbar max-h-[260px] space-y-1 overflow-x-hidden overflow-y-auto pr-1">
+                              {filteredCategories.map((category) => (
+                                <button
+                                  key={category.id}
+                                  type="button"
+                                  onClick={() =>
+                                    handleCategorySelect(category.id, category.name)
+                                  }
+                                  className={[
+                                    'flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition',
+                                    values.category_id === category.id
+                                      ? 'bg-slate-900 text-white'
+                                      : 'text-slate-700 hover:bg-slate-100',
+                                  ].join(' ')}
+                                >
+                                  {category.name}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="max-h-[260px] overflow-x-hidden overflow-y-auto px-3 py-2 text-sm text-slate-500">
+                              No se encontraron categorías.
+                            </p>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                    {!isReadOnly ? (
+                      <button
+                        type="button"
+                        aria-label="Crear categoría"
+                        disabled={isSubmitting || isCreatingCategory}
+                        onClick={handleOpenCategoryModal}
+                        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#B8924A] bg-[#B8924A] text-xl font-semibold text-white shadow-sm transition hover:border-[#A37C2E] hover:bg-[#A37C2E] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(184,146,74,0.20)] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        +
+                      </button>
                     ) : null}
                   </div>
-                  <button
-                  type="button"
-                  aria-label="Crear categoría"
-                  disabled={isSubmitting || isCreatingCategory}
-                  onClick={handleOpenCategoryModal}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#B8924A] bg-[#B8924A] text-xl font-semibold text-white shadow-sm transition hover:border-[#A37C2E] hover:bg-[#A37C2E] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(184,146,74,0.20)] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    +
-                  </button>
-                </div>
+                )}
                 {fieldErrors.category_id ? (
                   <p className="mt-2 text-sm text-red-700">
                     {fieldErrors.category_id}
@@ -1977,85 +2152,105 @@ function markSaveProgressSuccess() {
 
               <div>
                 <FieldLabel htmlFor="owner_id">Dueño</FieldLabel>
-                <div className="flex items-start gap-3">
-                  <div className="relative flex-1" ref={ownerComboboxRef}>
-                    <input
-                      id="owner_id"
-                      name="owner_id"
-                      type="text"
-                      autoComplete="off"
-                      className={[inputClassName(), 'pr-10'].join(' ')}
-                      value={ownerInputValue}
-                      placeholder="Buscar dueño"
-                      onChange={handleOwnerSearchChange}
-                      onFocus={() => setIsOwnerComboboxOpen(true)}
-                    />
-                    <button
-                      type="button"
-                      aria-label="Mostrar dueños"
-                      onClick={handleOwnerDropdownToggle}
-                      className="absolute inset-y-0 right-0 inline-flex items-center justify-center px-3 text-slate-500 transition hover:text-slate-700"
-                    >
-                      <ChevronDownIcon />
-                    </button>
-                    {isOwnerComboboxOpen ? (
-                      <div className="absolute z-40 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
-                        {filteredOwners.length > 0 ? (
-                          <div className="category-combobox-scrollbar max-h-[260px] space-y-1 overflow-x-hidden overflow-y-auto pr-1">
-                            {filteredOwners.map((owner) => (
-                              <button
-                                key={owner.id}
-                                type="button"
-                                onClick={() =>
-                                  handleOwnerSelect(owner.id, owner.full_name)
-                                }
-                                className={[
-                                  'flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition',
-                                  values.owner_id === owner.id
-                                    ? 'bg-slate-900 text-white'
-                                    : 'text-slate-700 hover:bg-slate-100',
-                                ].join(' ')}
-                              >
-                                {owner.full_name}
-                              </button>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="max-h-[260px] overflow-x-hidden overflow-y-auto px-3 py-2 text-sm text-slate-500">
-                            No se encontraron dueños.
-                          </p>
-                        )}
-                      </div>
+                {isReadOnly ? (
+                  <ReadOnlyFieldValue value={selectedOwnerName} />
+                ) : (
+                  <div className="flex items-start gap-3">
+                    <div className="relative flex-1" ref={ownerComboboxRef}>
+                      <input
+                        id="owner_id"
+                        name="owner_id"
+                        type="text"
+                        autoComplete="off"
+                        className={[inputClassName(), 'pr-10'].join(' ')}
+                        value={ownerInputValue}
+                        readOnly={isReadOnly}
+                        placeholder="Buscar dueño"
+                        onChange={handleOwnerSearchChange}
+                        onFocus={() => {
+                          if (isReadOnly) {
+                            return
+                          }
+
+                          setIsOwnerComboboxOpen(true)
+                        }}
+                      />
+                      <button
+                        type="button"
+                        aria-label="Mostrar dueños"
+                        onClick={handleOwnerDropdownToggle}
+                        disabled={isReadOnly}
+                        className="absolute inset-y-0 right-0 inline-flex items-center justify-center px-3 text-slate-500 transition hover:text-slate-700"
+                      >
+                        <ChevronDownIcon />
+                      </button>
+                      {!isReadOnly && isOwnerComboboxOpen ? (
+                        <div className="absolute z-40 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+                          {filteredOwners.length > 0 ? (
+                            <div className="category-combobox-scrollbar max-h-[260px] space-y-1 overflow-x-hidden overflow-y-auto pr-1">
+                              {filteredOwners.map((owner) => (
+                                <button
+                                  key={owner.id}
+                                  type="button"
+                                  onClick={() =>
+                                    handleOwnerSelect(owner.id, owner.full_name)
+                                  }
+                                  className={[
+                                    'flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition',
+                                    values.owner_id === owner.id
+                                      ? 'bg-slate-900 text-white'
+                                      : 'text-slate-700 hover:bg-slate-100',
+                                  ].join(' ')}
+                                >
+                                  {owner.full_name}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="max-h-[260px] overflow-x-hidden overflow-y-auto px-3 py-2 text-sm text-slate-500">
+                              No se encontraron dueños.
+                            </p>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                    {!isReadOnly ? (
+                      <button
+                        type="button"
+                        aria-label="Crear dueño"
+                        disabled={isSubmitting || isCreatingOwner}
+                        onClick={handleOpenOwnerModal}
+                        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#B8924A] bg-[#B8924A] text-xl font-semibold text-white shadow-sm transition hover:border-[#A37C2E] hover:bg-[#A37C2E] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(184,146,74,0.20)] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        +
+                      </button>
                     ) : null}
                   </div>
-                  <button
-                    type="button"
-                    aria-label="Crear dueño"
-                    disabled={isSubmitting || isCreatingOwner}
-                    onClick={handleOpenOwnerModal}
-                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#B8924A] bg-[#B8924A] text-xl font-semibold text-white shadow-sm transition hover:border-[#A37C2E] hover:bg-[#A37C2E] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(184,146,74,0.20)] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    +
-                  </button>
-                </div>
+                )}
               </div>
 
               <div>
                 <FieldLabel htmlFor="google-location-search" required>
                   Dirección
                 </FieldLabel>
-                {googleMapsApiKey ? (
-                  <LocationAddressPicker
-                    formattedAddress={values.formatted_address}
-                    value={getLocationAddressPickerValue(values)}
-                    disabled={isSubmitting}
-                    error={fieldErrors.address_private}
-                    onPlaceSelected={handleGooglePlaceSelected}
-                  />
+                {isReadOnly ? (
+                  <ReadOnlyFieldValue value={resolvedViewAddress} />
                 ) : (
-                  renderGoogleLocationFallback(inputClassName())
+                  <>
+                    {googleMapsApiKey ? (
+                      <LocationAddressPicker
+                        formattedAddress={values.formatted_address}
+                        value={getLocationAddressPickerValue(values)}
+                        disabled={isSubmitting || isReadOnly}
+                        error={fieldErrors.address_private}
+                        onPlaceSelected={handleGooglePlaceSelected}
+                      />
+                    ) : (
+                      renderGoogleLocationFallback(inputClassName())
+                    )}
+                  </>
                 )}
-                {fieldErrors.address_private ? (
+                {!isReadOnly && fieldErrors.address_private ? (
                   <p className="mt-2 text-sm text-red-700">
                     {fieldErrors.address_private}
                   </p>
@@ -2145,6 +2340,31 @@ function markSaveProgressSuccess() {
                     lat={values.lat}
                     lng={values.lng}
                     disabled={isSubmitting}
+                    mapEnabled={false}
+                  />
+                )}
+              </div>
+            ) : null}
+
+            {showImagesSection && mode === 'view' ? (
+              <div className="min-w-0 space-y-4 xl:pl-6 2xl:pl-8">
+                <LocationImagesGrid
+                  images={persistedCoverImage ? [persistedCoverImage] : []}
+                  emptyCoverAction={
+                    <ReadOnlyImagePlaceholder message="Esta locación todavía no tiene portada." />
+                  }
+                  isLocked
+                  mode="persisted"
+                  showCount={false}
+                  showGallery={false}
+                />
+                {googleMapsApiKey ? (
+                  <LocationMapPreview lat={values.lat} lng={values.lng} disabled />
+                ) : (
+                  <LocationMapPreview
+                    lat={values.lat}
+                    lng={values.lng}
+                    disabled
                     mapEnabled={false}
                   />
                 )}
@@ -2268,6 +2488,7 @@ function markSaveProgressSuccess() {
               className={inputClassName()}
               value={values.description}
               onChange={handleTextChange}
+              readOnly={isReadOnly}
               rows={5}
             />
           </div>
@@ -2301,17 +2522,19 @@ function markSaveProgressSuccess() {
                       <label
                         key={feature.id}
                         className={[
-                          'flex min-w-0 cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3 text-sm transition',
+                          'flex min-w-0 items-start gap-3 rounded-2xl border px-4 py-3 text-sm transition',
                           isSelected
                             ? 'border-[#B8924A] bg-[#0f1723] text-[#B8924A] shadow-sm'
-                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
+                            : isReadOnly
+                              ? 'border-slate-200 bg-white text-slate-500'
+                              : 'cursor-pointer border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
                         ].join(' ')}
                       >
                         <input
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => handleFeatureToggle(feature.id)}
-                          disabled={isSubmitting || isPreparingImages}
+                          disabled={isSubmitting || isPreparingImages || isReadOnly}
                           className={[
                             'mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300',
                             isSelected
@@ -2331,7 +2554,9 @@ function markSaveProgressSuccess() {
           </div>
         ) : (
           <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
-            No hay features booleanas activas disponibles.
+            {isReadOnly
+              ? 'Esta locación no tiene características seleccionadas.'
+              : 'No hay features booleanas activas disponibles.'}
           </div>
         )}
       </AccordionSectionCard>
@@ -2484,26 +2709,52 @@ function markSaveProgressSuccess() {
         </AccordionSectionCard>
       ) : null}
 
-        <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center sm:justify-end">
-          <Button
-            variant="secondary"
-            onClick={() => navigate(routePaths.locations)}
-            disabled={isSubmitting || isPreparingImages}
-          >
-            Cancelar
-          </Button>
-          <Button type="submit" disabled={isSubmitting || isPreparingImages}>
-            {isSubmitting
-              ? mode === 'edit'
-                ? 'Guardando cambios...'
-                : 'Guardando...'
-              : isPreparingImages
-                ? `Procesando imagenes ${processedImagesCount} de ${totalImagesToProcess}...`
-              : mode === 'edit'
-                ? 'Guardar cambios'
-                : 'Guardar locación'}
-          </Button>
-        </div>
+      {showImagesSection && mode === 'view' ? (
+        <AccordionSectionCard
+          title="Galería de imágenes"
+          isOpen={isGallerySectionOpen}
+          onToggle={() => setIsGallerySectionOpen((currentValue) => !currentValue)}
+        >
+          <div className="space-y-4">
+            {persistedGalleryImages.length > 0 ? (
+              <LocationImagesGrid
+                images={persistedGalleryImages}
+                isLocked
+                mode="persisted"
+                showCount={false}
+                showCover={false}
+              />
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
+                Esta locación todavía no tiene imágenes de galería.
+              </div>
+            )}
+          </div>
+        </AccordionSectionCard>
+      ) : null}
+
+        {!isReadOnly ? (
+          <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center sm:justify-end">
+            <Button
+              variant="secondary"
+              onClick={() => navigate(routePaths.locations)}
+              disabled={isSubmitting || isPreparingImages}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isSubmitting || isPreparingImages}>
+              {isSubmitting
+                ? mode === 'edit'
+                  ? 'Guardando cambios...'
+                  : 'Guardando...'
+                : isPreparingImages
+                  ? `Procesando imagenes ${processedImagesCount} de ${totalImagesToProcess}...`
+                : mode === 'edit'
+                  ? 'Guardar cambios'
+                  : 'Guardar locación'}
+            </Button>
+          </div>
+        ) : null}
       </form>
     </>
   )
