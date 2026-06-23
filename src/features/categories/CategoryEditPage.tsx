@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import { routePaths } from '../../app/router/route-paths'
 import Card from '../../components/ui/Card'
@@ -18,7 +18,13 @@ function mapRecordToFormValues(record: CategoryEditableRecord): CategoryFormValu
     parent_id: record.parent_id ?? '',
     sort_order: String(record.sort_order ?? 0),
     active: record.active ?? true,
+    image_url: record.image_url,
+    image_cloudflare_id: record.image_cloudflare_id,
   }
+}
+
+type CategoryEditLocationState = {
+  submitErrorMessage?: string
 }
 
 function isMissingCategoryError(error: unknown) {
@@ -37,10 +43,16 @@ function isMissingCategoryError(error: unknown) {
 
 function CategoryEditPage() {
   const { id } = useParams<{ id: string }>()
+  const location = useLocation()
   const [initialValues, setInitialValues] = useState<CategoryFormValues | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [categoryName, setCategoryName] = useState<string | null>(null)
+  const initialSubmitError =
+    typeof (location.state as CategoryEditLocationState | null)?.submitErrorMessage ===
+    'string'
+      ? (location.state as CategoryEditLocationState).submitErrorMessage ?? null
+      : null
 
   useEffect(() => {
     let isActive = true
@@ -172,6 +184,7 @@ function CategoryEditPage() {
             mode={'edit' satisfies CategoryFormMode}
             categoryId={id}
             initialValues={initialValues}
+            initialSubmitError={initialSubmitError}
           />
         ) : null}
       </Card>

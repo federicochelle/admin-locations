@@ -18,6 +18,14 @@ type CategoriesTableProps = {
 type CategorySortKey = 'name' | 'locationsCount'
 type CategorySortDirection = 'asc' | 'desc'
 
+function CoverPlaceholder() {
+  return (
+    <div className="flex h-14 w-20 items-center justify-center border border-slate-300 bg-slate-50 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
+      Sin foto
+    </div>
+  )
+}
+
 function ActionIconButton({
   actionLabel,
   buttonClassName = '',
@@ -266,6 +274,9 @@ function CategoriesTable({
           <thead className="bg-[#f3f2ee]">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                FOTO
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
                 <button
                   type="button"
                   onClick={() => handleSort('name')}
@@ -309,7 +320,7 @@ function CategoriesTable({
           <tbody className="divide-y divide-slate-200 bg-transparent">
             {filteredCategories.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-6 py-8 text-sm text-slate-500">
+                <td colSpan={4} className="px-6 py-8 text-sm text-slate-500">
                   No se encontraron categorías.
                 </td>
               </tr>
@@ -330,6 +341,19 @@ function CategoriesTable({
                 }}
                 tabIndex={0}
               >
+                <td className="px-6 py-4">
+                  {category.image_url ? (
+                    <div className="h-14 w-20 overflow-hidden border border-slate-200 bg-slate-50">
+                      <img
+                        src={category.image_url}
+                        alt={category.name}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <CoverPlaceholder />
+                  )}
+                </td>
                 <td className="px-6 py-4 text-sm font-medium text-slate-950">{category.name}</td>
                 <td className="px-6 py-4 text-sm text-slate-900">{category.locationsCount}</td>
                 <td className="px-6 py-4 text-sm text-slate-900">

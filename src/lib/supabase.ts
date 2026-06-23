@@ -1,4 +1,10 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import {
+  createClient,
+  FunctionsFetchError,
+  FunctionsHttpError,
+  FunctionsRelayError,
+  type SupabaseClient,
+} from '@supabase/supabase-js'
 
 let supabaseClient: SupabaseClient | null = null
 
@@ -23,4 +29,10 @@ export function getSupabaseClient() {
   supabaseClient = createClient(supabaseUrl, supabaseAnonKey)
 
   return supabaseClient
+}
+
+export {
+  FunctionsFetchError,
+  FunctionsHttpError,
+  FunctionsRelayError,
 }

@@ -2,6 +2,8 @@ export type CategoryListItem = {
   id: string
   name: string
   locationsCount: number
+  image_url?: string | null
+  image_cloudflare_id?: string | null
 }
 
 export type CategoryLocationListItem = {
@@ -37,6 +39,8 @@ export type CategoryFormValues = {
   parent_id: string
   sort_order: string
   active: boolean
+  image_url: string | null
+  image_cloudflare_id: string | null
 }
 
 export type CategoryEditableRecord = {
@@ -46,4 +50,6 @@ export type CategoryEditableRecord = {
   parent_id: string | null
   sort_order: number | null
   active: boolean | null
+  image_url: string | null
+  image_cloudflare_id: string | null
 }

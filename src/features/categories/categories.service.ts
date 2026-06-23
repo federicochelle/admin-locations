@@ -17,6 +17,8 @@ type CategoryRow = {
   parent_id: string | null
   sort_order: number | null
   active: boolean | null
+  image_url?: string | null
+  image_cloudflare_id?: string | null
   locations:
     | {
         count: number | null
@@ -80,6 +82,8 @@ function mapCategory(row: CategoryRow): CategoryListItem {
 
   return {
     id: row.id,
+    image_url: row.image_url ?? null,
+    image_cloudflare_id: row.image_cloudflare_id ?? null,
     name: row.name,
     locationsCount,
   }
@@ -133,6 +137,8 @@ export async function getCategories(): Promise<CategoryListItem[]> {
     .select(
       `
         id,
+        image_url,
+        image_cloudflare_id,
         name,
         locations(count)
       `,
@@ -195,7 +201,9 @@ export async function getCategoryById(id: string): Promise<CategoryEditableRecor
         slug,
         parent_id,
         sort_order,
-        active
+        active,
+        image_url,
+        image_cloudflare_id
       `,
     )
     .eq('id', id)
