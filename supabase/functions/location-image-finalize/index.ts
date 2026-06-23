@@ -13,6 +13,7 @@ type FinalizeRequestBody = {
   cloudflareImageId?: unknown
   isCover?: unknown
   locationId?: unknown
+  sortOrder?: unknown
 }
 
 type CreatedLocationImageRow = {
@@ -43,6 +44,30 @@ function toNullableText(value: unknown) {
   return trimmed.length > 0 ? trimmed : null
 }
 
+function parseOptionalSortOrder(value: unknown) {
+  if (typeof value !== 'number') {
+    if (typeof value === 'undefined') {
+      return null
+    }
+
+    throw new HttpError(400, 'sortOrder must be a number.')
+  }
+
+  if (!Number.isInteger(value)) {
+    throw new HttpError(400, 'sortOrder must be an integer.')
+  }
+
+  if (value < 0) {
+    throw new HttpError(400, 'sortOrder must be greater than or equal to 0.')
+  }
+
+  if (!Number.isSafeInteger(value)) {
+    throw new HttpError(400, 'sortOrder must be a safe integer.')
+  }
+
+  return value
+}
+
 function parseRequestBody(body: FinalizeRequestBody) {
   const locationId =
     typeof body.locationId === 'string' ? body.locationId.trim() : ''
@@ -65,6 +90,7 @@ function parseRequestBody(body: FinalizeRequestBody) {
     altText: toNullableText(body.altText),
     caption: toNullableText(body.caption),
     isCover: body.isCover === true,
+    sortOrder: parseOptionalSortOrder(body.sortOrder),
   }
 }
 
@@ -111,7 +137,7 @@ Deno.serve(async (request) => {
     const latestSortOrder =
       (existingImages as ExistingLocationImageRow[] | null)?.[0]?.sort_order ?? -1
 
-    const nextSortOrder = latestSortOrder + 1
+    const nextSortOrder = input.sortOrder ?? latestSortOrder + 1
     const isCover = input.isCover === true
 
     if (input.isCover === true) {

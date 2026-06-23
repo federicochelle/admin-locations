@@ -1,3 +1,6 @@
+import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
+
 export type LocationSaveStageKey =
   | 'location'
   | 'deleteImages'
@@ -214,14 +217,38 @@ function getProgressMessage(progress: LocationSaveProgressState) {
 function LocationSaveProgressModal({
   progress,
 }: LocationSaveProgressModalProps) {
+  useEffect(() => {
+    if (!progress) {
+      return
+    }
+
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [progress])
+
   if (!progress) {
+    return null
+  }
+
+  const portalContainer =
+    typeof document === 'undefined' ? null : document.body
+
+  if (!portalContainer) {
     return null
   }
 
   const percentage = getProgressPercentage(progress)
   const message = getProgressMessage(progress)
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-sm">
       <div
         role="dialog"
@@ -264,7 +291,8 @@ function LocationSaveProgressModal({
           ) : null}
         </div>
       </div>
-    </div>
+    </div>,
+    portalContainer,
   )
 }
 

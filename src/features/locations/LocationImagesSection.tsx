@@ -114,6 +114,7 @@ function LocationImagesSection({
         id: crypto.randomUUID(),
         file,
         previewUrl: URL.createObjectURL(file),
+        originalIndex: index,
         isCover: isCoverSelection && index === 0,
         status: 'pending',
       })
