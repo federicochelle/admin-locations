@@ -20,6 +20,28 @@ function getErrorMessage(error: unknown, fallbackMessage: string) {
   return fallbackMessage
 }
 
+function isAbortError(error: unknown) {
+  return error instanceof DOMException
+    ? error.name === 'AbortError'
+    : error instanceof Error
+      ? error.name === 'AbortError'
+      : false
+}
+
+function getUploadAbortMessage(signal?: AbortSignal) {
+  const reason = signal?.reason
+
+  if (reason instanceof Error && reason.message.trim().length > 0) {
+    return reason.message
+  }
+
+  if (typeof reason === 'string' && reason.trim().length > 0) {
+    return reason
+  }
+
+  return 'La subida tardó demasiado y fue cancelada. Intenta nuevamente.'
+}
+
 function toNullableString(value?: string | null) {
   if (typeof value !== 'string') {
     return null
@@ -65,6 +87,7 @@ function validateLocationImageContentType(
 
 export async function getLocationImageUploadUrl(
   input: LocationImageUploadUrlInput,
+  signal?: AbortSignal,
 ): Promise<LocationImageUploadUrlResult> {
   const supabase = getSupabaseClient()
 
@@ -72,6 +95,7 @@ export async function getLocationImageUploadUrl(
     'location-image-upload-url',
     {
       body: input,
+      signal,
     },
   )
 
@@ -89,6 +113,7 @@ export async function getLocationImageUploadUrl(
 export async function uploadImageFileToCloudflare(
   uploadURL: string,
   file: File,
+  signal?: AbortSignal,
 ): Promise<CloudflareDirectUploadResponse> {
   const formData = new FormData()
   formData.set('file', file)
@@ -96,6 +121,7 @@ export async function uploadImageFileToCloudflare(
   const response = await fetch(uploadURL, {
     body: formData,
     method: 'POST',
+    signal,
   })
 
   const payload =
@@ -114,6 +140,7 @@ export async function uploadImageFileToCloudflare(
 
 export async function finalizeLocationImageUpload(
   input: LocationImageFinalizeInput,
+  signal?: AbortSignal,
 ): Promise<LocationImageRecord> {
   const supabase = getSupabaseClient()
 
@@ -126,7 +153,9 @@ export async function finalizeLocationImageUpload(
         cloudflareImageId: input.cloudflareImageId,
         isCover: input.isCover,
         locationId: input.locationId,
+        sortOrder: input.sortOrder,
       },
+      signal,
     },
   )
 
@@ -207,7 +236,7 @@ export async function uploadLocationImage(
       locationId: input.locationId,
       filename: input.file.name,
       contentType,
-    })
+    }, input.signal)
 
     if (!uploadUrlResult.uploadURL) {
       throw new Error('Cloudflare no devolvió una upload URL válida.')
@@ -218,6 +247,7 @@ export async function uploadLocationImage(
     const directUpload = await uploadImageFileToCloudflare(
       uploadUrlResult.uploadURL,
       input.file,
+      input.signal,
     )
 
     const cloudflareImageId =
@@ -235,7 +265,8 @@ export async function uploadLocationImage(
       altText: input.altText,
       caption: input.caption,
       isCover: input.isCover,
-    })
+      sortOrder: input.sortOrder,
+    }, input.signal)
 
     return {
       directUpload,
@@ -243,6 +274,12 @@ export async function uploadLocationImage(
       imageId: cloudflareImageId,
     }
   } catch (error) {
+    if (input.signal?.aborted || isAbortError(error)) {
+      throw new Error(getUploadAbortMessage(input.signal), {
+        cause: error,
+      })
+    }
+
     throw new Error(
       getErrorMessage(error, 'No pudimos completar la subida de la imagen.'),
       {

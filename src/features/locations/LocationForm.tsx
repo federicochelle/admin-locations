@@ -40,6 +40,7 @@ import type {
 import type {
   LocationImageRecord,
   PendingLocationImageFile,
+  PendingLocationImageStatus,
 } from './location-images.types'
 import type { ParsedGooglePlaceAddress } from './location-address-parser'
 import {
@@ -449,6 +450,10 @@ function AccordionSectionCard({
 }
 
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
+const IMAGE_UPLOAD_CONCURRENCY = 3
+const IMAGE_UPLOAD_TIMEOUT_MS = 90_000
+const IMAGE_UPLOAD_TIMEOUT_ERROR_MESSAGE =
+  'La subida tardó demasiado y fue cancelada. Intenta nuevamente.'
 const ALLOWED_IMAGE_TYPES = new Set([
   'image/jpeg',
   'image/png',
@@ -547,6 +552,17 @@ function buildSaveProgressState(input: {
     uploadingCurrentName: null,
     uploadingCurrentStep: null,
   }
+}
+
+function getNextPendingImageOriginalIndex(
+  currentImages: PendingLocationImageFile[],
+) {
+  const highestOriginalIndex = currentImages.reduce(
+    (maxIndex, image) => Math.max(maxIndex, image.originalIndex),
+    -1,
+  )
+
+  return highestOriginalIndex + 1
 }
 
 function LocationForm({
@@ -1484,6 +1500,7 @@ function markSaveProgressSuccess() {
   async function buildPendingImages(
     files: FileList | null,
     isCoverSelection: boolean,
+    startingOriginalIndex: number,
   ) {
     if (!files || files.length === 0) {
       return {
@@ -1510,8 +1527,49 @@ function markSaveProgressSuccess() {
 
       try {
         const optimizationResult = await optimizeLocationImageFile(file)
+        const optimizedFile = optimizationResult.file
+        const optimizedImage = new Image()
+        let dimensionsLabel = 'dimensiones no disponibles'
 
-        if (optimizationResult.file.size > MAX_IMAGE_SIZE_BYTES) {
+        try {
+          const dimensions = await new Promise<{ width: number; height: number }>(
+            (resolve, reject) => {
+              const objectUrl = URL.createObjectURL(optimizedFile)
+
+              optimizedImage.onload = () => {
+                URL.revokeObjectURL(objectUrl)
+                resolve({
+                  width: optimizedImage.naturalWidth,
+                  height: optimizedImage.naturalHeight,
+                })
+              }
+              optimizedImage.onerror = () => {
+                URL.revokeObjectURL(objectUrl)
+                reject(new Error('No pudimos leer las dimensiones de la imagen optimizada.'))
+              }
+              optimizedImage.src = objectUrl
+            },
+          )
+
+          dimensionsLabel = `${dimensions.width}x${dimensions.height}`
+        } catch (dimensionError) {
+          console.warn(
+            '[IMAGE SIZE DIMENSIONS]',
+            optimizedFile.name,
+            dimensionError,
+          )
+        }
+
+        console.log(
+          '[IMAGE SIZE]',
+          optimizedFile.name,
+          `${(optimizedFile.size / 1024).toFixed(0)} KB`,
+          `${(optimizedFile.size / 1024 / 1024).toFixed(2)} MB`,
+          dimensionsLabel,
+          `${selectedFiles.length} seleccionadas`,
+        )
+
+        if (optimizedFile.size > MAX_IMAGE_SIZE_BYTES) {
           nextErrors.push(
             `${file.name}: sigue superando el máximo de 10MB después de optimizar.`,
           )
@@ -1520,8 +1578,9 @@ function markSaveProgressSuccess() {
 
         nextImages.push({
           id: crypto.randomUUID(),
-          file: optimizationResult.file,
-          previewUrl: URL.createObjectURL(optimizationResult.file),
+          file: optimizedFile,
+          previewUrl: URL.createObjectURL(optimizedFile),
+          originalIndex: startingOriginalIndex + nextImages.length,
           isCover: isCoverSelection && index === 0,
           status: 'pending',
         })
@@ -1538,6 +1597,14 @@ function markSaveProgressSuccess() {
         )
       }
     }
+
+    const totalBytes = nextImages.reduce((sum, image) => sum + image.file.size, 0)
+
+    console.log(
+      '[UPLOAD BATCH]',
+      `${nextImages.length} imágenes`,
+      `${(totalBytes / 1024 / 1024).toFixed(2)} MB totales`,
+    )
 
     return {
       errors: nextErrors,
@@ -1560,7 +1627,14 @@ function markSaveProgressSuccess() {
     setIsPreparingImages(true)
 
     try {
-      const { errors, images } = await buildPendingImages(files, true)
+      const startingOriginalIndex = getNextPendingImageOriginalIndex(
+        pendingImagesRef.current,
+      )
+      const { errors, images } = await buildPendingImages(
+        files,
+        true,
+        startingOriginalIndex,
+      )
       setImageValidationErrors(errors)
       setEditDeleteErrorMessage(null)
 
@@ -1596,7 +1670,14 @@ function markSaveProgressSuccess() {
     setIsPreparingImages(true)
 
     try {
-      const { errors, images } = await buildPendingImages(files, false)
+      const startingOriginalIndex = getNextPendingImageOriginalIndex(
+        pendingImagesRef.current,
+      )
+      const { errors, images } = await buildPendingImages(
+        files,
+        false,
+        startingOriginalIndex,
+      )
       setImageValidationErrors(errors)
       setEditDeleteErrorMessage(null)
 
@@ -1730,50 +1811,90 @@ function markSaveProgressSuccess() {
     }
 
     let hasImageErrors = false
+    const persistedSortOrderBase =
+      mode === 'edit'
+        ? visiblePersistedImages.reduce(
+            (maxSortOrder, image) => Math.max(maxSortOrder, image.sort_order),
+            -1,
+          ) + 1
+        : 0
+    const uploads = [...pendingImages]
+      .sort((leftImage, rightImage) => leftImage.originalIndex - rightImage.originalIndex)
+      .map((image) => ({
+        image,
+        sortOrder: persistedSortOrderBase + image.originalIndex,
+      }))
+    const activeUploadStatuses = new Map<
+      string,
+      Extract<PendingLocationImageStatus, 'uploading' | 'finalizing'>
+    >()
+    let completedUploads = 0
+    let nextUploadIndex = 0
 
-    updateStageStatus('uploadImages', 'active')
+    function syncUploadProgress() {
+      const activeUploadStatusesList = Array.from(activeUploadStatuses.values())
+      const uploadingCurrentStep =
+        activeUploadStatusesList.length === 0
+          ? null
+          : activeUploadStatusesList.includes('finalizing')
+            ? 'finalizing'
+            : 'uploading'
 
-    for (const [index, image] of pendingImages.entries()) {
+      updateSaveProgress((currentState) => ({
+        ...currentState,
+        uploadingDone: completedUploads,
+        uploadingCurrentIndex:
+          activeUploadStatusesList.length > 0
+            ? Math.min(completedUploads + 1, currentState.uploadingTotal)
+            : null,
+        uploadingCurrentName: null,
+        uploadingCurrentStep,
+      }))
+    }
+
+    async function processUpload(
+      image: PendingLocationImageFile,
+      sortOrder: number,
+    ) {
+      const controller = new AbortController()
+      let uploadTimeoutId: number | null = null
+
       try {
         updatePendingImage(image.id, {
           errorMessage: null,
-          status: 'pending',
+          status: 'uploading',
         })
 
-        updateSaveProgress((currentState) => ({
-          ...currentState,
-          uploadingCurrentIndex: index + 1,
-          uploadingCurrentName: image.file.name,
-          uploadingCurrentStep: 'uploading',
-        }))
+        activeUploadStatuses.set(image.id, 'uploading')
+        syncUploadProgress()
+        console.info('[UPLOAD START]', image.id)
 
-        await uploadLocationImage({
+        const uploadTask = uploadLocationImage({
           file: image.file,
           isCover: image.isCover,
           locationId: nextLocationId,
+          sortOrder,
+          signal: controller.signal,
           onStatusChange: (status) => {
             updatePendingImage(image.id, {
               status,
             })
 
-            updateSaveProgress((currentState) => ({
-              ...currentState,
-              uploadingCurrentIndex: index + 1,
-              uploadingCurrentName: image.file.name,
-              uploadingCurrentStep: status,
-            }))
+            activeUploadStatuses.set(image.id, status)
+            syncUploadProgress()
           },
         })
+        uploadTimeoutId = window.setTimeout(() => {
+          controller.abort(new Error(IMAGE_UPLOAD_TIMEOUT_ERROR_MESSAGE))
+        }, IMAGE_UPLOAD_TIMEOUT_MS)
+
+        await uploadTask
 
         updatePendingImage(image.id, {
           errorMessage: null,
           status: 'done',
         })
-
-        updateSaveProgress((currentState) => ({
-          ...currentState,
-          uploadingDone: index + 1,
-        }))
+        console.info('[UPLOAD SUCCESS]', image.id)
       } catch (error) {
         hasImageErrors = true
 
@@ -1782,19 +1903,50 @@ function markSaveProgressSuccess() {
             ? error.message
             : 'No pudimos subir esta imagen.'
 
+        if (message === IMAGE_UPLOAD_TIMEOUT_ERROR_MESSAGE) {
+          console.warn('[UPLOAD TIMEOUT]', image.id)
+        } else {
+          console.error('[UPLOAD ERROR]', image.id, error)
+        }
+
         updatePendingImage(image.id, {
           errorMessage: message,
           status: 'error',
         })
+      } finally {
+        if (uploadTimeoutId !== null) {
+          window.clearTimeout(uploadTimeoutId)
+        }
+
+        activeUploadStatuses.delete(image.id)
+        completedUploads += 1
+        syncUploadProgress()
       }
     }
 
-    updateSaveProgress((currentState) => ({
-      ...currentState,
-      uploadingCurrentIndex: null,
-      uploadingCurrentName: null,
-      uploadingCurrentStep: null,
-    }))
+    async function runUploadWorker() {
+      while (nextUploadIndex < uploads.length) {
+        const currentUploadIndex = nextUploadIndex
+        nextUploadIndex += 1
+
+        const currentUpload = uploads[currentUploadIndex]
+
+        if (!currentUpload) {
+          return
+        }
+
+        await processUpload(currentUpload.image, currentUpload.sortOrder)
+      }
+    }
+
+    updateStageStatus('uploadImages', 'active')
+    syncUploadProgress()
+
+    const workerCount = Math.min(IMAGE_UPLOAD_CONCURRENCY, uploads.length)
+
+    await Promise.all(
+      Array.from({ length: workerCount }, () => runUploadWorker()),
+    )
 
     if (hasImageErrors) {
       const message =

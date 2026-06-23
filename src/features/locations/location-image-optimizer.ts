@@ -1,6 +1,7 @@
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
-const MAX_IMAGE_DIMENSION = 3200
-const JPEG_QUALITY_STEPS = [0.9, 0.86] as const
+const MIN_IMAGE_SIZE_BYTES_TO_OPTIMIZE = 1.5 * 1024 * 1024
+const MAX_IMAGE_DIMENSION = 2400
+const JPEG_QUALITY_STEPS = [0.85, 0.82] as const
 
 export type OptimizeLocationImageResult = {
   file: File
@@ -10,7 +11,7 @@ export type OptimizeLocationImageResult = {
 }
 
 export function shouldOptimizeLocationImageFile(file: File) {
-  return file.size > MAX_IMAGE_SIZE_BYTES
+  return file.size > MIN_IMAGE_SIZE_BYTES_TO_OPTIMIZE
 }
 
 function replaceFileExtension(filename: string, extension: string) {
@@ -131,6 +132,14 @@ export async function optimizeLocationImageFile(
   file: File,
 ): Promise<OptimizeLocationImageResult> {
   if (!shouldOptimizeLocationImageFile(file)) {
+    console.log(
+      '[IMAGE OPTIMIZER]',
+      file.name,
+      'sin cambios',
+      `original=${(file.size / 1024 / 1024).toFixed(2)} MB`,
+      `final=${(file.size / 1024 / 1024).toFixed(2)} MB`,
+    )
+
     return {
       file,
       wasOptimized: false,
@@ -140,6 +149,7 @@ export async function optimizeLocationImageFile(
   }
 
   const { canvas } = await drawFileToCanvas(file)
+  const dimensionsLabel = `${canvas.width}x${canvas.height}`
 
   for (const quality of JPEG_QUALITY_STEPS) {
     const blob = await canvasToBlob(canvas, quality)
@@ -155,6 +165,15 @@ export async function optimizeLocationImageFile(
         type: 'image/jpeg',
         lastModified: file.lastModified,
       },
+    )
+
+    console.log(
+      '[IMAGE OPTIMIZER]',
+      file.name,
+      `original=${(file.size / 1024 / 1024).toFixed(2)} MB`,
+      `final=${(optimizedFile.size / 1024 / 1024).toFixed(2)} MB`,
+      dimensionsLabel,
+      `quality=${quality}`,
     )
 
     return {

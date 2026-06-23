@@ -42,6 +42,7 @@ export type LocationImageFinalizeInput = {
   altText?: string | null
   caption?: string | null
   isCover?: boolean
+  sortOrder?: number
 }
 
 export type LocationImageRecord = {
@@ -65,6 +66,8 @@ export type UploadLocationImageInput = {
   altText?: string | null
   caption?: string | null
   isCover?: boolean
+  sortOrder?: number
+  signal?: AbortSignal
   onStatusChange?: (status: Extract<PendingLocationImageStatus, 'uploading' | 'finalizing'>) => void
 }
 
@@ -94,6 +97,7 @@ export type PendingLocationImageFile = {
   id: string
   file: File
   previewUrl: string
+  originalIndex: number
   isCover: boolean
   status: PendingLocationImageStatus
   errorMessage?: string | null
