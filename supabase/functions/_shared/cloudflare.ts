@@ -170,18 +170,30 @@ export function assertAllowedContentType(contentType: string) {
 export async function createDirectUploadUrl(input: {
   contentType: string
   filename: string
-  locationId: string
   userId: string
+  locationId?: string
+  categoryId?: string
+  metadata?: Record<string, unknown>
 }) {
   const formData = new FormData()
+  const metadata = {
+    ...(input.metadata ?? {}),
+    contentType: input.contentType,
+    filename: input.filename,
+    uploadedBy: input.userId,
+  }
+
+  if (input.locationId) {
+    metadata.locationId = input.locationId
+  }
+
+  if (input.categoryId) {
+    metadata.categoryId = input.categoryId
+  }
+
   formData.set(
     'metadata',
-    JSON.stringify({
-      contentType: input.contentType,
-      filename: input.filename,
-      locationId: input.locationId,
-      uploadedBy: input.userId,
-    }),
+    JSON.stringify(metadata),
   )
 
   return await cloudflareRequest<CloudflareDirectUploadResult>(

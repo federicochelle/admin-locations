@@ -1,13 +1,22 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Button from '../../components/ui/Button'
-import { routePaths } from '../../app/router/route-paths'
+import { getCategoryEditPath, routePaths } from '../../app/router/route-paths'
 import {
   createCategory,
   getCategoryFormOptions,
   updateCategory,
 } from './categories.service'
+import {
+  deleteCategoryImage,
+  uploadCategoryImage,
+} from './category-images.service'
 import useAuth from '../auth/useAuth'
+import { optimizeLocationImageFile } from '../locations/location-image-optimizer'
+import LocationImageUploader from '../locations/LocationImageUploader'
+import {
+  LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
+} from '../locations/location-top-stack.styles'
 import type {
   CategoryCreatePayload,
   CategoryFormValues,
@@ -20,6 +29,7 @@ type CategoryFormProps = {
   mode?: CategoryFormMode
   initialValues?: CategoryFormValues
   categoryId?: string
+  initialSubmitError?: string | null
 }
 
 const defaultInitialValues: CategoryFormValues = {
@@ -28,7 +38,17 @@ const defaultInitialValues: CategoryFormValues = {
   parent_id: '',
   sort_order: '0',
   active: true,
+  image_url: null,
+  image_cloudflare_id: null,
 }
+
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
+const ALLOWED_IMAGE_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/avif',
+])
 
 function slugifyCategoryName(value: string) {
   return value
@@ -77,19 +97,50 @@ function inputClassName() {
   return 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
 }
 
+function TrashIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M19 6l-1 14H6L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </svg>
+  )
+}
+
 function CategoryForm({
   mode = 'create',
   initialValues = defaultInitialValues,
   categoryId,
+  initialSubmitError = null,
 }: CategoryFormProps) {
   const navigate = useNavigate()
   const { profile } = useAuth()
   const [values, setValues] = useState<CategoryFormValues>(initialValues)
   const [isOptionsLoading, setIsOptionsLoading] = useState(true)
   const [optionsError, setOptionsError] = useState<string | null>(null)
-  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(initialSubmitError)
   const [isSubmitting, setIsSubmitting] = useState(false)
-
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [persistedImageUrl, setPersistedImageUrl] = useState<string | null>(
+    initialValues.image_url ?? null,
+  )
+  const [persistedImageCloudflareId, setPersistedImageCloudflareId] = useState<string | null>(
+    initialValues.image_cloudflare_id ?? null,
+  )
+  const [shouldRemovePersistedImage, setShouldRemovePersistedImage] = useState(false)
+  const [imageError, setImageError] = useState<string | null>(null)
   async function loadFormOptions() {
     try {
       setIsOptionsLoading(true)
@@ -144,6 +195,14 @@ function CategoryForm({
     }
   }, [])
 
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl)
+      }
+    }
+  }, [previewUrl])
+
   function handleTextChange(
     event: React.ChangeEvent<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
@@ -170,12 +229,111 @@ function CategoryForm({
     })
   }
 
+  async function handleImageFilesSelected(files: FileList | null) {
+    const file = files?.[0] ?? null
+
+    if (!file) {
+      return
+    }
+
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+      setImageError('Formato de imagen no permitido. Usá JPG, PNG, WEBP o AVIF.')
+      return
+    }
+
+    try {
+      setImageError(null)
+
+      const nextFile =
+        file.size > MAX_IMAGE_SIZE_BYTES
+          ? (await optimizeLocationImageFile(file)).file
+          : file
+
+      if (nextFile.size > MAX_IMAGE_SIZE_BYTES) {
+        throw new Error('La imagen supera el máximo de 10MB por archivo.')
+      }
+
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl)
+      }
+
+      setSelectedImageFile(nextFile)
+      setPreviewUrl(URL.createObjectURL(nextFile))
+      setShouldRemovePersistedImage(false)
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No pudimos procesar la imagen seleccionada.'
+
+      setImageError(message)
+    }
+  }
+
+  function handleRemoveImage() {
+    setImageError(null)
+
+    if (selectedImageFile || previewUrl) {
+      setSelectedImageFile(null)
+
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl)
+      }
+
+      setPreviewUrl(null)
+      return
+    }
+
+    if (persistedImageUrl) {
+      setShouldRemovePersistedImage(true)
+    }
+  }
+
+  const visibleImageUrl =
+    previewUrl ?? (shouldRemovePersistedImage ? null : persistedImageUrl)
+
+  const hasAnyVisibleImage = Boolean(visibleImageUrl)
+
+  async function syncCategoryImage(nextCategoryId: string) {
+    if (selectedImageFile) {
+      const uploadResult = await uploadCategoryImage({
+        categoryId: nextCategoryId,
+        file: selectedImageFile,
+      })
+
+      setPersistedImageUrl(uploadResult.finalizedImage.imageUrl)
+      setPersistedImageCloudflareId(uploadResult.finalizedImage.imageCloudflareId)
+      setShouldRemovePersistedImage(false)
+      setSelectedImageFile(null)
+
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl)
+      }
+
+      setPreviewUrl(null)
+      setImageError(null)
+      return
+    }
+
+    if (shouldRemovePersistedImage && persistedImageCloudflareId) {
+      await deleteCategoryImage({
+        categoryId: nextCategoryId,
+      })
+
+      setPersistedImageUrl(null)
+      setPersistedImageCloudflareId(null)
+      setShouldRemovePersistedImage(false)
+      setImageError(null)
+    }
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     try {
       setIsSubmitting(true)
       setSubmitError(null)
+      setImageError(null)
 
       const payload = buildPayload(values)
 
@@ -187,10 +345,29 @@ function CategoryForm({
         await updateCategory(categoryId, payload, {
           actorProfileId: profile?.id ?? null,
         })
+
+        await syncCategoryImage(categoryId)
       } else {
-        await createCategory(payload, {
+        const createdCategoryId = await createCategory(payload, {
           actorProfileId: profile?.id ?? null,
         })
+
+        try {
+          await syncCategoryImage(createdCategoryId)
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'La categoría fue creada, pero no pudimos subir la imagen.'
+
+          navigate(getCategoryEditPath(createdCategoryId), {
+            state: {
+              submitErrorMessage:
+                `La categoría fue creada correctamente, pero la imagen no se pudo completar. ${message}`,
+            },
+          })
+          return
+        }
       }
 
       navigate(routePaths.categories)
@@ -274,18 +451,70 @@ function CategoryForm({
         </div>
       ) : null}
 
-      <div className="max-w-xl">
-        <FieldLabel htmlFor="name" required>
-          Nombre
-        </FieldLabel>
-        <input
-          id="name"
-          name="name"
-          className={inputClassName()}
-          value={values.name}
-          onChange={handleTextChange}
-          required
-        />
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
+        <div className="max-w-xl">
+          <FieldLabel htmlFor="name" required>
+            Nombre
+          </FieldLabel>
+          <input
+            id="name"
+            name="name"
+            className={inputClassName()}
+            value={values.name}
+            onChange={handleTextChange}
+            required
+          />
+        </div>
+
+        <section className="space-y-4">
+          {imageError ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {imageError}
+            </div>
+          ) : null}
+
+          {hasAnyVisibleImage ? (
+            <div
+              className={[
+                'group relative overflow-hidden',
+                LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
+              ].join(' ')}
+            >
+            <img
+              src={visibleImageUrl ?? undefined}
+              alt="Vista previa de la imagen representativa"
+              className="h-full w-full object-cover"
+            />
+            <div className="pointer-events-none absolute inset-0 bg-slate-950/0 transition group-hover:bg-slate-950/20">
+                <div className="pointer-events-auto absolute right-3 top-3 flex items-center gap-2 opacity-0 transition duration-200 group-hover:opacity-100">
+                  <button
+                    type="button"
+                    onClick={handleRemoveImage}
+                    disabled={isSubmitting}
+                    className="inline-flex items-center gap-2 rounded-full bg-white/92 px-3 py-2 text-xs font-medium text-red-600 shadow-sm backdrop-blur transition hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <TrashIcon />
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <LocationImageUploader
+              disabled={isSubmitting}
+              label="Seleccionar imagen"
+              multiple={false}
+              variant="empty-state"
+              onFilesSelected={(files) => void handleImageFilesSelected(files)}
+            />
+          )}
+
+          {shouldRemovePersistedImage && !previewUrl ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              La imagen actual se eliminará cuando guardes la categoría.
+            </div>
+          ) : null}
+        </section>
       </div>
     </form>
   )
