@@ -143,7 +143,7 @@ function validateCategoryImageContentType(
   }
 
   throw new Error(
-    'Formato de imagen no permitido. Usá JPG, PNG, WEBP o AVIF.',
+    'Formato de imagen no permitido para upload final. Usá JPG, PNG, WEBP o AVIF; los archivos HEIC/HEIF se convierten automáticamente antes de subir.',
   )
 }
 

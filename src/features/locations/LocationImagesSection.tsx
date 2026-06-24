@@ -5,6 +5,7 @@ import {
   deleteLocationImage,
   uploadLocationImage,
 } from './location-images.service'
+import { prepareImageUploadFile } from '../images/image-upload.processor'
 import type {
   LocationImageRecord,
   PendingLocationImageFile,
@@ -31,14 +32,6 @@ type LocationImagesSectionEditProps = {
 type LocationImagesSectionProps =
   | LocationImagesSectionCreateProps
   | LocationImagesSectionEditProps
-
-const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
-const ALLOWED_IMAGE_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/avif',
-])
 
 function getPersistedCoverImage(images: LocationImageRecord[]) {
   return images.find((image) => image.is_cover === true) ?? null
@@ -93,32 +86,31 @@ function LocationImagesSection({
     const nextUploads: PendingLocationImageFile[] = []
     const selectedFiles = isCoverSelection ? [files[0]] : Array.from(files)
 
-    selectedFiles.forEach((file, index) => {
+    for (const [index, file] of selectedFiles.entries()) {
       if (!file) {
-        return
+        continue
       }
 
-      if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
-        nextErrors.push(
-          `${file.name}: formato no permitido. Usá JPG, PNG, WEBP o AVIF.`,
-        )
-        return
-      }
+      try {
+        const preparedFile = (await prepareImageUploadFile(file)).file
 
-      if (file.size > MAX_IMAGE_SIZE_BYTES) {
-        nextErrors.push(`${file.name}: supera el máximo de 10MB por archivo.`)
-        return
-      }
+        nextUploads.push({
+          id: crypto.randomUUID(),
+          file: preparedFile,
+          previewUrl: URL.createObjectURL(preparedFile),
+          originalIndex: index,
+          isCover: isCoverSelection && index === 0,
+          status: 'pending',
+        })
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : `${file.name}: no pudimos procesar la imagen seleccionada.`
 
-      nextUploads.push({
-        id: crypto.randomUUID(),
-        file,
-        previewUrl: URL.createObjectURL(file),
-        originalIndex: index,
-        isCover: isCoverSelection && index === 0,
-        status: 'pending',
-      })
-    })
+        nextErrors.push(message)
+      }
+    }
 
     setValidationErrors(nextErrors)
     setUploadErrorMessage(null)
