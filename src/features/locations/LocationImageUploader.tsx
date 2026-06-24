@@ -7,8 +7,7 @@ import {
   LOCATION_TOP_STACK_PANEL_HEIGHT_CLASS,
   LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
 } from './location-top-stack.styles'
-
-const ACCEPTED_TYPES = 'image/jpeg,image/png,image/webp,image/avif'
+import { IMAGE_INPUT_ACCEPT } from '../images/image-upload.constants'
 
 type LocationImageUploaderProps = {
   disabled?: boolean
@@ -89,7 +88,7 @@ function LocationImageUploader({
       <input
         type="file"
         multiple={multiple}
-        accept={ACCEPTED_TYPES}
+        accept={IMAGE_INPUT_ACCEPT}
         disabled={disabled}
         onChange={handleChange}
         className="sr-only"

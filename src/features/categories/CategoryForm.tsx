@@ -12,7 +12,7 @@ import {
   uploadCategoryImage,
 } from './category-images.service'
 import useAuth from '../auth/useAuth'
-import { optimizeLocationImageFile } from '../locations/location-image-optimizer'
+import { prepareImageUploadFile } from '../images/image-upload.processor'
 import LocationImageUploader from '../locations/LocationImageUploader'
 import {
   LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
@@ -41,14 +41,6 @@ const defaultInitialValues: CategoryFormValues = {
   image_url: null,
   image_cloudflare_id: null,
 }
-
-const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
-const ALLOWED_IMAGE_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/avif',
-])
 
 function slugifyCategoryName(value: string) {
   return value
@@ -236,22 +228,9 @@ function CategoryForm({
       return
     }
 
-    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
-      setImageError('Formato de imagen no permitido. Usá JPG, PNG, WEBP o AVIF.')
-      return
-    }
-
     try {
       setImageError(null)
-
-      const nextFile =
-        file.size > MAX_IMAGE_SIZE_BYTES
-          ? (await optimizeLocationImageFile(file)).file
-          : file
-
-      if (nextFile.size > MAX_IMAGE_SIZE_BYTES) {
-        throw new Error('La imagen supera el máximo de 10MB por archivo.')
-      }
+      const nextFile = (await prepareImageUploadFile(file)).file
 
       if (previewUrl) {
         URL.revokeObjectURL(previewUrl)

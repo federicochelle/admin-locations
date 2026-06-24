@@ -43,9 +43,7 @@ import type {
   PendingLocationImageStatus,
 } from './location-images.types'
 import type { ParsedGooglePlaceAddress } from './location-address-parser'
-import {
-  optimizeLocationImageFile,
-} from './location-image-optimizer'
+import { prepareImageUploadFile } from '../images/image-upload.processor'
 import { LOCATION_TOP_STACK_PLACEHOLDER_CLASS } from './location-top-stack.styles'
 import { useLocationImages } from './useLocationImages'
 
@@ -449,17 +447,10 @@ function AccordionSectionCard({
   )
 }
 
-const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
 const IMAGE_UPLOAD_CONCURRENCY = 3
 const IMAGE_UPLOAD_TIMEOUT_MS = 90_000
 const IMAGE_UPLOAD_TIMEOUT_ERROR_MESSAGE =
   'La subida tardó demasiado y fue cancelada. Intenta nuevamente.'
-const ALLOWED_IMAGE_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/avif',
-])
 
 const SAVE_SUCCESS_DELAY_MS = 1000
 const defaultOwnerQuickCreateValues: LocationOwnerQuickCreateValues = {
@@ -1518,16 +1509,8 @@ function markSaveProgressSuccess() {
         continue
       }
 
-      if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
-        nextErrors.push(
-          `${file.name}: formato no permitido. Usá JPG, PNG, WEBP o AVIF.`,
-        )
-        continue
-      }
-
       try {
-        const optimizationResult = await optimizeLocationImageFile(file)
-        const optimizedFile = optimizationResult.file
+        const optimizedFile = (await prepareImageUploadFile(file)).file
         const optimizedImage = new Image()
         let dimensionsLabel = 'dimensiones no disponibles'
 
@@ -1568,13 +1551,6 @@ function markSaveProgressSuccess() {
           dimensionsLabel,
           `${selectedFiles.length} seleccionadas`,
         )
-
-        if (optimizedFile.size > MAX_IMAGE_SIZE_BYTES) {
-          nextErrors.push(
-            `${file.name}: sigue superando el máximo de 10MB después de optimizar.`,
-          )
-          continue
-        }
 
         nextImages.push({
           id: crypto.randomUUID(),
