@@ -158,6 +158,7 @@ function formatFeatureGroupLabel(group: string | null) {
   const featureGroupLabels: Record<string, string> = {
     visual_style: 'Estilo visual',
     environment: 'Entorno',
+    spaces: 'Espacios',
     amenities: 'Comodidades',
     lighting: 'Iluminación',
     production_use: 'Uso para producción',
@@ -178,6 +179,22 @@ function formatFeatureGroupLabel(group: string | null) {
         : segment,
     )
     .join(' ')
+}
+
+function getFeatureGroupSortOrder(group: string | null) {
+  const normalizedGroup = group?.trim()
+
+  const priorityByGroup: Record<string, number> = {
+    visual_style: 0,
+    environment: 1,
+    spaces: 2,
+  }
+
+  if (!normalizedGroup) {
+    return Number.MAX_SAFE_INTEGER
+  }
+
+  return priorityByGroup[normalizedGroup] ?? Number.MAX_SAFE_INTEGER
 }
 
 function renderGoogleLocationFallback(inputClassNameValue: string) {
@@ -872,7 +889,20 @@ function LocationForm({
       })
     }
 
-    return Array.from(groups.values())
+    return Array.from(groups.values()).sort((leftGroup, rightGroup) => {
+      const orderDifference =
+        getFeatureGroupSortOrder(leftGroup.group) -
+        getFeatureGroupSortOrder(rightGroup.group)
+
+      if (orderDifference !== 0) {
+        return orderDifference
+      }
+
+      return formatFeatureGroupLabel(leftGroup.group).localeCompare(
+        formatFeatureGroupLabel(rightGroup.group),
+        'es',
+      )
+    })
   }, [isReadOnly, options, values.selectedFeatureIds])
 
   function handleOwnerCreateChange(
