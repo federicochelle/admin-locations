@@ -65,6 +65,7 @@ type LocationFormProps = {
   initialValues?: LocationFormValues
   locationId?: string
   locationCode?: string | null
+  primaryCardActions?: React.ReactNode
   showImagesSection?: boolean
   showAdvancedSection?: boolean
 }
@@ -467,16 +468,20 @@ function SectionCard({
 }) {
   return (
     <section className="-mx-6 w-[calc(100%+3rem)] space-y-5 rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-sm backdrop-blur-sm sm:p-6 lg:p-7">
-      {title || description ? (
+      {title || description || actions ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
-            {title ? (
-              <h3 className="text-2xl font-semibold text-slate-950">{title}</h3>
-            ) : null}
-            {description ? (
-              <p className="text-sm leading-6 text-slate-600">{description}</p>
-            ) : null}
-          </div>
+          {title || description ? (
+            <div className="space-y-1">
+              {title ? (
+                <h3 className="text-2xl font-semibold text-slate-950">{title}</h3>
+              ) : null}
+              {description ? (
+                <p className="text-sm leading-6 text-slate-600">{description}</p>
+              ) : null}
+            </div>
+          ) : (
+            <div />
+          )}
           {actions ? <div className="shrink-0 sm:ml-auto">{actions}</div> : null}
         </div>
       ) : null}
@@ -655,6 +660,7 @@ function LocationForm({
   initialValues = defaultInitialValues,
   locationId,
   locationCode = null,
+  primaryCardActions,
   showImagesSection = mode === 'create',
   showAdvancedSection = mode === 'edit',
 }: LocationFormProps) {
@@ -2425,10 +2431,13 @@ function markSaveProgressSuccess() {
         <div className="space-y-6">
           <div className="grid gap-6 xl:grid-cols-2 xl:items-start">
             <div className="space-y-5">
-              <div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h3 className="text-2xl font-semibold text-slate-950">
                   {getFormHeading(mode)}
                 </h3>
+                {primaryCardActions ? (
+                  <div className="sm:ml-auto">{primaryCardActions}</div>
+                ) : null}
               </div>
 
               <div>

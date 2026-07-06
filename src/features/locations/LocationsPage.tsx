@@ -132,6 +132,7 @@ function LocationsPage() {
           locations={locations}
           activeActionKey={activeActionKey}
           title={null}
+          visibleColumns={{ actions: false }}
           onDelete={handleDelete}
         />
       ) : null}
