@@ -1,5 +1,20 @@
+import { useEffect, useState } from 'react'
 import type { LocationAnalysisResult } from '../../../location-analysis/location-analysis.types'
 import Button from '../../../../components/ui/Button'
+
+const ANALYSIS_LOADING_MESSAGES = [
+  '📷 Analizando imágenes...',
+  '🏡 Interpretando la locación...',
+  '📍 Analizando ubicación...',
+  '🧱 Detectando materiales...',
+  '🏛️ Identificando espacios...',
+  '🎨 Reconociendo estilo visual...',
+  '📝 Generando descripción...',
+  '🏷️ Seleccionando tags...',
+  '✅ Preparando resultados...',
+] as const
+
+const ANALYSIS_LOADING_MESSAGE_INTERVAL_MS = 2500
 
 type LocationAnalysisPanelProps = {
   analysisError: string | null
@@ -26,6 +41,25 @@ function LocationAnalysisPanel({
   onAnalyze,
   onDiscard,
 }: LocationAnalysisPanelProps) {
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0)
+
+  useEffect(() => {
+    if (!analysisLoading) {
+      setLoadingMessageIndex(0)
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      setLoadingMessageIndex((currentIndex) =>
+        (currentIndex + 1) % ANALYSIS_LOADING_MESSAGES.length,
+      )
+    }, ANALYSIS_LOADING_MESSAGE_INTERVAL_MS)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [analysisLoading])
+
   if (isReadOnly) {
     return null
   }
@@ -38,7 +72,9 @@ function LocationAnalysisPanel({
           disabled={isDisabled || analysisLoading}
           onClick={onAnalyze}
         >
-          {analysisLoading ? 'Analizando...' : '✨ Analizar con IA'}
+          {analysisLoading
+            ? ANALYSIS_LOADING_MESSAGES[loadingMessageIndex]
+            : '✨ Analizar con IA'}
         </Button>
       </div>
 

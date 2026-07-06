@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import {
   getCategoryEditPath,
@@ -7,14 +7,13 @@ import {
   getOwnerEditPath,
   routePaths,
 } from '../../app/router/route-paths'
-import {
-  buttonBaseClassName,
-  buttonVariantClasses,
-} from '../../components/ui/button.styles'
+import useAuth from '../auth/useAuth'
+import { createActivityLog } from '../activity/activity-logs.service'
 import Card from '../../components/ui/Card'
 import PageContainer from '../../components/ui/PageContainer'
 import LocationForm, { type LocationFormMode } from './LocationForm'
-import { getLocationById } from './locations.service'
+import LocationDeleteProgressModal from './LocationDeleteProgressModal'
+import { deleteLocation, getLocationById } from './locations.service'
 import type { LocationEditableRecord, LocationFormValues } from './locations.types'
 
 type OwnerLocationBreadcrumbState = {
@@ -71,6 +70,20 @@ function formatLocationCode(locationCode: string | null) {
   return normalizedCode ? normalizedCode.replaceAll('-', ' ') : null
 }
 
+function formatLocationIdentifier(location: Pick<LocationFormValues, 'title'> & {
+  locationCode: string | null
+}) {
+  const locationCode = location.locationCode?.trim()
+
+  if (locationCode) {
+    return locationCode.replaceAll('-', ' ')
+  }
+
+  const title = location.title.trim()
+
+  return title.length > 0 ? title : 'esta locación'
+}
+
 function isMissingLocationError(error: unknown) {
   if (!(error instanceof Error)) {
     return false
@@ -85,13 +98,80 @@ function isMissingLocationError(error: unknown) {
   )
 }
 
+function EditIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 20h9"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function DeleteIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path
+        d="M3 6h18"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 6V4h8v2"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M19 6l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10 11v6M14 11v6"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function LocationViewPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const routerLocation = useLocation()
+  const { profile } = useAuth()
   const [initialValues, setInitialValues] = useState<LocationFormValues | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [locationIdentifier, setLocationIdentifier] = useState<string | null>(null)
+  const [locationCode, setLocationCode] = useState<string | null>(null)
   const navigationState = routerLocation.state as LocationBreadcrumbState | null
   const ownerContext =
     navigationState?.source === 'owner' &&
@@ -120,6 +200,7 @@ function LocationViewPage() {
         }
 
         setInitialValues(mapRecordToFormValues(record))
+        setLocationCode(record.location_code)
         setLocationIdentifier(formatLocationCode(record.location_code))
         setErrorMessage(null)
       })
@@ -167,15 +248,6 @@ function LocationViewPage() {
       : undefined
   const headerConfig = useMemo(
     () => ({
-      actions:
-        id && !isLoading && !errorMessage ? (
-          <Link
-            to={getLocationEditPath(id)}
-            className={[buttonBaseClassName, buttonVariantClasses.primary].join(' ')}
-          >
-            Editar
-          </Link>
-        ) : undefined,
       breadcrumbItems: ownerContext
         ? [
             { label: 'Listado de dueños', to: routePaths.owners },
@@ -215,6 +287,83 @@ function LocationViewPage() {
 
   useLayoutHeader(headerConfig)
 
+  async function handleDeleteLocation() {
+    if (!id || !initialValues) {
+      return
+    }
+
+    const formattedLocationIdentifier = formatLocationIdentifier({
+      locationCode,
+      title: initialValues.title,
+    })
+    const shouldDelete = window.confirm(
+      `¿Seguro que querés eliminar la locación "${formattedLocationIdentifier}"?\n\nEsta acción no se puede deshacer.`,
+    )
+
+    if (!shouldDelete) {
+      return
+    }
+
+    setDeleteErrorMessage(null)
+    setIsDeleting(true)
+
+    try {
+      const entityName =
+        locationCode?.trim() || initialValues.title.trim() || 'Sin código'
+
+      if (profile?.id) {
+        try {
+          await createActivityLog({
+            actorProfileId: profile.id,
+            action: 'deleted',
+            entityType: 'location',
+            entityId: id,
+            entityName,
+          })
+        } catch (error) {
+          console.warn('No pudimos registrar activity_log para delete de location.', error)
+        }
+      } else {
+        console.warn(
+          'No se registró activity_log para delete de location porque falta actorProfileId.',
+        )
+      }
+
+      await deleteLocation(id)
+      navigate(routePaths.locations)
+    } catch (error) {
+      setDeleteErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos eliminar la locación.',
+      )
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const primaryCardActions =
+    id && !isLoading && !errorMessage ? (
+      <div className="flex shrink-0 items-center gap-2">
+        <Link
+          to={getLocationEditPath(id)}
+          aria-label="Editar"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-sky-200 bg-sky-50 text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-sky-100"
+        >
+          <EditIcon />
+        </Link>
+        <button
+          type="button"
+          aria-label={isDeleting ? 'Eliminando...' : 'Eliminar'}
+          onClick={() => void handleDeleteLocation()}
+          disabled={isDeleting}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-700 transition hover:border-red-300 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <DeleteIcon />
+        </button>
+      </div>
+    ) : undefined
+
   if (!id) {
     return (
       <PageContainer
@@ -245,10 +394,18 @@ function LocationViewPage() {
       }
       hideHeader
     >
+      <LocationDeleteProgressModal isOpen={isDeleting} />
+
       <Card className="border-0 bg-[radial-gradient(circle_at_top_left,_rgba(184,146,74,0.10),_transparent_24%),linear-gradient(180deg,_#111111_0%,_#151515_52%,_#1a1a1a_100%)] p-6 shadow-none backdrop-blur-0">
         {isLoading ? (
           <div className="flex min-h-72 items-center justify-center">
             <p className="text-sm text-slate-600">Cargando locación...</p>
+          </div>
+        ) : null}
+
+        {!isLoading && !errorMessage && deleteErrorMessage ? (
+          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {deleteErrorMessage}
           </div>
         ) : null}
 
@@ -272,6 +429,7 @@ function LocationViewPage() {
             mode={'view' satisfies LocationFormMode}
             locationId={id}
             initialValues={initialValues}
+            primaryCardActions={primaryCardActions}
             showImagesSection
             showAdvancedSection={false}
           />
