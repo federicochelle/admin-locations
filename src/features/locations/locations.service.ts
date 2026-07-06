@@ -6,8 +6,10 @@ import type {
   LocationDepartmentOption,
   LocationEditableRecord,
   LocationFeatureOption,
+  LocationTagOption,
   LocationFormOptions,
   LocationFeatureRelationRow,
+  LocationTagRelationRow,
   LocationListItem,
   LocationNameRelation,
   LocationOwnerOption,
@@ -56,6 +58,13 @@ function normalizeLocationCodePrefix(categoryName: string) {
     .toUpperCase()
 
   return normalized.length > 0 ? normalized : 'CATEGORIA'
+}
+
+function normalizeLocationPayloadTitle<T extends { title: string }>(payload: T): T {
+  return {
+    ...payload,
+    title: payload.title.trim(),
+  }
 }
 
 function isLocationSlugUniqueError(error: SupabaseErrorLike | null) {
@@ -277,16 +286,9 @@ type DeleteLocationResult = {
   deletedImagesCount: number
 }
 
-type LocationFeatureInsertRow = {
-  location_id: string
-  feature_id: string
-}
-
-function getSelectedFeatureIds(
-  relation:
-    | LocationFeatureRelationRow
-    | LocationFeatureRelationRow[]
-    | null,
+function getSelectedRelationIds<T>(
+  relation: T | T[] | null,
+  getRelationId: (row: T) => string | null,
 ) {
   if (!relation) {
     return []
@@ -295,8 +297,62 @@ function getSelectedFeatureIds(
   const rows = Array.isArray(relation) ? relation : [relation]
 
   return rows
-    .map((row) => row.feature_id)
-    .filter((featureId): featureId is string => Boolean(featureId))
+    .map((row) => getRelationId(row))
+    .filter((relationId): relationId is string => typeof relationId === 'string')
+}
+
+function getSelectedFeatureIds(
+  relation:
+    | LocationFeatureRelationRow
+    | LocationFeatureRelationRow[]
+    | null,
+) {
+  return getSelectedRelationIds(relation, (row) => row.feature_id)
+}
+
+function getSelectedTagIds(
+  relation:
+    | LocationTagRelationRow
+    | LocationTagRelationRow[]
+    | null,
+) {
+  return getSelectedRelationIds(relation, (row) => row.tag_id)
+}
+
+async function replaceLocationRelations(input: {
+  locationId: string
+  relationIds: string[]
+  relationTable: 'location_features' | 'location_tags'
+  relationColumn: 'feature_id' | 'tag_id'
+}) {
+  const supabase = getSupabaseClient()
+  const { locationId, relationIds, relationTable, relationColumn } = input
+
+  const { error: deleteRelationsError } = await supabase
+    .from(relationTable)
+    .delete()
+    .eq('location_id', locationId)
+
+  if (deleteRelationsError) {
+    throw new Error(deleteRelationsError.message)
+  }
+
+  if (relationIds.length === 0) {
+    return
+  }
+
+  const relationRows = relationIds.map((relationId) => ({
+    location_id: locationId,
+    [relationColumn]: relationId,
+  }))
+
+  const { error: relationError } = await supabase
+    .from(relationTable)
+    .insert(relationRows)
+
+  if (relationError) {
+    throw new Error(relationError.message)
+  }
 }
 
 export async function getLocations(): Promise<LocationListItem[]> {
@@ -383,6 +439,7 @@ export async function getLocationFormOptions(): Promise<LocationFormOptions> {
     departmentsResult,
     zonesResult,
     featuresResult,
+    tagsResult,
   ] =
     await Promise.all([
       supabase.from('owners').select('id, full_name').order('full_name'),
@@ -394,6 +451,12 @@ export async function getLocationFormOptions(): Promise<LocationFormOptions> {
         .select('id, name, slug, group, type, active')
         .eq('active', true)
         .order('group', { ascending: true })
+        .order('name', { ascending: true }),
+      supabase
+        .from('tags')
+        .select('id, name, slug, group:category, active')
+        .eq('active', true)
+        .order('category', { ascending: true })
         .order('name', { ascending: true }),
     ])
 
@@ -417,12 +480,17 @@ export async function getLocationFormOptions(): Promise<LocationFormOptions> {
     throw new Error(featuresResult.error.message)
   }
 
+  if (tagsResult.error) {
+    throw new Error(tagsResult.error.message)
+  }
+
   return {
     owners: (ownersResult.data ?? []) as LocationOwnerOption[],
     categories: (categoriesResult.data ?? []) as LocationCategoryOption[],
     departments: (departmentsResult.data ?? []) as LocationDepartmentOption[],
     zones: (zonesResult.data ?? []) as LocationZoneOption[],
     features: (featuresResult.data ?? []) as LocationFeatureOption[],
+    tags: (tagsResult.data ?? []) as LocationTagOption[],
   }
 }
 
@@ -431,7 +499,8 @@ export async function createLocation(
   options?: { actorProfileId?: string | null },
 ): Promise<string> {
   const supabase = getSupabaseClient()
-  const { selectedFeatureIds, ...locationPayload } = payload
+  const { selectedFeatureIds, selectedTagIds, ...rawLocationPayload } = payload
+  const locationPayload = normalizeLocationPayloadTitle(rawLocationPayload)
   const uniqueSlug = await getUniqueLocationSlug(locationPayload.slug)
   let createdRow: CreatedLocationRow | null = null
   let generatedLocationCode: string | null = null
@@ -484,22 +553,19 @@ export async function createLocation(
 
   const locationId = createdRow.id
 
-  if (selectedFeatureIds.length > 0) {
-    const relationRows: LocationFeatureInsertRow[] = selectedFeatureIds.map(
-      (featureId) => ({
-        location_id: locationId,
-        feature_id: featureId,
-      }),
-    )
+  await replaceLocationRelations({
+    locationId,
+    relationIds: selectedFeatureIds,
+    relationTable: 'location_features',
+    relationColumn: 'feature_id',
+  })
 
-    const { error: relationError } = await supabase
-      .from('location_features')
-      .insert(relationRows)
-
-    if (relationError) {
-      throw new Error(relationError.message)
-    }
-  }
+  await replaceLocationRelations({
+    locationId,
+    relationIds: selectedTagIds,
+    relationTable: 'location_tags',
+    relationColumn: 'tag_id',
+  })
 
   if (options?.actorProfileId) {
     try {
@@ -558,7 +624,8 @@ export async function getLocationById(
         approx_lng,
         show_exact_location,
         map_visibility,
-        location_features(feature_id)
+        location_features(feature_id),
+        location_tags(tag_id)
       `,
     )
     .eq('id', id)
@@ -599,6 +666,7 @@ export async function getLocationById(
     show_exact_location: row.show_exact_location,
     map_visibility: row.map_visibility,
     selectedFeatureIds: getSelectedFeatureIds(row.location_features),
+    selectedTagIds: getSelectedTagIds(row.location_tags),
   }
 }
 
@@ -608,7 +676,8 @@ export async function updateLocation(
   options?: { actorProfileId?: string | null },
 ): Promise<string> {
   const supabase = getSupabaseClient()
-  const { selectedFeatureIds, ...locationPayload } = payload
+  const { selectedFeatureIds, selectedTagIds, ...rawLocationPayload } = payload
+  const locationPayload = normalizeLocationPayloadTitle(rawLocationPayload)
   const uniqueSlug = await getUniqueLocationSlug(locationPayload.slug, id)
   const { data: currentLocationData, error: currentLocationError } = await supabase
     .from('locations')
@@ -693,31 +762,19 @@ export async function updateLocation(
     )
   }
 
-  const { error: deleteRelationsError } = await supabase
-    .from('location_features')
-    .delete()
-    .eq('location_id', id)
+  await replaceLocationRelations({
+    locationId: id,
+    relationIds: selectedFeatureIds,
+    relationTable: 'location_features',
+    relationColumn: 'feature_id',
+  })
 
-  if (deleteRelationsError) {
-    throw new Error(deleteRelationsError.message)
-  }
-
-  if (selectedFeatureIds.length > 0) {
-    const relationRows: LocationFeatureInsertRow[] = selectedFeatureIds.map(
-      (featureId) => ({
-        location_id: id,
-        feature_id: featureId,
-      }),
-    )
-
-    const { error: relationError } = await supabase
-      .from('location_features')
-      .insert(relationRows)
-
-    if (relationError) {
-      throw new Error(relationError.message)
-    }
-  }
+  await replaceLocationRelations({
+    locationId: id,
+    relationIds: selectedTagIds,
+    relationTable: 'location_tags',
+    relationColumn: 'tag_id',
+  })
 
   if (options?.actorProfileId) {
     try {
