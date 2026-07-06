@@ -56,6 +56,7 @@ function mapRecordToFormValues(record: LocationEditableRecord): LocationFormValu
     show_exact_location: record.show_exact_location ?? false,
     map_visibility: record.map_visibility ?? 'public',
     selectedFeatureIds: record.selectedFeatureIds,
+    selectedTagIds: record.selectedTagIds,
   }
 }
 
@@ -86,6 +87,7 @@ function LocationEditPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [locationIdentifier, setLocationIdentifier] = useState<string | null>(null)
+  const [locationCode, setLocationCode] = useState<string | null>(null)
   const navigationState = routerLocation.state as LocationBreadcrumbState | null
   const ownerContext =
     navigationState?.source === 'owner' &&
@@ -114,6 +116,7 @@ function LocationEditPage() {
         }
 
         setInitialValues(mapRecordToFormValues(record))
+        setLocationCode(record.location_code)
         setLocationIdentifier(formatLocationCode(record.location_code))
         setErrorMessage(null)
       })
@@ -250,6 +253,7 @@ function LocationEditPage() {
           <LocationForm
             mode={'edit' satisfies LocationFormMode}
             locationId={id}
+            locationCode={locationCode}
             initialValues={initialValues}
             showImagesSection
             showAdvancedSection={false}

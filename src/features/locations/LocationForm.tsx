@@ -31,8 +31,18 @@ import LocationSaveProgressModal, {
 import LocationAddressPicker from './LocationAddressPicker'
 import LocationMapPreview from './LocationMapPreview'
 import LocationZoneQuickCreateModal from './LocationZoneQuickCreateModal'
+import DescriptionEditor from './components/location-analysis/DescriptionEditor'
+import FeaturesEditor from './components/location-analysis/FeaturesEditor'
+import LocationAnalysisPanel from './components/location-analysis/LocationAnalysisPanel'
+import TagsEditor from './components/location-analysis/TagsEditor'
+import { locationAnalysisService } from '../location-analysis/location-analysis.service'
+import type {
+  LocationAnalysisInput,
+  LocationAnalysisResult,
+} from '../location-analysis/location-analysis.types'
 import type {
   LocationCreatePayload,
+  LocationFeatureOption,
   LocationFormOptions,
   LocationFormValues,
   LocationUpdatePayload,
@@ -46,6 +56,7 @@ import type { ParsedGooglePlaceAddress } from './location-address-parser'
 import { prepareImageUploadFile } from '../images/image-upload.processor'
 import { LOCATION_TOP_STACK_PLACEHOLDER_CLASS } from './location-top-stack.styles'
 import { useLocationImages } from './useLocationImages'
+import type { GroupedSelectableOptions } from './components/location-analysis/SelectableOptionsSection'
 
 export type LocationFormMode = 'create' | 'edit' | 'view'
 
@@ -53,13 +64,24 @@ type LocationFormProps = {
   mode?: LocationFormMode
   initialValues?: LocationFormValues
   locationId?: string
+  locationCode?: string | null
   showImagesSection?: boolean
   showAdvancedSection?: boolean
 }
 
 type LocationFormFieldErrors = {
+  title: string | null
   address_private: string | null
   category_id: string | null
+}
+
+type LocationAnalysisState = {
+  analysisError: string | null
+  analysisLoading: boolean
+  analysisResult: LocationAnalysisResult | null
+  suggestedFeatures: string[]
+  suggestedTags: string[]
+  suggestedDescription: string | null
 }
 
 const defaultInitialValues: LocationFormValues = {
@@ -89,6 +111,16 @@ const defaultInitialValues: LocationFormValues = {
   show_exact_location: false,
   map_visibility: 'public',
   selectedFeatureIds: [],
+  selectedTagIds: [],
+}
+
+const defaultAnalysisState: LocationAnalysisState = {
+  analysisError: null,
+  analysisLoading: false,
+  analysisResult: null,
+  suggestedFeatures: [],
+  suggestedTags: [],
+  suggestedDescription: null,
 }
 
 function toNullableString(value: string) {
@@ -113,6 +145,7 @@ function buildPayload(
   const deduplicatedSelectedFeatureIds = Array.from(
     new Set(values.selectedFeatureIds),
   )
+  const deduplicatedSelectedTagIds = Array.from(new Set(values.selectedTagIds))
 
   return {
     title: values.title.trim(),
@@ -141,6 +174,7 @@ function buildPayload(
     show_exact_location: values.show_exact_location,
     map_visibility: values.map_visibility,
     selectedFeatureIds: deduplicatedSelectedFeatureIds,
+    selectedTagIds: deduplicatedSelectedTagIds,
   }
 }
 
@@ -158,7 +192,7 @@ function formatFeatureGroupLabel(group: string | null) {
   const featureGroupLabels: Record<string, string> = {
     visual_style: 'Estilo visual',
     environment: 'Entorno',
-    spaces: 'Espacios',
+    usage: 'Uso',
     amenities: 'Comodidades',
     lighting: 'Iluminación',
     production_use: 'Uso para producción',
@@ -187,7 +221,7 @@ function getFeatureGroupSortOrder(group: string | null) {
   const priorityByGroup: Record<string, number> = {
     visual_style: 0,
     environment: 1,
-    spaces: 2,
+    usage: 2,
   }
 
   if (!normalizedGroup) {
@@ -195,6 +229,46 @@ function getFeatureGroupSortOrder(group: string | null) {
   }
 
   return priorityByGroup[normalizedGroup] ?? Number.MAX_SAFE_INTEGER
+}
+
+function buildGroupedSelectableOptions<T extends { group: string | null }>(items: T[]) {
+  const groups = new Map<
+    string,
+    {
+      group: string | null
+      items: T[]
+    }
+  >()
+
+  for (const item of items) {
+    const key = item.group?.trim() || 'ungrouped'
+    const existingGroup = groups.get(key)
+
+    if (existingGroup) {
+      existingGroup.items.push(item)
+      continue
+    }
+
+    groups.set(key, {
+      group: item.group,
+      items: [item],
+    })
+  }
+
+  return Array.from(groups.values()).sort((leftGroup, rightGroup) => {
+    const orderDifference =
+      getFeatureGroupSortOrder(leftGroup.group) -
+      getFeatureGroupSortOrder(rightGroup.group)
+
+    if (orderDifference !== 0) {
+      return orderDifference
+    }
+
+    return formatFeatureGroupLabel(leftGroup.group).localeCompare(
+      formatFeatureGroupLabel(rightGroup.group),
+      'es',
+    )
+  })
 }
 
 function renderGoogleLocationFallback(inputClassNameValue: string) {
@@ -302,6 +376,7 @@ function getFieldErrorInputClassName(errorMessage: string | null) {
 
 function getDefaultFieldErrors(): LocationFormFieldErrors {
   return {
+    title: null,
     address_private: null,
     category_id: null,
   }
@@ -311,6 +386,8 @@ function validateRequiredFields(
   values: LocationFormValues,
 ): LocationFormFieldErrors {
   return {
+    title:
+      values.title.trim().length > 0 ? null : 'El título es obligatorio.',
     category_id:
       values.category_id.trim().length > 0
         ? null
@@ -577,6 +654,7 @@ function LocationForm({
   mode = 'create',
   initialValues = defaultInitialValues,
   locationId,
+  locationCode = null,
   showImagesSection = mode === 'create',
   showAdvancedSection = mode === 'edit',
 }: LocationFormProps) {
@@ -591,6 +669,8 @@ function LocationForm({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isFeaturesSectionOpen, setIsFeaturesSectionOpen] = useState(false)
   const [isGallerySectionOpen, setIsGallerySectionOpen] = useState(false)
+  const [analysisState, setAnalysisState] =
+    useState<LocationAnalysisState>(defaultAnalysisState)
   const [saveProgress, setSaveProgress] = useState<LocationSaveProgressState | null>(
     null,
   )
@@ -849,60 +929,58 @@ function LocationForm({
       zone.name.toLocaleLowerCase().startsWith(normalizedSearch),
     )
   }, [filteredZones, zoneSearchTerm])
-  const featureGroups = useMemo(() => {
+  const selectedTags = useMemo(
+    () =>
+      (options?.tags ?? []).filter((tag) => values.selectedTagIds.includes(tag.id)),
+    [options, values.selectedTagIds],
+  )
+  const selectedFeatures = useMemo(
+    () =>
+      (options?.features ?? []).filter((feature) =>
+        values.selectedFeatureIds.includes(feature.id),
+      ),
+    [options, values.selectedFeatureIds],
+  )
+  const availableTags = useMemo(
+    () => (options?.tags ?? []).filter((tag) => tag.active === true),
+    [options],
+  )
+  const suggestedFeatureNames = useMemo(
+    () =>
+      (options?.features ?? [])
+        .filter((feature) => analysisState.suggestedFeatures.includes(feature.slug))
+        .map((feature) => feature.name),
+    [analysisState.suggestedFeatures, options],
+  )
+  const suggestedTagNames = useMemo(
+    () =>
+      (options?.tags ?? [])
+        .filter((tag) => analysisState.suggestedTags.includes(tag.slug))
+        .map((tag) => tag.name),
+    [analysisState.suggestedTags, options],
+  )
+  const featureGroups = useMemo<GroupedSelectableOptions<LocationFeatureOption>[]>(() => {
     if (!options) {
       return []
     }
 
-    const groups = new Map<
-      string,
-      {
-        group: string | null
-        items: LocationFormOptions['features']
-      }
-    >()
-
-    for (const feature of options.features) {
+    const filteredFeatures = options.features.filter((feature) => {
       if (feature.active !== true) {
-        continue
+        return false
       }
 
       if (feature.type && feature.type !== 'boolean') {
-        continue
+        return false
       }
 
       if (isReadOnly && !values.selectedFeatureIds.includes(feature.id)) {
-        continue
+        return false
       }
 
-      const key = feature.group?.trim() || 'ungrouped'
-      const existingGroup = groups.get(key)
-
-      if (existingGroup) {
-        existingGroup.items.push(feature)
-        continue
-      }
-
-      groups.set(key, {
-        group: feature.group,
-        items: [feature],
-      })
-    }
-
-    return Array.from(groups.values()).sort((leftGroup, rightGroup) => {
-      const orderDifference =
-        getFeatureGroupSortOrder(leftGroup.group) -
-        getFeatureGroupSortOrder(rightGroup.group)
-
-      if (orderDifference !== 0) {
-        return orderDifference
-      }
-
-      return formatFeatureGroupLabel(leftGroup.group).localeCompare(
-        formatFeatureGroupLabel(rightGroup.group),
-        'es',
-      )
+      return true
     })
+
+    return buildGroupedSelectableOptions<LocationFeatureOption>(filteredFeatures)
   }, [isReadOnly, options, values.selectedFeatureIds])
 
   function handleOwnerCreateChange(
@@ -1412,7 +1490,11 @@ function markSaveProgressSuccess() {
 
     const { name, value } = event.target
     const nextFieldError =
-      name === 'category_id'
+      name === 'title'
+        ? value.trim().length > 0
+          ? null
+          : 'El título es obligatorio.'
+        : name === 'category_id'
         ? value.trim().length > 0
           ? null
           : 'Debe seleccionar una categoría.'
@@ -1422,7 +1504,11 @@ function markSaveProgressSuccess() {
               : 'Debe ingresar una dirección.'
             : null
 
-    if (name === 'category_id' || name === 'address_private') {
+    if (
+      name === 'title' ||
+      name === 'category_id' ||
+      name === 'address_private'
+    ) {
       setFieldErrors((currentErrors) => ({
         ...currentErrors,
         [name]: nextFieldError,
@@ -1493,6 +1579,146 @@ function markSaveProgressSuccess() {
         selectedFeatureIds: Array.from(nextSelectedFeatureIds),
       }
     })
+  }
+
+  function handleTagToggle(tagId: string) {
+    if (isReadOnly) {
+      return
+    }
+
+    setValues((currentValues) => {
+      const nextTagIds = new Set(currentValues.selectedTagIds)
+
+      if (nextTagIds.has(tagId)) {
+        nextTagIds.delete(tagId)
+      } else {
+        nextTagIds.add(tagId)
+      }
+
+      return {
+        ...currentValues,
+        selectedTagIds: Array.from(nextTagIds),
+      }
+    })
+  }
+
+  function resetAnalysisState() {
+    setAnalysisState(defaultAnalysisState)
+  }
+
+  async function handleAnalyzeLocation() {
+    if (isReadOnly || !options) {
+      return
+    }
+
+    const analysisInput: LocationAnalysisInput = {
+      title: values.title.trim(),
+      locationId,
+      locationCode,
+      categoryName: selectedCategoryName.trim() || null,
+      departmentName: selectedDepartment?.name?.trim() || null,
+      zoneName: selectedZoneName.trim() || null,
+      formattedAddress: values.formatted_address,
+      googleDepartmentName: values.google_department_name,
+      googleZoneName: values.google_zone_name,
+      latitude: values.lat,
+      longitude: values.lng,
+      approxLatitude: values.approx_lat,
+      approxLongitude: values.approx_lng,
+      showExactLocation: values.show_exact_location,
+      mapVisibility: values.map_visibility,
+      description: values.description.trim() || null,
+      currentFeatureSlugs: selectedFeatures.map((feature) => feature.slug),
+      currentTagSlugs: selectedTags.map((tag) => tag.slug),
+      availableFeatures: (options.features ?? []).map((feature) => ({
+        name: feature.name,
+        slug: feature.slug,
+        group: feature.group,
+        aliases: [],
+      })),
+      availableTags: (options.tags ?? []).map((tag) => ({
+        name: tag.name,
+        slug: tag.slug,
+        category: tag.group,
+        aliases: [],
+      })),
+      images: [
+        ...visiblePersistedImages.map((image) => ({
+          id: image.id,
+          url: image.url,
+          isCover: image.is_cover === true,
+          order: image.sort_order,
+        })),
+        ...pendingImages.map((image) => ({
+          id: image.id,
+          url: image.previewUrl,
+          isCover: image.isCover,
+          order: image.originalIndex,
+        })),
+      ],
+    }
+
+    try {
+      setAnalysisState((currentState) => ({
+        ...currentState,
+        analysisError: null,
+        analysisLoading: true,
+        analysisResult: null,
+        suggestedDescription: null,
+        suggestedFeatures: [],
+        suggestedTags: [],
+      }))
+
+      const result = await locationAnalysisService.analyzeLocation(analysisInput)
+
+      setAnalysisState({
+        analysisError: null,
+        analysisLoading: false,
+        analysisResult: result,
+        suggestedDescription: result.description,
+        suggestedFeatures: result.featureSlugs,
+        suggestedTags: result.tagSlugs,
+      })
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No pudimos analizar la locación.'
+
+      setAnalysisState((currentState) => ({
+        ...currentState,
+        analysisError: message,
+        analysisLoading: false,
+        analysisResult: null,
+        suggestedDescription: null,
+        suggestedFeatures: [],
+        suggestedTags: [],
+      }))
+    }
+  }
+
+  function handleApplyAnalysisChanges() {
+    if (!options || !analysisState.analysisResult) {
+      return
+    }
+
+    const nextSelectedFeatureIds = options.features
+      .filter((feature) =>
+        analysisState.analysisResult?.featureSlugs.includes(feature.slug),
+      )
+      .map((feature) => feature.id)
+    const nextSelectedTagIds = options.tags
+      .filter((tag) => analysisState.analysisResult?.tagSlugs.includes(tag.slug))
+      .map((tag) => tag.id)
+
+    setValues((currentValues) => ({
+      ...currentValues,
+      description: analysisState.analysisResult?.description ?? currentValues.description,
+      selectedFeatureIds: nextSelectedFeatureIds,
+      selectedTagIds: nextSelectedTagIds,
+    }))
+
+    resetAnalysisState()
   }
 
   function handleGooglePlaceSelected(place: ParsedGooglePlaceAddress) {
@@ -1996,6 +2222,7 @@ function markSaveProgressSuccess() {
 
     if (hasFieldErrors(nextFieldErrors)) {
       const firstErrorMessage =
+        nextFieldErrors.title ??
         nextFieldErrors.category_id ??
         nextFieldErrors.address_private ??
         'No pudimos guardar la locación.'
@@ -2205,17 +2432,24 @@ function markSaveProgressSuccess() {
               </div>
 
               <div>
-                <FieldLabel htmlFor="title">
+                <FieldLabel htmlFor="title" required>
                   Título
                 </FieldLabel>
                 <input
                   id="title"
                   name="title"
-                  className={inputClassName()}
+                  className={[
+                    inputClassName(),
+                    getFieldErrorInputClassName(fieldErrors.title),
+                  ].join(' ')}
                   value={values.title}
                   onChange={handleTextChange}
                   readOnly={isReadOnly}
+                  required
                 />
+                {!isReadOnly && fieldErrors.title ? (
+                  <p className="mt-2 text-sm text-red-600">{fieldErrors.title}</p>
+                ) : null}
               </div>
 
               <div>
@@ -2638,18 +2872,6 @@ function markSaveProgressSuccess() {
             </div>
           </div>
 
-          <div>
-            <FieldLabel htmlFor="description">Notas internas</FieldLabel>
-            <textarea
-              id="description"
-              name="description"
-              className={inputClassName()}
-              value={values.description}
-              onChange={handleTextChange}
-              readOnly={isReadOnly}
-              rows={5}
-            />
-          </div>
         </div>
         </LocationGoogleProvider>
       </SectionCard>
@@ -2659,64 +2881,42 @@ function markSaveProgressSuccess() {
         isOpen={isFeaturesSectionOpen}
         onToggle={() => setIsFeaturesSectionOpen((currentValue) => !currentValue)}
       >
-        {featureGroups.length > 0 ? (
-          <div className="space-y-6">
-            {featureGroups.map((featureGroup) => (
-              <div
-                key={featureGroup.group ?? 'ungrouped'}
-                className="space-y-4 py-1"
-              >
-                <div>
-                  <h4 className="text-base font-bold uppercase tracking-[0.14em] text-slate-950">
-                    {formatFeatureGroupLabel(featureGroup.group)}
-                  </h4>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {featureGroup.items.map((feature) => {
-                    const isSelected = values.selectedFeatureIds.includes(feature.id)
-
-                    return (
-                      <label
-                        key={feature.id}
-                        className={[
-                          'flex min-w-0 items-start gap-3 rounded-2xl border px-4 py-3 text-sm transition',
-                          isSelected
-                            ? 'border-[#B8924A] bg-[#0f1723] text-[#B8924A] shadow-sm'
-                            : isReadOnly
-                              ? 'border-slate-200 bg-white text-slate-500'
-                              : 'cursor-pointer border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
-                        ].join(' ')}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleFeatureToggle(feature.id)}
-                          disabled={isSubmitting || isPreparingImages || isReadOnly}
-                          className={[
-                            'mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300',
-                            isSelected
-                              ? 'border-[#B8924A] text-[#B8924A] focus:ring-[rgba(184,146,74,0.20)]'
-                              : 'text-slate-900 focus:ring-slate-300',
-                          ].join(' ')}
-                        />
-                        <span className="min-w-0">
-                          <span className="block font-medium">{feature.name}</span>
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
-            {isReadOnly
-              ? 'Esta locación no tiene características seleccionadas.'
-              : 'No hay features booleanas activas disponibles.'}
-          </div>
-        )}
+        <div className="space-y-8">
+          <LocationAnalysisPanel
+            analysisError={analysisState.analysisError}
+            analysisLoading={analysisState.analysisLoading}
+            analysisResult={analysisState.analysisResult}
+            isDisabled={isSubmitting || isPreparingImages}
+            isReadOnly={isReadOnly}
+            onAnalyze={() => void handleAnalyzeLocation()}
+            onApplyChanges={handleApplyAnalysisChanges}
+            onDiscard={resetAnalysisState}
+            suggestedFeatureNames={suggestedFeatureNames}
+            suggestedTagNames={suggestedTagNames}
+          />
+          <DescriptionEditor
+            className={inputClassName()}
+            description={values.description}
+            isReadOnly={isReadOnly}
+            onChange={handleTextChange}
+          />
+          <TagsEditor
+            availableTags={availableTags}
+            isDisabled={isSubmitting || isPreparingImages}
+            isReadOnly={isReadOnly}
+            onToggle={handleTagToggle}
+            selectedTags={selectedTags}
+            selectedTagIds={values.selectedTagIds}
+          />
+          <FeaturesEditor
+            featureGroups={featureGroups}
+            formatGroupLabel={formatFeatureGroupLabel}
+            isDisabled={isSubmitting || isPreparingImages}
+            isReadOnly={isReadOnly}
+            onToggle={handleFeatureToggle}
+            selectedFeatureIds={values.selectedFeatureIds}
+          />
+        </div>
       </AccordionSectionCard>
 
       <div className="hidden">

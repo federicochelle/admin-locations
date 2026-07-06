@@ -51,12 +51,21 @@ export type LocationFeatureOption = {
   active: boolean | null
 }
 
+export type LocationTagOption = {
+  id: string
+  name: string
+  slug: string
+  group: string | null
+  active: boolean | null
+}
+
 export type LocationFormOptions = {
   owners: LocationOwnerOption[]
   categories: LocationCategoryOption[]
   departments: LocationDepartmentOption[]
   zones: LocationZoneOption[]
   features: LocationFeatureOption[]
+  tags: LocationTagOption[]
 }
 
 export type LocationCreatePayload = {
@@ -86,6 +95,7 @@ export type LocationCreatePayload = {
   show_exact_location: boolean
   map_visibility: string
   selectedFeatureIds: string[]
+  selectedTagIds: string[]
 }
 
 export type LocationUpdatePayload = LocationCreatePayload
@@ -117,6 +127,7 @@ export type LocationFormValues = {
   show_exact_location: boolean
   map_visibility: string
   selectedFeatureIds: string[]
+  selectedTagIds: string[]
 }
 
 export type LocationEditableRecord = {
@@ -148,6 +159,7 @@ export type LocationEditableRecord = {
   show_exact_location: boolean | null
   map_visibility: string | null
   selectedFeatureIds: string[]
+  selectedTagIds: string[]
 }
 
 export type LocationNameRelation =
@@ -200,12 +212,20 @@ export type LocationFeatureRelationRow = {
   feature_id: string | null
 }
 
+export type LocationTagRelationRow = {
+  tag_id: string | null
+}
+
 export type SupabaseLocationEditableRow = Omit<
   LocationEditableRecord,
-  'selectedFeatureIds'
+  'selectedFeatureIds' | 'selectedTagIds'
 > & {
   location_features:
     | LocationFeatureRelationRow
     | LocationFeatureRelationRow[]
+    | null
+  location_tags:
+    | LocationTagRelationRow
+    | LocationTagRelationRow[]
     | null
 }

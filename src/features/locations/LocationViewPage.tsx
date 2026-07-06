@@ -61,6 +61,7 @@ function mapRecordToFormValues(record: LocationEditableRecord): LocationFormValu
     show_exact_location: record.show_exact_location ?? false,
     map_visibility: record.map_visibility ?? 'public',
     selectedFeatureIds: record.selectedFeatureIds,
+    selectedTagIds: record.selectedTagIds,
   }
 }
 
