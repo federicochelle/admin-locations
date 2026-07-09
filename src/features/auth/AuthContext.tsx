@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type PropsWithChildren,
 } from 'react'
@@ -23,10 +24,16 @@ function AuthProvider({ children }: PropsWithChildren) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(false)
   const currentUser = session?.user ?? null
+  const activeProfileRequestIdRef = useRef(0)
+  const expectedProfileUserIdRef = useRef<string | null>(null)
 
   const loadProfileForUser = useCallback(async (userId: string | null) => {
+    const requestId = activeProfileRequestIdRef.current + 1
+    activeProfileRequestIdRef.current = requestId
+    expectedProfileUserIdRef.current = userId
+    setProfile(null)
+
     if (!userId) {
-      setProfile(null)
       setIsProfileLoading(false)
       return
     }
@@ -47,12 +54,38 @@ function AuthProvider({ children }: PropsWithChildren) {
         throw error
       }
 
-      setProfile((data ?? null) as Profile | null)
+      if (
+        activeProfileRequestIdRef.current !== requestId ||
+        expectedProfileUserIdRef.current !== userId
+      ) {
+        return
+      }
+
+      const nextProfile = (data ?? null) as Profile | null
+
+      if (!nextProfile || nextProfile.user_id !== userId) {
+        setProfile(null)
+        return
+      }
+
+      setProfile(nextProfile)
     } catch (error) {
+      if (
+        activeProfileRequestIdRef.current !== requestId ||
+        expectedProfileUserIdRef.current !== userId
+      ) {
+        return
+      }
+
       console.warn('No pudimos cargar el profile del usuario autenticado.', error)
       setProfile(null)
     } finally {
-      setIsProfileLoading(false)
+      if (
+        activeProfileRequestIdRef.current === requestId &&
+        expectedProfileUserIdRef.current === userId
+      ) {
+        setIsProfileLoading(false)
+      }
     }
   }, [])
 
@@ -69,6 +102,8 @@ function AuthProvider({ children }: PropsWithChildren) {
           return
         }
 
+        expectedProfileUserIdRef.current = nextSession?.user.id ?? null
+        setProfile(null)
         setSession(nextSession)
         await loadProfileForUser(nextSession?.user.id ?? null)
       })
@@ -97,6 +132,8 @@ function AuthProvider({ children }: PropsWithChildren) {
         return
       }
 
+      expectedProfileUserIdRef.current = nextSession?.user.id ?? null
+      setProfile(null)
       setSession(nextSession)
       setIsLoading(false)
       void loadProfileForUser(nextSession?.user.id ?? null)

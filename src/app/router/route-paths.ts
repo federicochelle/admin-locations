@@ -12,6 +12,9 @@ export const routePaths = {
   categoryNew: '/categories/new',
   categoryEditPattern: '/categories/:id/edit',
   activity: '/activity',
+  requests: '/requests',
+  proposals: '/proposals',
+  proposalDetailPattern: '/proposals/:id',
   features: '/features',
   featureNew: '/features/new',
   featureEditPattern: '/features/:id/edit',
@@ -36,4 +39,8 @@ export function getCategoryEditPath(id: string) {
 
 export function getFeatureEditPath(id: string) {
   return `/features/${id}/edit`
+}
+
+export function getProposalDetailPath(id: string) {
+  return `/proposals/${id}`
 }

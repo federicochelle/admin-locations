@@ -19,6 +19,9 @@ import FeaturesPage from '../../features/features-admin/FeaturesPage'
 import FeatureCreatePage from '../../features/features-admin/FeatureCreatePage'
 import FeatureEditPage from '../../features/features-admin/FeatureEditPage'
 import SettingsPage from '../../features/settings/SettingsPage'
+import AdminLocationRequestsPage from '../../features/requests-admin/AdminLocationRequestsPage'
+import ProposalDetailPage from '../../features/proposals/ProposalDetailPage'
+import ProposalsPage from '../../features/proposals/ProposalsPage'
 
 export const router = createBrowserRouter([
   {
@@ -83,6 +86,18 @@ export const router = createBrowserRouter([
           {
             path: routePaths.activity.slice(1),
             element: <ActivityHistoryPage />,
+          },
+          {
+            path: routePaths.requests.slice(1),
+            element: <AdminLocationRequestsPage />,
+          },
+          {
+            path: routePaths.proposals.slice(1),
+            element: <ProposalsPage />,
+          },
+          {
+            path: routePaths.proposalDetailPattern.slice(1),
+            element: <ProposalDetailPage />,
           },
           {
             path: routePaths.features.slice(1),
