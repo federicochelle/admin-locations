@@ -20,6 +20,7 @@ import FeatureCreatePage from '../../features/features-admin/FeatureCreatePage'
 import FeatureEditPage from '../../features/features-admin/FeatureEditPage'
 import SettingsPage from '../../features/settings/SettingsPage'
 import AdminLocationRequestsPage from '../../features/requests-admin/AdminLocationRequestsPage'
+import AdminRequestDetailPage from '../../features/requests-admin/AdminRequestDetailPage'
 import ProposalDetailPage from '../../features/proposals/ProposalDetailPage'
 import ProposalsPage from '../../features/proposals/ProposalsPage'
 
@@ -90,6 +91,10 @@ export const router = createBrowserRouter([
           {
             path: routePaths.requests.slice(1),
             element: <AdminLocationRequestsPage />,
+          },
+          {
+            path: routePaths.requestDetailPattern.slice(1),
+            element: <AdminRequestDetailPage />,
           },
           {
             path: routePaths.proposals.slice(1),

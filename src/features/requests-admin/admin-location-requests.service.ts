@@ -1,6 +1,8 @@
 import { getSupabaseClient } from '../../lib/supabase'
 import type {
   AdminLocationRequest,
+  AdminLocationRequestDetail,
+  AdminRequestLocation,
   LocationRequestStatus,
 } from './admin-location-requests.types'
 
@@ -20,32 +22,43 @@ type LocationImageRelation =
     }[]
   | null
 
-type LocationRequestLocationRelation =
-  | {
-      id: string
-      title: string
-      location_code: string | null
-      location_images: LocationImageRelation
-      categories: NameRelation
-    }
-  | {
-      id: string
-      title: string
-      location_code: string | null
-      location_images: LocationImageRelation
-      categories: NameRelation
-    }[]
+type RequestProjectLocationItem = {
+  location_id: string
+  locations:
+    | {
+        id: string
+        title: string | null
+        location_code?: string | null
+        location_images?: LocationImageRelation
+        categories?: NameRelation
+        departments?: NameRelation
+        zones?: NameRelation
+      }
+    | {
+        id: string
+        title: string | null
+        location_code?: string | null
+        location_images?: LocationImageRelation
+        categories?: NameRelation
+        departments?: NameRelation
+        zones?: NameRelation
+      }[]
+    | null
+}
+
+type RequestProjectLocationRelation =
+  | RequestProjectLocationItem[]
   | null
 
-type LocationRequestRow = {
+type RequestProjectRow = {
   id: string
   user_id: string
-  location_id: string
+  title: string | null
   message: string | null
   status: LocationRequestStatus
   created_at: string
   updated_at: string | null
-  locations: LocationRequestLocationRelation
+  request_project_locations: RequestProjectLocationRelation
 }
 
 type ProfileRow = {
@@ -69,7 +82,26 @@ function getRelationName(relation: NameRelation) {
 }
 
 function getLocationRelation(
-  relation: LocationRequestLocationRelation,
+  relation:
+    | {
+        id: string
+        title: string | null
+        location_code?: string | null
+        location_images?: LocationImageRelation
+        categories?: NameRelation
+        departments?: NameRelation
+        zones?: NameRelation
+      }
+    | {
+        id: string
+        title: string | null
+        location_code?: string | null
+        location_images?: LocationImageRelation
+        categories?: NameRelation
+        departments?: NameRelation
+        zones?: NameRelation
+      }[]
+    | null,
 ) {
   if (!relation) {
     return null
@@ -88,36 +120,67 @@ function getCoverImageUrl(images: LocationImageRelation) {
   return coverImage?.url ?? null
 }
 
+function getLocationNames(relation: RequestProjectLocationRelation): string[] {
+  if (!relation || relation.length === 0) {
+    return []
+  }
+
+  const names = relation
+    .map((item) => getLocationRelation(item.locations)?.title?.trim() || null)
+    .filter((value): value is string => Boolean(value))
+
+  return Array.from(new Set(names))
+}
+
+function mapLocationItemToDetail(item: RequestProjectLocationItem): AdminRequestLocation | null {
+  const location = getLocationRelation(item.locations)
+
+  if (!location) {
+    return null
+  }
+
+  return {
+    id: location.id,
+    title: location.title?.trim() || 'Locacion sin titulo',
+    locationCode: location.location_code?.trim() || null,
+    coverImageUrl: getCoverImageUrl(location.location_images ?? null),
+    categoryName: getRelationName(location.categories ?? null)?.trim() || null,
+    departmentName: getRelationName(location.departments ?? null)?.trim() || null,
+    zoneName: getRelationName(location.zones ?? null)?.trim() || null,
+  }
+}
+
 export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]> {
   const supabase = getSupabaseClient()
 
   const { data: requestsData, error: requestsError } = await supabase
-    .from('location_requests')
+    .from('request_projects')
     .select(
       `
         id,
         user_id,
-        location_id,
+        title,
         message,
         status,
         created_at,
         updated_at,
-        locations(
-          id,
-          title,
-          location_code,
-          location_images(url, is_cover),
-          categories(name)
+        request_project_locations(
+          location_id,
+          locations(
+            id,
+            title
+          )
         )
       `,
     )
+    .neq('status', 'draft')
     .order('created_at', { ascending: false })
 
   if (requestsError) {
     throw new Error(requestsError.message)
   }
 
-  const requestRows = (requestsData ?? []) as LocationRequestRow[]
+  const requestRows = (requestsData ?? []) as RequestProjectRow[]
   const uniqueUserIds = Array.from(new Set(requestRows.map((row) => row.user_id)))
 
   let profilesByUserId = new Map<string, ProfileRow>()
@@ -141,13 +204,17 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
   }
 
   return requestRows.map((row) => {
-    const location = getLocationRelation(row.locations)
     const profile = profilesByUserId.get(row.user_id) ?? null
+    const locationNames = getLocationNames(row.request_project_locations)
+    const title = row.title?.trim()
 
     return {
       id: row.id,
       userId: row.user_id,
-      locationId: row.location_id,
+      title:
+        title && title.length > 0
+          ? title
+          : locationNames[0] ?? 'Solicitud sin titulo',
       message: row.message?.trim() || null,
       status: row.status,
       createdAt: row.created_at,
@@ -156,10 +223,8 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
       requesterEmail: profile?.email?.trim() || null,
       requesterCompanyName: profile?.company_name?.trim() || null,
       requesterPhone: profile?.phone?.trim() || null,
-      locationTitle: location?.title?.trim() || 'Locación sin título',
-      locationCode: location?.location_code?.trim() || null,
-      locationCoverImageUrl: getCoverImageUrl(location?.location_images ?? null),
-      locationCategoryName: getRelationName(location?.categories ?? null),
+      locationCount: locationNames.length,
+      locationNames,
     }
   })
 }
@@ -171,7 +236,7 @@ export async function updateAdminLocationRequestStatus(
   const supabase = getSupabaseClient()
 
   const { data, error } = await supabase
-    .from('location_requests')
+    .from('request_projects')
     .update({ status })
     .eq('id', requestId)
     .select('id')
@@ -186,4 +251,90 @@ export async function updateAdminLocationRequestStatus(
   }
 
   return data.id
+}
+
+export async function getAdminLocationRequestById(
+  requestId: string,
+): Promise<AdminLocationRequestDetail> {
+  const supabase = getSupabaseClient()
+
+  const { data, error } = await supabase
+    .from('request_projects')
+    .select(
+      `
+        id,
+        user_id,
+        title,
+        message,
+        status,
+        created_at,
+        updated_at,
+        request_project_locations(
+          location_id,
+          locations(
+            id,
+            title,
+            location_code,
+            location_images(url, is_cover),
+            categories(name),
+            departments(name),
+            zones(name)
+          )
+        )
+      `,
+    )
+    .eq('id', requestId)
+    .neq('status', 'draft')
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const row = (data ?? null) as RequestProjectRow | null
+
+  if (!row) {
+    throw new Error('REQUEST_NOT_FOUND')
+  }
+
+  let profile: ProfileRow | null = null
+
+  if (row.user_id) {
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('user_id, full_name, email, company_name, phone')
+      .eq('user_id', row.user_id)
+      .maybeSingle()
+
+    if (profileError) {
+      throw new Error(profileError.message)
+    }
+
+    profile = (profileData ?? null) as ProfileRow | null
+  }
+
+  const locations =
+    row.request_project_locations
+      ?.map(mapLocationItemToDetail)
+      .filter((location): location is AdminRequestLocation => location !== null) ?? []
+
+  const title = row.title?.trim()
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    title:
+      title && title.length > 0
+        ? title
+        : locations[0]?.title ?? 'Solicitud sin titulo',
+    message: row.message?.trim() || null,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    requesterFullName: profile?.full_name?.trim() || null,
+    requesterEmail: profile?.email?.trim() || null,
+    requesterCompanyName: profile?.company_name?.trim() || null,
+    requesterPhone: profile?.phone?.trim() || null,
+    locations,
+  }
 }

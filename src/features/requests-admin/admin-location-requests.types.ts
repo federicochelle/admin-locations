@@ -1,13 +1,11 @@
 export type LocationRequestStatus =
-  | 'pending'
-  | 'in_review'
-  | 'contacted'
+  | 'submitted'
   | 'closed'
 
 export type AdminLocationRequest = {
   id: string
   userId: string
-  locationId: string
+  title: string
   message: string | null
   status: LocationRequestStatus
   createdAt: string
@@ -16,18 +14,39 @@ export type AdminLocationRequest = {
   requesterEmail: string | null
   requesterCompanyName: string | null
   requesterPhone: string | null
-  locationTitle: string
+  locationCount: number
+  locationNames: string[]
+}
+
+export type AdminRequestLocation = {
+  id: string
+  title: string
   locationCode: string | null
-  locationCoverImageUrl: string | null
-  locationCategoryName: string | null
+  coverImageUrl: string | null
+  categoryName: string | null
+  departmentName: string | null
+  zoneName: string | null
+}
+
+export type AdminLocationRequestDetail = {
+  id: string
+  userId: string
+  title: string
+  message: string | null
+  status: LocationRequestStatus
+  createdAt: string
+  updatedAt: string | null
+  requesterFullName: string | null
+  requesterEmail: string | null
+  requesterCompanyName: string | null
+  requesterPhone: string | null
+  locations: AdminRequestLocation[]
 }
 
 export const LOCATION_REQUEST_STATUS_OPTIONS: Array<{
   label: string
   value: LocationRequestStatus
 }> = [
-  { value: 'pending', label: 'Pendiente' },
-  { value: 'in_review', label: 'En revisión' },
-  { value: 'contacted', label: 'Contactado' },
-  { value: 'closed', label: 'Cerrado' },
+  { value: 'submitted', label: 'Pendiente' },
+  { value: 'closed', label: 'Finalizada' },
 ]

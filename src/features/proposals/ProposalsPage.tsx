@@ -8,7 +8,6 @@ import PageContainer from '../../components/ui/PageContainer'
 import ProposalsTable from './ProposalsTable'
 import { useProposalSubmissions } from './useProposalSubmissions'
 import {
-  PROPOSAL_STATUS_OPTIONS,
   type ProposalStatus,
 } from './proposal-submissions.types'
 
@@ -42,35 +41,6 @@ function ProposalsPage() {
       description="Gestioná las postulaciones recibidas desde la web pública y revisá su estado de seguimiento."
       hideHeader
     >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm text-slate-300">
-            {filteredProposals.length} de {proposals.length} propuestas visibles
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-slate-100" htmlFor="proposal-status-filter">
-            Estado
-          </label>
-          <select
-            id="proposal-status-filter"
-            value={selectedStatus}
-            onChange={(event) =>
-              setSelectedStatus(event.target.value as 'all' | ProposalStatus)
-            }
-            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-          >
-            <option value="all">Todos</option>
-            {PROPOSAL_STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
       {isLoading ? (
         <Card>
           <div className="flex min-h-48 items-center justify-center">
@@ -115,7 +85,12 @@ function ProposalsPage() {
       ) : null}
 
       {!isLoading && !errorMessage && filteredProposals.length > 0 ? (
-        <ProposalsTable proposals={filteredProposals} />
+        <ProposalsTable
+          proposals={filteredProposals}
+          totalCount={proposals.length}
+          selectedStatus={selectedStatus}
+          onSelectedStatusChange={setSelectedStatus}
+        />
       ) : null}
     </PageContainer>
   )
