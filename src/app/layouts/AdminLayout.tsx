@@ -1,9 +1,27 @@
-import { Outlet } from 'react-router-dom'
+import { Navigate, Outlet } from 'react-router-dom'
 import Header from '../../components/navigation/Header'
 import Sidebar from '../../components/navigation/Sidebar'
+import { routePaths } from '../router/route-paths'
+import { hasActiveAdminAccess } from '../../features/auth/auth-context'
+import useAuth from '../../features/auth/useAuth'
 import { LayoutHeaderProvider } from './LayoutHeaderContext'
 
 function AdminLayout() {
+  const { currentUser, isLoading, isProfileLoading, profile } = useAuth()
+  const hasAuthorizedAdminAccess = hasActiveAdminAccess(currentUser, profile)
+
+  if (isLoading || (currentUser && isProfileLoading)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100 px-6">
+        <p className="text-sm text-slate-600">Verificando permisos...</p>
+      </div>
+    )
+  }
+
+  if (!hasAuthorizedAdminAccess) {
+    return <Navigate to={routePaths.login} replace />
+  }
+
   return (
     <LayoutHeaderProvider>
       <div className="min-h-screen bg-black text-slate-900">

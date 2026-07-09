@@ -25,3 +25,16 @@ export type AuthContextValue = {
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null)
+
+export function hasActiveAdminAccess(
+  currentUser: User | null,
+  profile: Profile | null,
+): boolean {
+  return Boolean(
+    currentUser &&
+      profile &&
+      profile.user_id === currentUser.id &&
+      profile.role === 'admin' &&
+      profile.status === 'active',
+  )
+}

@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import Button from '../../components/ui/Button'
 import { routePaths } from '../../app/router/route-paths'
-import { getCurrentSession, signIn } from './auth.service'
+import { signIn } from './auth.service'
+import { hasActiveAdminAccess } from './auth-context'
+import useAuth from './useAuth'
 import logo from '../../../logo.webp'
 
 function inputClassName() {
@@ -49,44 +51,13 @@ function EyeOffIcon() {
 
 function LoginPage() {
   const navigate = useNavigate()
+  const { currentUser, isLoading, isProfileLoading, profile } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [hasSession, setHasSession] = useState(false)
-  const [isCheckingSession, setIsCheckingSession] = useState(true)
-
-  useEffect(() => {
-    let isActive = true
-
-    void getCurrentSession()
-      .then((session) => {
-        if (!isActive) {
-          return
-        }
-
-        setHasSession(Boolean(session))
-      })
-      .catch(() => {
-        if (!isActive) {
-          return
-        }
-
-        setHasSession(false)
-      })
-      .finally(() => {
-        if (!isActive) {
-          return
-        }
-
-        setIsCheckingSession(false)
-      })
-
-    return () => {
-      isActive = false
-    }
-  }, [])
+  const hasAuthorizedAdminAccess = hasActiveAdminAccess(currentUser, profile)
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -109,15 +80,15 @@ function LoginPage() {
     }
   }
 
-  if (isCheckingSession) {
+  if (isLoading || (currentUser && isProfileLoading)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-black px-6">
-        <p className="text-sm text-slate-300">Verificando sesión...</p>
+        <p className="text-sm text-slate-300">Verificando permisos...</p>
       </div>
     )
   }
 
-  if (hasSession) {
+  if (hasAuthorizedAdminAccess) {
     return <Navigate to={routePaths.dashboard} replace />
   }
 
