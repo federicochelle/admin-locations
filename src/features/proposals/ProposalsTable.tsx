@@ -6,14 +6,26 @@ import {
   formatOptionalField,
   formatProposalDateTime,
 } from './proposal-submissions.helpers'
-import type { ProposalListItem } from './proposal-submissions.types'
+import {
+  PROPOSAL_STATUS_OPTIONS,
+  type ProposalListItem,
+  type ProposalStatus,
+} from './proposal-submissions.types'
 import ProposalStatusBadge from './ProposalStatusBadge'
 
 type ProposalsTableProps = {
   proposals: ProposalListItem[]
+  totalCount: number
+  selectedStatus: 'all' | ProposalStatus
+  onSelectedStatusChange: (status: 'all' | ProposalStatus) => void
 }
 
-function ProposalsTable({ proposals }: ProposalsTableProps) {
+function ProposalsTable({
+  proposals,
+  totalCount,
+  selectedStatus,
+  onSelectedStatusChange,
+}: ProposalsTableProps) {
   const navigate = useNavigate()
 
   function isInteractiveEventTarget(target: EventTarget | null) {
@@ -42,33 +54,57 @@ function ProposalsTable({ proposals }: ProposalsTableProps) {
   return (
     <Card className="overflow-hidden p-0">
       <div className="border-b border-slate-200 px-6 py-5">
-        <h2 className="text-lg font-semibold text-slate-950">Listado de propuestas</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          {proposals.length} propuestas encontradas
-        </p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">Listado de propuestas</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              {proposals.length} de {totalCount} propuestas visibles
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-slate-700" htmlFor="proposal-status-filter">
+              Estado
+            </label>
+            <select
+              id="proposal-status-filter"
+              value={selectedStatus}
+              onChange={(event) =>
+                onSelectedStatusChange(event.target.value as 'all' | ProposalStatus)
+              }
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="all">Todos</option>
+              {PROPOSAL_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-200">
-          <thead className="bg-slate-50">
+          <thead className="bg-[#f3f2ee]">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Estado</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Fecha</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Nombre</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Email</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Teléfono</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Título</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Departamento</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Zona</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Acción</th>
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Fecha</th>
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Nombre</th>
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Email</th>
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Teléfono</th>
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Estado</th>
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Departamento</th>
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Zona</th>
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Acción</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 bg-white/95 backdrop-blur-sm">
+          <tbody className="divide-y divide-slate-200 bg-transparent">
             {proposals.map((proposal) => (
               <tr
                 key={proposal.id}
                 tabIndex={0}
-                className="cursor-pointer align-top transition hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
+                className="cursor-pointer align-top transition hover:bg-[rgba(184,146,74,0.10)] focus-visible:bg-[rgba(184,146,74,0.10)] focus-visible:outline-none"
                 onClick={(event) => handleRowNavigation(proposal.id, event)}
                 onKeyDown={(event) => {
                   if (event.key !== 'Enter' && event.key !== ' ') {
@@ -79,11 +115,6 @@ function ProposalsTable({ proposals }: ProposalsTableProps) {
                   handleRowNavigation(proposal.id, event)
                 }}
               >
-                <td className="px-6 py-4 text-sm text-slate-900">
-                  <div className="min-w-[150px]">
-                    <ProposalStatusBadge status={proposal.status} />
-                  </div>
-                </td>
                 <td className="px-6 py-4 text-sm text-slate-600">
                   <div className="min-w-[160px]">{formatProposalDateTime(proposal.createdAt)}</div>
                 </td>
@@ -97,7 +128,9 @@ function ProposalsTable({ proposals }: ProposalsTableProps) {
                   <div className="min-w-[160px]">{proposal.ownerPhone}</div>
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-900">
-                  <div className="min-w-[220px] font-medium">{proposal.title}</div>
+                  <div className="min-w-[150px]">
+                    <ProposalStatusBadge status={proposal.status} />
+                  </div>
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-600">
                   <div className="min-w-[160px]">{formatOptionalField(proposal.department)}</div>
