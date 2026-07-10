@@ -1,12 +1,10 @@
-import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useMemo } from 'react'
+import { useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import { routePaths } from '../../app/router/route-paths'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import PageContainer from '../../components/ui/PageContainer'
-import { buttonBaseClassName, buttonVariantClasses } from '../../components/ui/button.styles'
-import ProposalStatusBadge from './ProposalStatusBadge'
 import {
   formatOptionalField,
   formatProposalDateTime,
@@ -37,6 +35,38 @@ function inputClassName() {
   return 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
 }
 
+function fieldValueClassName() {
+  return 'text-sm leading-6 text-slate-700'
+}
+
+function ReadOnlyField({
+  children,
+  label,
+}: {
+  children: React.ReactNode
+  label: string
+}) {
+  const normalizedValue =
+    typeof children === 'string' || typeof children === 'number'
+      ? String(children)
+      : null
+
+  return (
+    <div>
+      <p className="mb-2 block text-sm font-medium text-slate-700">{label}</p>
+      {normalizedValue !== null ? (
+        <input
+          readOnly
+          value={normalizedValue}
+          className={[inputClassName(), 'font-medium'].join(' ')}
+        />
+      ) : (
+        <div className={fieldValueClassName()}>{children}</div>
+      )}
+    </div>
+  )
+}
+
 function ProposalManagementCard({
   isSaving,
   proposal,
@@ -46,22 +76,17 @@ function ProposalManagementCard({
   proposal: ProposalDetails
   onSave: (status: ProposalStatus, adminNotes: string) => Promise<void>
 }) {
-  const [draftStatus, setDraftStatus] = useState<ProposalStatus>(proposal.status)
-  const [draftAdminNotes, setDraftAdminNotes] = useState(proposal.adminNotes ?? '')
-
-  const hasPendingChanges =
-    draftStatus !== proposal.status ||
-    draftAdminNotes.trim() !== (proposal.adminNotes ?? '').trim()
-
   return (
-    <div className="w-full max-w-sm space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <div>
+    <div className="w-full sm:max-w-xs">
         <FieldLabel htmlFor="proposal-status">Estado interno</FieldLabel>
         <select
           id="proposal-status"
-          value={draftStatus}
+          value={proposal.status}
           onChange={(event) =>
-            setDraftStatus(event.target.value as ProposalStatus)
+            void onSave(
+              event.target.value as ProposalStatus,
+              proposal.adminNotes ?? '',
+            )
           }
           disabled={isSaving}
           className={inputClassName()}
@@ -72,29 +97,6 @@ function ProposalManagementCard({
             </option>
           ))}
         </select>
-      </div>
-
-      <div>
-        <FieldLabel htmlFor="proposal-admin-notes">Notas internas</FieldLabel>
-        <textarea
-          id="proposal-admin-notes"
-          rows={5}
-          value={draftAdminNotes}
-          onChange={(event) => setDraftAdminNotes(event.target.value)}
-          disabled={isSaving}
-          className={inputClassName()}
-          placeholder="Agregá notas internas para seguimiento, coordinación o decisión."
-        />
-      </div>
-
-      <div className="flex justify-end">
-        <Button
-          onClick={() => void onSave(draftStatus, draftAdminNotes)}
-          disabled={!hasPendingChanges || isSaving}
-        >
-          {isSaving ? 'Guardando...' : 'Guardar cambios'}
-        </Button>
-      </div>
     </div>
   )
 }
@@ -136,24 +138,6 @@ function ProposalDetailPage() {
       description="Revisá la información enviada desde la web pública, consultá la galería y actualizá el estado interno."
       hideHeader
     >
-      <div className="flex flex-wrap items-center gap-3">
-        <Link
-          to={routePaths.proposals}
-          className={[buttonBaseClassName, buttonVariantClasses.secondary].join(' ')}
-        >
-          Volver a propuestas
-        </Link>
-        {!isLoading && !errorMessage ? (
-          <button
-            type="button"
-            onClick={() => void reload()}
-            className="text-sm font-medium text-slate-300 hover:text-white"
-          >
-            Actualizar vista
-          </button>
-        ) : null}
-      </div>
-
       {isLoading ? (
         <Card>
           <div className="flex min-h-48 items-center justify-center">
@@ -215,165 +199,99 @@ function ProposalDetailPage() {
           ) : null}
 
           <Card>
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <ProposalStatusBadge status={proposal.status} />
-                  <p className="text-sm text-slate-500">
-                    Recibida el {formatProposalDateTime(proposal.createdAt)}
+            <div className="space-y-8">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h3 className="text-2xl font-semibold tracking-tight text-slate-950">
+                    Datos de la propuesta
+                  </h3>
+                  <p className="mt-2 text-sm font-medium leading-6 text-slate-700">
+                    {formatProposalDateTime(proposal.createdAt)}
                   </p>
                 </div>
-                <div>
-                  <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
-                    {proposal.title}
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {formatOptionalField(proposal.department)}
-                    {' · '}
-                    {formatOptionalField(proposal.zone)}
-                  </p>
+
+                <ProposalManagementCard
+                  key={`${proposal.id}:${proposal.updatedAt ?? proposal.status}:${proposal.adminNotes ?? ''}`}
+                  proposal={proposal}
+                  isSaving={isSaving}
+                  onSave={save}
+                />
+              </div>
+
+              <div className="grid gap-8 lg:grid-cols-2">
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-2xl font-semibold tracking-tight text-slate-950">
+                      Datos de la locación propuesta
+                    </h3>
+                  </div>
+
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <ReadOnlyField label="Título">
+                        {proposal.title}
+                      </ReadOnlyField>
+                    </div>
+                    <ReadOnlyField label="Departamento">
+                      {formatOptionalField(proposal.department)}
+                    </ReadOnlyField>
+                    <ReadOnlyField label="Zona">
+                      {formatOptionalField(proposal.zone)}
+                    </ReadOnlyField>
+                    <div className="sm:col-span-2">
+                      <ReadOnlyField label="Dirección">
+                        {formatOptionalField(proposal.address)}
+                      </ReadOnlyField>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <ReadOnlyField label="Tipo de locación">
+                        {formatOptionalField(proposal.locationType)}
+                      </ReadOnlyField>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-2xl font-semibold tracking-tight text-slate-950">
+                      Datos del postulante
+                    </h3>
+                  </div>
+
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <ReadOnlyField label="Nombre">
+                      {proposal.ownerName}
+                    </ReadOnlyField>
+                    <ReadOnlyField label="Teléfono">
+                      {proposal.ownerPhone}
+                    </ReadOnlyField>
+                    <div className="sm:col-span-2">
+                      <ReadOnlyField label="Email">
+                        {proposal.ownerEmail}
+                      </ReadOnlyField>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <ProposalManagementCard
-                key={`${proposal.id}:${proposal.updatedAt ?? proposal.status}:${proposal.adminNotes ?? ''}`}
-                proposal={proposal}
-                isSaving={isSaving}
-                onSave={save}
-              />
-            </div>
-          </Card>
-
-          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <Card>
-              <div className="space-y-6">
+              <div className="space-y-6 border-t border-slate-200 pt-6">
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-950">
-                    Datos del propietario
+                  <h3 className="text-2xl font-semibold tracking-tight text-slate-950">
+                    Descripción
                   </h3>
                 </div>
 
-                <div className="grid gap-5 md:grid-cols-2">
-                  <div>
-                    <FieldLabel htmlFor="proposal-owner-name">Nombre</FieldLabel>
-                    <input
-                      id="proposal-owner-name"
-                      readOnly
-                      value={proposal.ownerName}
-                      className={inputClassName()}
-                    />
-                  </div>
-                  <div>
-                    <FieldLabel htmlFor="proposal-owner-phone">Teléfono</FieldLabel>
-                    <input
-                      id="proposal-owner-phone"
-                      readOnly
-                      value={proposal.ownerPhone}
-                      className={inputClassName()}
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <FieldLabel htmlFor="proposal-owner-email">Email</FieldLabel>
-                    <input
-                      id="proposal-owner-email"
-                      readOnly
-                      value={proposal.ownerEmail}
-                      className={inputClassName()}
-                    />
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            <Card>
-              <div className="space-y-6">
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-950">
-                    Datos de la locación propuesta
-                  </h3>
-                </div>
-
-                <div className="grid gap-5 md:grid-cols-2">
-                  <div className="md:col-span-2">
-                    <FieldLabel htmlFor="proposal-title">Título</FieldLabel>
-                    <input
-                      id="proposal-title"
-                      readOnly
-                      value={proposal.title}
-                      className={inputClassName()}
-                    />
-                  </div>
-                  <div>
-                    <FieldLabel htmlFor="proposal-department">Departamento</FieldLabel>
-                    <input
-                      id="proposal-department"
-                      readOnly
-                      value={formatOptionalField(proposal.department)}
-                      className={inputClassName()}
-                    />
-                  </div>
-                  <div>
-                    <FieldLabel htmlFor="proposal-zone">Zona</FieldLabel>
-                    <input
-                      id="proposal-zone"
-                      readOnly
-                      value={formatOptionalField(proposal.zone)}
-                      className={inputClassName()}
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <FieldLabel htmlFor="proposal-address">Dirección</FieldLabel>
-                    <input
-                      id="proposal-address"
-                      readOnly
-                      value={formatOptionalField(proposal.address)}
-                      className={inputClassName()}
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <FieldLabel htmlFor="proposal-location-type">Tipo de locación</FieldLabel>
-                    <input
-                      id="proposal-location-type"
-                      readOnly
-                      value={formatOptionalField(proposal.locationType)}
-                      className={inputClassName()}
-                    />
-                  </div>
+                  <ReadOnlyField label="">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                      <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                        {proposal.description ?? '-'}
+                      </p>
+                    </div>
+                  </ReadOnlyField>
                 </div>
               </div>
-            </Card>
-          </div>
 
-          <Card>
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-950">
-                  Descripción y mensaje
-                </h3>
-              </div>
-
-              <div className="grid gap-5 lg:grid-cols-2">
-                <div>
-                  <FieldLabel htmlFor="proposal-description">Descripción</FieldLabel>
-                  <textarea
-                    id="proposal-description"
-                    readOnly
-                    rows={6}
-                    value={proposal.description ?? '-'}
-                    className={inputClassName()}
-                  />
-                </div>
-                <div>
-                  <FieldLabel htmlFor="proposal-message">Mensaje</FieldLabel>
-                  <textarea
-                    id="proposal-message"
-                    readOnly
-                    rows={6}
-                    value={proposal.message ?? '-'}
-                    className={inputClassName()}
-                  />
-                </div>
-              </div>
             </div>
           </Card>
 

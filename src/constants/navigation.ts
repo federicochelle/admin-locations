@@ -84,8 +84,8 @@ export const navigationItems: NavigationItem[] = [
     },
   },
   {
-    disabled: true,
     label: 'Reservas',
+    to: routePaths.reservations,
     icon: {
       paths: [
         'M8 3v3M16 3v3M4 9h16M5 6.5h14A1.5 1.5 0 0 1 20.5 8v10A2.5 2.5 0 0 1 18 20.5H6A2.5 2.5 0 0 1 3.5 18V8A1.5 1.5 0 0 1 5 6.5Z',

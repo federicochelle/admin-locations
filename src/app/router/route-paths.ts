@@ -12,6 +12,7 @@ export const routePaths = {
   categoryNew: '/categories/new',
   categoryEditPattern: '/categories/:id/edit',
   activity: '/activity',
+  reservations: '/reservations',
   requests: '/requests',
   requestDetailPattern: '/requests/:id',
   proposals: '/proposals',
