@@ -15,6 +15,25 @@ import ReservationViewToggle from './ReservationViewToggle'
 import { useReservations } from './useReservations'
 import type { ReservationFormValues, ReservationListItem } from './reservations.types'
 
+function PlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 5v14M5 12h14"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function toIsoDateTime(value: string) {
   return new Date(value).toISOString()
 }
@@ -152,6 +171,19 @@ function ReservationsPage() {
     return update(selectedReservation.id, payload)
   }
 
+  const reservationHeaderActions = (
+    <div className="flex flex-col items-stretch gap-3 sm:items-end">
+      <ReservationViewToggle
+        value={activeView}
+        onChange={setActiveView}
+      />
+      <Button className="gap-2" onClick={handleOpenCreateDialog}>
+        <PlusIcon />
+        Nueva reserva
+      </Button>
+    </div>
+  )
+
   return (
     <PageContainer
       title="Reservas"
@@ -244,22 +276,10 @@ function ReservationsPage() {
 
       {!isLoading && !errorMessage && reservations.length > 0 ? (
         <>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button onClick={handleOpenCreateDialog}>
-              Nueva reserva
-            </Button>
-
-            <div className="flex justify-end">
-              <ReservationViewToggle
-                value={activeView}
-                onChange={setActiveView}
-              />
-            </div>
-          </div>
-
           {activeView === 'calendar' ? (
             <ReservationsCalendar
               currentMonth={currentMonth}
+              headerActions={reservationHeaderActions}
               onMonthChange={(date) => setCurrentMonth(startOfMonth(date))}
               onOpenReservation={handleOpenEditDialog}
               onSelectDay={handleOpenCreateDialogForDay}
@@ -268,7 +288,7 @@ function ReservationsPage() {
           ) : (
             <ReservationTable
               activeActionKey={activeActionKey}
-              onCreate={handleOpenCreateDialog}
+              headerActions={reservationHeaderActions}
               onDelete={handleDelete}
               onEdit={handleOpenEditDialog}
               reservations={reservations}

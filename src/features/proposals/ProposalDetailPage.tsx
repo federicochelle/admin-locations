@@ -6,8 +6,9 @@ import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import PageContainer from '../../components/ui/PageContainer'
 import {
-  formatOptionalField,
   formatProposalDateTime,
+  getProposalDescription,
+  getProposalLocationLabel,
   getProposalSummaryTitle,
 } from './proposal-submissions.helpers'
 import { useProposalSubmissionDetail } from './useProposalSubmissionDetail'
@@ -117,7 +118,6 @@ function ProposalDetailPage() {
   const headerConfig = useMemo(
     () => ({
       breadcrumbItems: [
-        { label: 'Panel admin', to: routePaths.dashboard },
         { label: 'Propuestas', to: routePaths.proposals },
         { label: proposal ? getProposalSummaryTitle(proposal) : 'Detalle' },
       ],
@@ -218,77 +218,28 @@ function ProposalDetailPage() {
                 />
               </div>
 
-              <div className="grid gap-8 lg:grid-cols-2">
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="text-2xl font-semibold tracking-tight text-slate-950">
-                      Datos de la locación propuesta
-                    </h3>
-                  </div>
-
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    <div className="sm:col-span-2">
-                      <ReadOnlyField label="Título">
-                        {proposal.title}
-                      </ReadOnlyField>
-                    </div>
-                    <ReadOnlyField label="Departamento">
-                      {formatOptionalField(proposal.department)}
-                    </ReadOnlyField>
-                    <ReadOnlyField label="Zona">
-                      {formatOptionalField(proposal.zone)}
-                    </ReadOnlyField>
-                    <div className="sm:col-span-2">
-                      <ReadOnlyField label="Dirección">
-                        {formatOptionalField(proposal.address)}
-                      </ReadOnlyField>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <ReadOnlyField label="Tipo de locación">
-                        {formatOptionalField(proposal.locationType)}
-                      </ReadOnlyField>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="text-2xl font-semibold tracking-tight text-slate-950">
-                      Datos del postulante
-                    </h3>
-                  </div>
-
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    <ReadOnlyField label="Nombre">
-                      {proposal.ownerName}
-                    </ReadOnlyField>
-                    <ReadOnlyField label="Teléfono">
-                      {proposal.ownerPhone}
-                    </ReadOnlyField>
-                    <div className="sm:col-span-2">
-                      <ReadOnlyField label="Email">
-                        {proposal.ownerEmail}
-                      </ReadOnlyField>
-                    </div>
-                  </div>
-                </div>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <ReadOnlyField label="Nombre">
+                  {proposal.ownerName}
+                </ReadOnlyField>
+                <ReadOnlyField label="Email">
+                  {proposal.ownerEmail}
+                </ReadOnlyField>
+                <ReadOnlyField label="Teléfono">
+                  {proposal.ownerPhone}
+                </ReadOnlyField>
+                <ReadOnlyField label="Ubicación">
+                  {getProposalLocationLabel(proposal)}
+                </ReadOnlyField>
               </div>
 
               <div className="space-y-6 border-t border-slate-200 pt-6">
                 <div>
-                  <h3 className="text-2xl font-semibold tracking-tight text-slate-950">
-                    Descripción
-                  </h3>
-                </div>
-
-                <div>
-                  <ReadOnlyField label="">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                      <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
-                        {proposal.description ?? '-'}
-                      </p>
-                    </div>
-                  </ReadOnlyField>
+                  <div className="rounded-2xl border border-slate-300 bg-white px-4 py-4">
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                      {getProposalDescription(proposal)}
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -297,18 +248,8 @@ function ProposalDetailPage() {
 
           <Card>
             <div className="space-y-6">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-950">Galería</h3>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {proposal.images.length} imágenes asociadas a esta propuesta
-                  </p>
-                </div>
-                {proposal.updatedAt ? (
-                  <p className="text-sm text-slate-500">
-                    Última actualización: {formatProposalDateTime(proposal.updatedAt)}
-                  </p>
-                ) : null}
+              <div>
+                <h3 className="text-lg font-semibold text-slate-950">Galería</h3>
               </div>
 
               {proposal.images.length === 0 ? (
@@ -316,22 +257,20 @@ function ProposalDetailPage() {
                   Esta propuesta no tiene imágenes cargadas.
                 </div>
               ) : (
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {proposal.images.map((image, index) => (
-                    <figure
+                    <article
                       key={image.id}
-                      className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
+                      className="overflow-hidden border border-dashed border-slate-300 bg-slate-50"
                     >
-                      <img
-                        src={image.imageUrl}
-                        alt={`Imagen ${index + 1} de la propuesta ${proposal.title}`}
-                        className="aspect-[4/3] w-full object-cover"
-                      />
-                      <figcaption className="space-y-1 px-4 py-3 text-xs text-slate-500">
-                        <p>Orden: {image.sortOrder ?? index + 1}</p>
-                        <p>Subida: {formatProposalDateTime(image.createdAt)}</p>
-                      </figcaption>
-                    </figure>
+                      <div className="relative aspect-[16/10] bg-slate-100">
+                        <img
+                          src={image.imageUrl}
+                          alt={`Imagen ${index + 1} de la propuesta ${getProposalSummaryTitle(proposal)}`}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    </article>
                   ))}
                 </div>
               )}

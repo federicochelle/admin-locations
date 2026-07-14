@@ -68,8 +68,8 @@ function LocationsPage() {
 
   const headerConfig = useMemo(
     () => ({
-      breadcrumbItems: [{ label: 'Listado de locaciones' }],
-      title: 'Listado de locaciones',
+      breadcrumbItems: [{ label: 'Locaciones' }],
+      title: 'Locaciones',
     }),
     [],
   )
@@ -131,7 +131,6 @@ function LocationsPage() {
         <LocationsTable
           locations={locations}
           activeActionKey={activeActionKey}
-          title={null}
           visibleColumns={{ actions: false }}
           onDelete={handleDelete}
         />

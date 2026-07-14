@@ -27,7 +27,6 @@ function AdminLocationRequestsPage() {
   const headerConfig = useMemo(
     () => ({
       breadcrumbItems: [
-        { label: 'Panel admin', to: routePaths.dashboard },
         { label: 'Solicitudes' },
       ],
       title: 'Solicitudes',

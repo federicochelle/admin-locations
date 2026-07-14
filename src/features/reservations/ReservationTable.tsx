@@ -10,7 +10,7 @@ import {
 
 type ReservationTableProps = {
   activeActionKey: string | null
-  onCreate: () => void
+  headerActions?: ReactNode
   onDelete: (reservation: ReservationListItem) => Promise<void>
   onEdit: (reservation: ReservationListItem) => void
   reservations: ReservationListItem[]
@@ -68,25 +68,6 @@ function SearchIcon() {
   )
 }
 
-function PlusIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      className="h-4 w-4"
-      aria-hidden="true"
-    >
-      <path
-        d="M12 5v14M5 12h14"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
 function EditIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-4 w-4" aria-hidden="true">
@@ -125,7 +106,7 @@ function formatLocation(reservation: ReservationListItem) {
 
 function ReservationTable({
   activeActionKey,
-  onCreate,
+  headerActions,
   onDelete,
   onEdit,
   reservations,
@@ -178,10 +159,7 @@ function ReservationTable({
               />
             </label>
 
-            <Button className="gap-2 py-2.5" onClick={onCreate}>
-              <PlusIcon />
-              Nueva reserva
-            </Button>
+            {headerActions}
           </div>
         </div>
       </div>
