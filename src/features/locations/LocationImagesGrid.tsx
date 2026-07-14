@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import ImageLightbox, {
+  type ImageLightboxItem,
+} from '../../components/ui/ImageLightbox'
 import {
   LOCATION_TOP_STACK_PANEL_HEIGHT_CLASS,
   LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
@@ -181,6 +184,8 @@ function LocationImagesGrid(
   props: LocationImagesGridProps & LocationImagesGridBaseProps,
 ) {
   const [coverDropActive, setCoverDropActive] = useState(false)
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+  const shouldSuppressClickRef = useRef(false)
   const showCover = props.showCover ?? true
   const showGallery = props.showGallery ?? true
   const items =
@@ -216,6 +221,11 @@ function LocationImagesGrid(
   const gridClassName = showGallery
     ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'
     : 'grid grid-cols-1 gap-4'
+  const lightboxImages: ImageLightboxItem[] = orderedItems.map((image) => ({
+    id: image.id,
+    title: image.title,
+    url: image.previewUrl,
+  }))
 
   function handleCoverDragOver(event: React.DragEvent<HTMLElement>) {
     if (!canDragToCover) {
@@ -261,6 +271,7 @@ function LocationImagesGrid(
 
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/location-image-id', imageId)
+    shouldSuppressClickRef.current = true
   }
 
   function handleImageDragEnd() {
@@ -269,6 +280,9 @@ function LocationImagesGrid(
     }
 
     setCoverDropActive(false)
+    window.setTimeout(() => {
+      shouldSuppressClickRef.current = false
+    }, 0)
   }
 
   function handleRemoveImage(image: GridImageItem) {
@@ -283,6 +297,40 @@ function LocationImagesGrid(
     }
 
     props.onRemove?.(image.id)
+  }
+
+  function handleOpenLightbox(imageId: string) {
+    if (shouldSuppressClickRef.current) {
+      return
+    }
+
+    const nextIndex = lightboxImages.findIndex((image) => image.id === imageId)
+
+    if (nextIndex === -1) {
+      return
+    }
+
+    setLightboxIndex(nextIndex)
+  }
+
+  function handleLightboxPrevious() {
+    setLightboxIndex((currentIndex) => {
+      if (currentIndex === null || lightboxImages.length === 0) {
+        return currentIndex
+      }
+
+      return currentIndex === 0 ? lightboxImages.length - 1 : currentIndex - 1
+    })
+  }
+
+  function handleLightboxNext() {
+    setLightboxIndex((currentIndex) => {
+      if (currentIndex === null || lightboxImages.length === 0) {
+        return currentIndex
+      }
+
+      return currentIndex === lightboxImages.length - 1 ? 0 : currentIndex + 1
+    })
   }
 
   return (
@@ -312,10 +360,11 @@ function LocationImagesGrid(
           >
             <div
               className={[
-                'group relative',
+                'group relative cursor-zoom-in',
                 LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
                 coverDropActive ? 'border-sky-500 bg-sky-50' : '',
               ].join(' ')}
+              onClick={() => handleOpenLightbox(coverItem.id)}
             >
               <img
                 src={coverItem.previewUrl}
@@ -332,7 +381,10 @@ function LocationImagesGrid(
                       <button
                         type="button"
                         disabled={props.isLocked}
-                        onClick={() => handleRemoveImage(coverItem)}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleRemoveImage(coverItem)
+                        }}
                         className={[
                           'inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium shadow-sm backdrop-blur transition disabled:cursor-not-allowed disabled:opacity-50',
                           overlayActionClassName('danger'),
@@ -370,7 +422,10 @@ function LocationImagesGrid(
             onDragEnd={handleImageDragEnd}
             onDragStart={(event) => handleImageDragStart(event, image.id)}
           >
-            <div className="group relative aspect-[16/10] bg-slate-100">
+            <div
+              className="group relative aspect-[16/10] cursor-zoom-in bg-slate-100"
+              onClick={() => handleOpenLightbox(image.id)}
+            >
               <img
                 src={image.previewUrl}
                 alt={image.title}
@@ -383,7 +438,10 @@ function LocationImagesGrid(
                       <button
                         type="button"
                         disabled={props.isLocked}
-                        onClick={() => handleRemoveImage(image)}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleRemoveImage(image)
+                        }}
                         className={[
                           'inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-medium shadow-sm backdrop-blur transition disabled:cursor-not-allowed disabled:opacity-50',
                           overlayActionClassName('danger'),
@@ -415,6 +473,16 @@ function LocationImagesGrid(
           </div>
         ) : null}
       </div>
+
+      {lightboxIndex !== null ? (
+        <ImageLightbox
+          currentIndex={lightboxIndex}
+          images={lightboxImages}
+          onClose={() => setLightboxIndex(null)}
+          onNext={handleLightboxNext}
+          onPrevious={handleLightboxPrevious}
+        />
+      ) : null}
     </div>
   )
 }
