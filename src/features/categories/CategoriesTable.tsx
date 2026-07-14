@@ -247,7 +247,7 @@ function CategoriesTable({
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Listado de categorías</h2>
             <p className="mt-1 text-sm text-slate-600">
-              {filteredCategories.length} de {categories.length} categorías visibles
+              {categories.length} {categories.length === 1 ? 'categoría registrada' : 'categorías registradas'}
             </p>
           </div>
 

@@ -1,6 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import Card from '../../components/ui/Card'
-import Button from '../../components/ui/Button'
 import {
   formatReservationDateTime,
   getReservationStatusBadgeClassName,
@@ -141,7 +140,7 @@ function ReservationTable({
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Listado de reservas</h2>
             <p className="mt-1 text-sm text-slate-600">
-              {filteredReservations.length} de {reservations.length} reservas visibles
+              {reservations.length} {reservations.length === 1 ? 'reserva registrada' : 'reservas registradas'}
             </p>
           </div>
 

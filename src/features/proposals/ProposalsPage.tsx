@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
-import { routePaths } from '../../app/router/route-paths'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import EmptyState from '../../components/ui/EmptyState'
