@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
-import { routePaths } from '../../app/router/route-paths'
+import { getLocationDetailPath, routePaths } from '../../app/router/route-paths'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import EmptyState from '../../components/ui/EmptyState'
@@ -133,7 +133,6 @@ function AdminRequestDetailPage() {
   const headerConfig = useMemo(
     () => ({
       breadcrumbItems: [
-        { label: 'Panel admin', to: routePaths.dashboard },
         { label: 'Solicitudes', to: routePaths.requests },
         { label: request?.title ?? 'Detalle' },
       ],
@@ -239,26 +238,22 @@ function AdminRequestDetailPage() {
                   </div>
 
                   <div className="grid gap-5 sm:grid-cols-2">
-                    <div className="sm:col-span-2">
-                      <ReadOnlyField label="Título">
-                        {request.title}
-                      </ReadOnlyField>
-                    </div>
+                    <ReadOnlyField label="Título">{request.title}</ReadOnlyField>
                     <ReadOnlyField label="Nombre">
                       {formatOptionalField(request.requesterFullName)}
                     </ReadOnlyField>
-                    <ReadOnlyField label="Email">
-                      {formatOptionalField(request.requesterEmail)}
-                    </ReadOnlyField>
                     <ReadOnlyField label="Teléfono">
                       {formatOptionalField(request.requesterPhone)}
+                    </ReadOnlyField>
+                    <ReadOnlyField label="Email">
+                      {formatOptionalField(request.requesterEmail)}
                     </ReadOnlyField>
                   </div>
                 </div>
               </div>
 
               <div>
-                <ReadOnlyField label="Mensajee">
+                <ReadOnlyField label="Mensaje">
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                     <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
                       {request.message?.trim() || 'Sin mensaje'}
@@ -290,9 +285,12 @@ function AdminRequestDetailPage() {
               ) : (
                 <div className="grid gap-4 md:grid-cols-2">
                   {request.locations.map((location) => (
-                    <div
+                    <a
                       key={`${request.id}:${location.id}`}
-                      className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
+                      href={getLocationDetailPath(location.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 transition hover:border-slate-300 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
                     >
                       {location.coverImageUrl ? (
                         <img
@@ -306,24 +304,15 @@ function AdminRequestDetailPage() {
                         </div>
                       )}
 
-                      <div className="space-y-3 p-5">
-                        <div>
-                          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#B8924A]">
-                            {formatLocationIdentifier(location)}
-                          </p>
-                          <h4 className="mt-1 text-lg font-semibold text-slate-950">
-                            {location.title}
-                          </h4>
-                        </div>
-
-                        <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="p-5">
+                        <div className="grid gap-4 sm:grid-cols-2 sm:items-start">
                           <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                              Categoría
+                            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#B8924A]">
+                              {formatLocationIdentifier(location)}
                             </p>
-                            <p className="mt-1 text-sm text-slate-700">
-                              {formatOptionalField(location.categoryName)}
-                            </p>
+                            <h4 className="mt-1 text-lg font-semibold text-slate-950">
+                              {location.title}
+                            </h4>
                           </div>
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -335,7 +324,7 @@ function AdminRequestDetailPage() {
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </a>
                   ))}
                 </div>
               )}

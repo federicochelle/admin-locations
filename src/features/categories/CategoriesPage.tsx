@@ -136,13 +136,13 @@ function CategoriesPage() {
       breadcrumbItems: selectedCategory
         ? [
             {
-              label: 'Listado de categorías',
+              label: 'Categorías',
               to: routePaths.categories,
               onClick: resetSelectedCategory,
             },
             { label: selectedCategory.name },
           ]
-        : [{ label: 'Listado de categorías' }],
+        : [{ label: 'Categorías' }],
       title: selectedCategory ? selectedCategory.name : 'Categorías',
       description: selectedCategory
         ? 'Listado de locaciones asociadas a esta categoría.'

@@ -43,6 +43,11 @@ export function formatOptionalField(value: string | null | undefined) {
   return normalizedValue && normalizedValue.length > 0 ? normalizedValue : '-'
 }
 
+function normalizeOptionalField(value: string | null | undefined) {
+  const normalizedValue = value?.trim()
+  return normalizedValue && normalizedValue.length > 0 ? normalizedValue : null
+}
+
 export function isProposalSubmissionNotFoundError(error: unknown) {
   if (!(error instanceof Error)) {
     return false
@@ -58,19 +63,65 @@ export function isProposalSubmissionNotFoundError(error: unknown) {
 }
 
 export function getProposalSummaryTitle(
-  proposal: Pick<ProposalDetails, 'title' | 'ownerName'>,
+  proposal: Pick<
+    ProposalDetails,
+    'address' | 'department' | 'zone' | 'ownerName' | 'internalTitle'
+  >,
 ) {
-  const title = proposal.title.trim()
+  const location = getProposalLocationLabel(proposal)
 
-  if (title.length > 0) {
-    return title
+  if (location !== '-') {
+    return location
   }
 
-  const ownerName = proposal.ownerName.trim()
+  const ownerName = normalizeOptionalField(proposal.ownerName)
 
-  if (ownerName.length > 0) {
+  if (ownerName) {
     return ownerName
   }
 
-  return 'Propuesta sin título'
+  const internalTitle = normalizeOptionalField(proposal.internalTitle)
+
+  if (internalTitle) {
+    return internalTitle
+  }
+
+  return 'Propuesta'
+}
+
+export function getProposalLocationLabel(
+  proposal: Pick<ProposalDetails, 'address' | 'department' | 'zone'>,
+) {
+  const address = normalizeOptionalField(proposal.address)
+
+  if (address) {
+    return address
+  }
+
+  const department = normalizeOptionalField(proposal.department)
+  const zone = normalizeOptionalField(proposal.zone)
+
+  if (department && zone) {
+    return `${department} · ${zone}`
+  }
+
+  if (department) {
+    return department
+  }
+
+  if (zone) {
+    return zone
+  }
+
+  return '-'
+}
+
+export function getProposalDescription(
+  proposal: Pick<ProposalDetails, 'description' | 'message'>,
+) {
+  return (
+    normalizeOptionalField(proposal.description) ??
+    normalizeOptionalField(proposal.message) ??
+    '-'
+  )
 }

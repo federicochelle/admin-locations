@@ -57,7 +57,7 @@ function OwnersPage() {
 
   const headerConfig = useMemo(
     () => ({
-      breadcrumbItems: [{ label: 'Listado de dueños' }],
+      breadcrumbItems: [{ label: 'Dueños' }],
       title: 'Dueños',
       description:
         'Base inicial para gestionar propietarios, productores o responsables asociados a cada locación.',

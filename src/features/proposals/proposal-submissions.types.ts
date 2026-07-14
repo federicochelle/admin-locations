@@ -22,15 +22,14 @@ export type ProposalListItem = {
   ownerName: string
   ownerEmail: string
   ownerPhone: string
-  title: string
+  address: string | null
   department: string | null
   zone: string | null
+  internalTitle?: string | null
 }
 
 export type ProposalDetails = ProposalListItem & {
   updatedAt: string | null
-  address: string | null
-  locationType: string | null
   description: string | null
   message: string | null
   adminNotes: string | null

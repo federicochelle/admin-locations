@@ -428,7 +428,7 @@ function LocationsTable({
                   {title}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  {locations.length} locaciones encontradas
+                  {sortedLocations.length} de {locations.length} locaciones visibles
                 </p>
               </div>
             ) : null}

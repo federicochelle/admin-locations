@@ -18,7 +18,6 @@ function ProposalsPage() {
   const headerConfig = useMemo(
     () => ({
       breadcrumbItems: [
-        { label: 'Panel admin', to: routePaths.dashboard },
         { label: 'Propuestas' },
       ],
       title: 'Propuestas',

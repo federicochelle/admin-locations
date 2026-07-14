@@ -229,7 +229,14 @@ function OwnersTable({
   return (
     <Card className="overflow-hidden p-0">
       <div className="border-b border-slate-200 px-6 py-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-end">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">Listado de dueños</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              {filteredOwners.length} de {owners.length} dueños visibles
+            </p>
+          </div>
+
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <label className="relative block min-w-0 sm:w-80">
               <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">

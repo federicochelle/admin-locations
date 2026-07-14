@@ -14,14 +14,54 @@ import type { ReservationListItem } from './reservations.types'
 
 type ReservationsCalendarProps = {
   currentMonth: Date
+  headerActions?: React.ReactNode
   onMonthChange: (date: Date) => void
   onOpenReservation: (reservation: ReservationListItem) => void
   onSelectDay: (day: Date) => void
   reservations: ReservationListItem[]
 }
 
+function ArrowLeftIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path
+        d="m15 18-6-6 6-6"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path
+        d="m9 18 6-6-6-6"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function ReservationsCalendar({
   currentMonth,
+  headerActions,
   onMonthChange,
   onOpenReservation,
   onSelectDay,
@@ -32,33 +72,32 @@ function ReservationsCalendar({
   return (
     <Card className="overflow-hidden p-0">
       <div className="border-b border-slate-200 px-6 py-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
-              {getMonthLabel(currentMonth)}
-            </h2>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => onMonthChange(addMonths(currentMonth, -1))}
+              >
+                <ArrowLeftIcon />
+              </Button>
+              <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
+                {getMonthLabel(currentMonth)}
+              </h2>
+              <Button
+                variant="secondary"
+                onClick={() => onMonthChange(addMonths(currentMonth, 1))}
+              >
+                <ArrowRightIcon />
+              </Button>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => onMonthChange(addMonths(currentMonth, -1))}
-            >
-              Mes anterior
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => onMonthChange(new Date())}
-            >
-              Hoy
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => onMonthChange(addMonths(currentMonth, 1))}
-            >
-              Mes siguiente
-            </Button>
-          </div>
+          {headerActions ? (
+            <div className="flex flex-wrap items-center gap-3">
+              {headerActions}
+            </div>
+          ) : null}
         </div>
       </div>
 

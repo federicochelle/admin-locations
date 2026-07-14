@@ -3,8 +3,8 @@ import Card from '../../components/ui/Card'
 import { buttonBaseClassName, buttonVariantClasses } from '../../components/ui/button.styles'
 import { getProposalDetailPath } from '../../app/router/route-paths'
 import {
-  formatOptionalField,
   formatProposalDateTime,
+  getProposalLocationLabel,
 } from './proposal-submissions.helpers'
 import {
   PROPOSAL_STATUS_OPTIONS,
@@ -93,9 +93,8 @@ function ProposalsTable({
               <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Nombre</th>
               <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Email</th>
               <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Teléfono</th>
+              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Ubicación</th>
               <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Estado</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Departamento</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Zona</th>
               <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Acción</th>
             </tr>
           </thead>
@@ -127,16 +126,13 @@ function ProposalsTable({
                 <td className="px-6 py-4 text-sm text-slate-600">
                   <div className="min-w-[160px]">{proposal.ownerPhone}</div>
                 </td>
+                <td className="px-6 py-4 text-sm text-slate-600">
+                  <div className="min-w-[220px]">{getProposalLocationLabel(proposal)}</div>
+                </td>
                 <td className="px-6 py-4 text-sm text-slate-900">
                   <div className="min-w-[150px]">
                     <ProposalStatusBadge status={proposal.status} />
                   </div>
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
-                  <div className="min-w-[160px]">{formatOptionalField(proposal.department)}</div>
-                </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
-                  <div className="min-w-[160px]">{formatOptionalField(proposal.zone)}</div>
                 </td>
                 <td className="px-6 py-4 text-sm text-slate-600">
                   <Link

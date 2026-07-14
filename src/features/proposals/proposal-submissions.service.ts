@@ -19,7 +19,6 @@ type LocationSubmissionRow = {
   department: string | null
   zone: string | null
   address: string | null
-  location_type: string | null
   description: string | null
   message: string | null
   admin_notes: string | null
@@ -63,9 +62,10 @@ function mapProposalListItem(row: LocationSubmissionRow): ProposalListItem {
     ownerName: normalizeRequiredText(row.owner_name, 'Sin nombre'),
     ownerEmail: normalizeRequiredText(row.owner_email, 'Sin email'),
     ownerPhone: normalizeRequiredText(row.owner_phone, 'Sin teléfono'),
-    title: normalizeRequiredText(row.title, 'Propuesta sin título'),
+    address: normalizeOptionalText(row.address),
     department: normalizeOptionalText(row.department),
     zone: normalizeOptionalText(row.zone),
+    internalTitle: normalizeRequiredText(row.title, 'Propuesta sin título'),
   }
 }
 
@@ -79,18 +79,13 @@ export async function getProposalSubmissions(): Promise<ProposalListItem[]> {
         id,
         status,
         created_at,
-        updated_at,
         owner_name,
         owner_email,
         owner_phone,
-        title,
+        address,
         department,
         zone,
-        address,
-        location_type,
-        description,
-        message,
-        admin_notes
+        title
       `,
     )
     .order('created_at', { ascending: false })
@@ -122,7 +117,6 @@ export async function getProposalSubmissionById(
         department,
         zone,
         address,
-        location_type,
         description,
         message,
         admin_notes
@@ -164,8 +158,6 @@ export async function getProposalSubmissionById(
   return {
     ...mapProposalListItem(row),
     updatedAt: row.updated_at,
-    address: normalizeOptionalText(row.address),
-    locationType: normalizeOptionalText(row.location_type),
     description: normalizeOptionalText(row.description),
     message: normalizeOptionalText(row.message),
     adminNotes: normalizeOptionalText(row.admin_notes),
