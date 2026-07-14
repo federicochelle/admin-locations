@@ -233,7 +233,7 @@ function OwnersTable({
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Listado de dueños</h2>
             <p className="mt-1 text-sm text-slate-600">
-              {filteredOwners.length} de {owners.length} dueños visibles
+              {owners.length} {owners.length === 1 ? 'dueño registrado' : 'dueños registrados'}
             </p>
           </div>
 

@@ -58,7 +58,7 @@ function ProposalsTable({
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Listado de propuestas</h2>
             <p className="mt-1 text-sm text-slate-600">
-              {proposals.length} de {totalCount} propuestas visibles
+              {totalCount} {totalCount === 1 ? 'propuesta recibida' : 'propuestas recibidas'}
             </p>
           </div>
 

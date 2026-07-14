@@ -88,7 +88,7 @@ function LocationRequestsAdminTable({
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Listado de solicitudes</h2>
             <p className="mt-1 text-sm text-slate-600">
-              {requests.length} de {totalCount} solicitudes visibles
+              {totalCount} {totalCount === 1 ? 'solicitud recibida' : 'solicitudes recibidas'}
             </p>
           </div>
 

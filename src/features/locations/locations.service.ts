@@ -38,6 +38,29 @@ type SupabaseErrorLike = {
   message?: string
 }
 
+const LOCATION_CODE_PREFIX_MAP: Record<string, string> = {
+  ALMACENES: 'ALMACEN',
+  ESTANCIAS: 'ESTANCIA',
+  CASAS: 'CASA',
+  CALLES: 'CALLE',
+  APARTAMENTOS: 'APARTAMENTO',
+  PEATONALES: 'PEATONAL',
+  PISCINAS: 'PISCINA',
+  PLAZAS: 'PLAZA',
+  PARQUES: 'PARQUE',
+  CAFETERIAS: 'CAFETERIA',
+  'CANCHAS-DE-FUTBOL': 'CANCHA DE FUTBOL',
+  BARES: 'BAR',
+  MUSEOS: 'MUSEO',
+  OFICINAS: 'OFICINA',
+  RESTAURANTES: 'RESTAURANTE',
+  ESTADIOS: 'ESTADIO',
+  'CANCHAS-DE-BASQUET': 'CANCHA DE BASQUET',
+  GIMNASIOS: 'GIMNASIO',
+  EDIFICIOS: 'EDIFICIO',
+  GALPONES: 'GALPON',
+}
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -57,7 +80,11 @@ function normalizeLocationCodePrefix(categoryName: string) {
     .replace(/^-+|-+$/g, '')
     .toUpperCase()
 
-  return normalized.length > 0 ? normalized : 'CATEGORIA'
+  if (normalized.length === 0) {
+    return 'CATEGORIA'
+  }
+
+  return LOCATION_CODE_PREFIX_MAP[normalized] ?? normalized
 }
 
 function normalizeLocationPayloadTitle<T extends { title: string }>(payload: T): T {
