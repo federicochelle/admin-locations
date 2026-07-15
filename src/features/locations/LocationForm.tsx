@@ -54,6 +54,7 @@ import type {
 } from './location-images.types'
 import type { ParsedGooglePlaceAddress } from './location-address-parser'
 import { prepareImageUploadFile } from '../images/image-upload.processor'
+import { isHeicImageFile } from '../images/image-upload.constants'
 import { LOCATION_TOP_STACK_PLACEHOLDER_CLASS } from './location-top-stack.styles'
 import { useLocationImages } from './useLocationImages'
 import type { GroupedSelectableOptions } from './components/location-analysis/SelectableOptionsSection'
@@ -122,6 +123,14 @@ const defaultAnalysisState: LocationAnalysisState = {
   suggestedFeatures: [],
   suggestedTags: [],
   suggestedDescription: null,
+}
+
+function roundMs(value: number) {
+  return Number(value.toFixed(2))
+}
+
+function bytesToMb(bytes: number) {
+  return Number((bytes / 1024 / 1024).toFixed(2))
 }
 
 function toNullableString(value: string) {
@@ -1772,11 +1781,14 @@ function markSaveProgressSuccess() {
       }
 
       try {
-        const optimizedFile = (await prepareImageUploadFile(file)).file
+        const prepareResult = await prepareImageUploadFile(file)
+        const optimizedFile = prepareResult.file
         const optimizedImage = new Image()
         let dimensionsLabel = 'dimensiones no disponibles'
+        let previewDurationMs = 0
 
         try {
+          const previewStartedAt = performance.now()
           const dimensions = await new Promise<{ width: number; height: number }>(
             (resolve, reject) => {
               const objectUrl = URL.createObjectURL(optimizedFile)
@@ -1796,6 +1808,7 @@ function markSaveProgressSuccess() {
             },
           )
 
+          previewDurationMs = performance.now() - previewStartedAt
           dimensionsLabel = `${dimensions.width}x${dimensions.height}`
         } catch (dimensionError) {
           console.warn(
@@ -1803,6 +1816,28 @@ function markSaveProgressSuccess() {
             optimizedFile.name,
             dimensionError,
           )
+        }
+
+        if (prepareResult.heicPerf) {
+          console.log('[HEIC_PERF] preview', {
+            durationMs: roundMs(previewDurationMs),
+            dimensions: dimensionsLabel,
+          })
+
+          console.log('[HEIC_PERF] summary', {
+            convertedSizeMb: bytesToMb(prepareResult.heicPerf.convertedSize),
+            conversionMs: roundMs(prepareResult.heicPerf.conversionMs),
+            decodeMs: roundMs(prepareResult.heicPerf.decodeMs),
+            fileName: file.name,
+            optimizedSizeMb: bytesToMb(optimizedFile.size),
+            originalSizeMb: bytesToMb(prepareResult.heicPerf.originalSize),
+            previewMs: roundMs(previewDurationMs),
+            resizeEncodeMs: roundMs(prepareResult.heicPerf.resizeEncodeMs),
+            totalMs: roundMs(
+              prepareResult.heicPerf.totalMs + previewDurationMs,
+            ),
+          })
+          console.groupEnd()
         }
 
         console.log(
@@ -1823,6 +1858,10 @@ function markSaveProgressSuccess() {
           status: 'pending',
         })
       } catch (error) {
+        if (isHeicImageFile(file)) {
+          console.groupEnd()
+        }
+
         const message =
           error instanceof Error
             ? error.message

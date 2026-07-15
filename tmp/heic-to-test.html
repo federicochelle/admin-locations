@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+  <body>
+    <pre id="output">running</pre>
+    <script type="module">
+      const output = document.getElementById('output')
+      const params = new URLSearchParams(location.search)
+      const fileUrl = params.get('file')
+      const mime = params.get('mime') || 'image/heic'
+
+      try {
+        const { heicTo } = await import('../node_modules/heic-to/dist/heic-to.js')
+        const response = await fetch(fileUrl)
+
+        if (!response.ok) {
+          throw new Error(`No pudimos leer el archivo de prueba: ${response.status}`)
+        }
+
+        const blob = await response.blob()
+        const name = decodeURIComponent(fileUrl.split('/').pop() ?? 'image.heic')
+        const file = new File([blob], name, { type: mime })
+        const converted = await heicTo({
+          blob: file,
+          quality: 0.92,
+          type: 'image/jpeg',
+        })
+
+        output.textContent = JSON.stringify({
+          ok: true,
+          inputSize: file.size,
+          inputType: file.type,
+          name,
+          outputSize: converted.size,
+          outputType: converted.type,
+        })
+      } catch (error) {
+        output.textContent = JSON.stringify({
+          cause: error?.cause ?? null,
+          message: error?.message ?? String(error),
+          ok: false,
+          stack: error?.stack ?? null,
+        })
+      }
+    </script>
+  </body>
+</html>
