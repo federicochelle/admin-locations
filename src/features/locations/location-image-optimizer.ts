@@ -2,12 +2,25 @@ const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
 const MIN_IMAGE_SIZE_BYTES_TO_OPTIMIZE = 1.5 * 1024 * 1024
 const MAX_IMAGE_DIMENSION = 2400
 const JPEG_QUALITY_STEPS = [0.85, 0.82] as const
+type OptimizationPath = 'createImageBitmap' | 'fallbackImage' | 'skipped'
 
 export type OptimizeLocationImageResult = {
   file: File
   wasOptimized: boolean
   originalSize: number
   optimizedSize: number
+  perf?: {
+    inputDimensions: {
+      width: number
+      height: number
+    } | null
+    outputDimensions: {
+      width: number
+      height: number
+    } | null
+    path: OptimizationPath
+    totalMs: number
+  }
 }
 
 export function shouldOptimizeLocationImageFile(file: File) {
@@ -61,6 +74,7 @@ function canvasToBlob(
 
 async function drawFileToCanvas(file: File) {
   if (typeof window.createImageBitmap === 'function') {
+    const path: OptimizationPath = 'createImageBitmap'
     const bitmap = await window.createImageBitmap(file, {
       imageOrientation: 'from-image',
     })
@@ -86,12 +100,14 @@ async function drawFileToCanvas(file: File) {
       canvas,
       originalHeight,
       originalWidth,
+      path,
     }
   }
 
   const objectUrl = URL.createObjectURL(file)
 
   try {
+    const path: OptimizationPath = 'fallbackImage'
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
       const nextImage = new Image()
       nextImage.onload = () => resolve(nextImage)
@@ -122,6 +138,7 @@ async function drawFileToCanvas(file: File) {
       canvas,
       originalHeight,
       originalWidth,
+      path,
     }
   } finally {
     URL.revokeObjectURL(objectUrl)
@@ -131,6 +148,8 @@ async function drawFileToCanvas(file: File) {
 export async function optimizeLocationImageFile(
   file: File,
 ): Promise<OptimizeLocationImageResult> {
+  const optimizeStartedAt = performance.now()
+
   if (!shouldOptimizeLocationImageFile(file)) {
     console.log(
       '[IMAGE OPTIMIZER]',
@@ -140,15 +159,21 @@ export async function optimizeLocationImageFile(
       `final=${(file.size / 1024 / 1024).toFixed(2)} MB`,
     )
 
-    return {
-      file,
-      wasOptimized: false,
-      originalSize: file.size,
-      optimizedSize: file.size,
-    }
+      return {
+        file,
+        perf: {
+          inputDimensions: null,
+          outputDimensions: null,
+          path: 'skipped',
+          totalMs: performance.now() - optimizeStartedAt,
+        },
+        wasOptimized: false,
+        originalSize: file.size,
+        optimizedSize: file.size,
+      }
   }
 
-  const { canvas } = await drawFileToCanvas(file)
+  const { canvas, originalHeight, originalWidth, path } = await drawFileToCanvas(file)
   const dimensionsLabel = `${canvas.width}x${canvas.height}`
 
   for (const quality of JPEG_QUALITY_STEPS) {
@@ -178,6 +203,18 @@ export async function optimizeLocationImageFile(
 
     return {
       file: optimizedFile,
+      perf: {
+        inputDimensions: {
+          width: originalWidth,
+          height: originalHeight,
+        },
+        outputDimensions: {
+          width: canvas.width,
+          height: canvas.height,
+        },
+        path,
+        totalMs: performance.now() - optimizeStartedAt,
+      },
       wasOptimized: true,
       originalSize: file.size,
       optimizedSize: optimizedFile.size,
