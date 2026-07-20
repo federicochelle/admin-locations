@@ -92,15 +92,18 @@ function LocationImagesSection({
       }
 
       try {
-        const preparedFile = (await prepareImageUploadFile(file)).file
+        const prepareResult = await prepareImageUploadFile(file)
+        const preparedFile = prepareResult.file
 
         nextUploads.push({
           id: crypto.randomUUID(),
           file: preparedFile,
+          height: prepareResult.outputDimensions.height,
           previewUrl: URL.createObjectURL(preparedFile),
           originalIndex: index,
           isCover: isCoverSelection && index === 0,
           status: 'pending',
+          width: prepareResult.outputDimensions.width,
         })
       } catch (error) {
         const message =
@@ -134,8 +137,10 @@ function LocationImagesSection({
 
         await uploadLocationImage({
           file: image.file,
+          height: image.height,
           isCover: image.isCover,
           locationId: props.locationId,
+          width: image.width,
           onStatusChange: (status) => {
             updatePendingUpload(image.id, {
               status,

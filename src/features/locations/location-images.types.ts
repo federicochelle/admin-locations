@@ -39,6 +39,8 @@ export type CloudflareDirectUploadResponse = {
 export type LocationImageFinalizeInput = {
   locationId: string
   cloudflareImageId: string
+  width: number
+  height: number
   altText?: string | null
   caption?: string | null
   isCover?: boolean
@@ -63,6 +65,8 @@ export type LocationImageRecord = {
 export type UploadLocationImageInput = {
   locationId: string
   file: File
+  width: number
+  height: number
   altText?: string | null
   caption?: string | null
   isCover?: boolean
@@ -97,6 +101,8 @@ export type PendingLocationImageFile = {
   id: string
   file: File
   previewUrl: string
+  width: number
+  height: number
   originalIndex: number
   isCover: boolean
   status: PendingLocationImageStatus

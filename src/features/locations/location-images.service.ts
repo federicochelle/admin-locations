@@ -151,9 +151,11 @@ export async function finalizeLocationImageUpload(
         altText: toNullableString(input.altText),
         caption: toNullableString(input.caption),
         cloudflareImageId: input.cloudflareImageId,
+        height: input.height,
         isCover: input.isCover,
         locationId: input.locationId,
         sortOrder: input.sortOrder,
+        width: input.width,
       },
       signal,
     },
@@ -262,10 +264,12 @@ export async function uploadLocationImage(
     const finalizedImage = await finalizeLocationImageUpload({
       locationId: input.locationId,
       cloudflareImageId,
+      height: input.height,
       altText: input.altText,
       caption: input.caption,
       isCover: input.isCover,
       sortOrder: input.sortOrder,
+      width: input.width,
     }, input.signal)
 
     return {
