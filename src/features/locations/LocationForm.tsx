@@ -683,7 +683,7 @@ function LocationForm({
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isFeaturesSectionOpen, setIsFeaturesSectionOpen] = useState(false)
-  const [isGallerySectionOpen, setIsGallerySectionOpen] = useState(false)
+  const [isGallerySectionOpen, setIsGallerySectionOpen] = useState(true)
   const [analysisState, setAnalysisState] =
     useState<LocationAnalysisState>(defaultAnalysisState)
   const [saveProgress, setSaveProgress] = useState<LocationSaveProgressState | null>(
@@ -1783,47 +1783,9 @@ function markSaveProgressSuccess() {
       try {
         const prepareResult = await prepareImageUploadFile(file)
         const optimizedFile = prepareResult.file
-        const optimizedImage = new Image()
-        let dimensionsLabel = 'dimensiones no disponibles'
-        let previewDurationMs = 0
-
-        try {
-          const previewStartedAt = performance.now()
-          const dimensions = await new Promise<{ width: number; height: number }>(
-            (resolve, reject) => {
-              const objectUrl = URL.createObjectURL(optimizedFile)
-
-              optimizedImage.onload = () => {
-                URL.revokeObjectURL(objectUrl)
-                resolve({
-                  width: optimizedImage.naturalWidth,
-                  height: optimizedImage.naturalHeight,
-                })
-              }
-              optimizedImage.onerror = () => {
-                URL.revokeObjectURL(objectUrl)
-                reject(new Error('No pudimos leer las dimensiones de la imagen optimizada.'))
-              }
-              optimizedImage.src = objectUrl
-            },
-          )
-
-          previewDurationMs = performance.now() - previewStartedAt
-          dimensionsLabel = `${dimensions.width}x${dimensions.height}`
-        } catch (dimensionError) {
-          console.warn(
-            '[IMAGE SIZE DIMENSIONS]',
-            optimizedFile.name,
-            dimensionError,
-          )
-        }
+        const dimensionsLabel = `${prepareResult.outputDimensions.width}x${prepareResult.outputDimensions.height}`
 
         if (prepareResult.heicPerf) {
-          console.log('[HEIC_PERF] preview', {
-            durationMs: roundMs(previewDurationMs),
-            dimensions: dimensionsLabel,
-          })
-
           console.log('[HEIC_PERF] summary', {
             convertedSizeMb: bytesToMb(prepareResult.heicPerf.convertedSize),
             conversionMs: roundMs(prepareResult.heicPerf.conversionMs),
@@ -1831,11 +1793,8 @@ function markSaveProgressSuccess() {
             fileName: file.name,
             optimizedSizeMb: bytesToMb(optimizedFile.size),
             originalSizeMb: bytesToMb(prepareResult.heicPerf.originalSize),
-            previewMs: roundMs(previewDurationMs),
             resizeEncodeMs: roundMs(prepareResult.heicPerf.resizeEncodeMs),
-            totalMs: roundMs(
-              prepareResult.heicPerf.totalMs + previewDurationMs,
-            ),
+            totalMs: roundMs(prepareResult.heicPerf.totalMs),
           })
           console.groupEnd()
         }

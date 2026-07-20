@@ -11,6 +11,10 @@ const HEIC_OUTPUT_QUALITY_STEPS = [0.85, 0.82] as const
 
 export type PrepareImageUploadResult = {
   file: File
+  outputDimensions: {
+    width: number
+    height: number
+  }
   wasOptimized: boolean
   originalSize: number
   optimizedSize: number
@@ -263,6 +267,7 @@ export async function prepareImageUploadFile(
   const optimizationResult = heicConversionResult
     ? {
         file: heicConversionResult.file,
+        outputDimensions: heicConversionResult.outputDimensions,
         optimizedSize: heicConversionResult.file.size,
         originalSize: normalizedInputFile.size,
         wasOptimized: true,

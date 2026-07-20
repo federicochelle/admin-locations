@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { routePaths } from '../../app/router/route-paths'
 import { navigationItems } from '../../constants/navigation'
 import logo from '../../../logo.webp'
 
@@ -14,7 +15,13 @@ function Sidebar() {
     >
       <div className="flex h-full flex-col">
         <div className="flex justify-center border-b border-white/10 px-6 py-6">
-          <img src={logo} alt="Logo" className="h-auto w-full max-w-[90px]" />
+          <NavLink
+            to={routePaths.dashboard}
+            aria-label="Ir al inicio"
+            className="rounded-xl outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[#B8924A] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          >
+            <img src={logo} alt="Logo" className="h-auto w-full max-w-[90px]" />
+          </NavLink>
         </div>
 
         <nav className="flex gap-2 overflow-x-auto px-4 py-4 md:flex-1 md:flex-col md:overflow-x-visible md:overflow-y-visible">
