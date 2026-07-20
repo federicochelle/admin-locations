@@ -41,6 +41,55 @@ type GooglePlacePredictionSelectEventLike = Event & {
   placePrediction?: GooglePlacePredictionLike
 }
 
+type GooglePlaceAddressComponentLike = {
+  long_name?: string | null
+  short_name?: string | null
+  longText?: string | null
+  shortText?: string | null
+  types?: string[] | null
+}
+
+type GooglePlaceGeometryLocationLike = {
+  lat?: (() => number) | number | null
+  lng?: (() => number) | number | null
+} | null
+
+type GooglePlaceViewportBoundLike = {
+  lat?: (() => number) | number | null
+  lng?: (() => number) | number | null
+} | null
+
+type GooglePlaceViewportLike = {
+  getNorthEast?: () => GooglePlaceViewportBoundLike
+  getSouthWest?: () => GooglePlaceViewportBoundLike
+  northeast?: GooglePlaceViewportBoundLike
+  southwest?: GooglePlaceViewportBoundLike
+} | null
+
+type GooglePlaceWithAuditFields = {
+  addressComponents?: GooglePlaceAddressComponentLike[] | null
+  formattedAddress?: string | null
+  location?: GooglePlaceGeometryLocationLike
+  viewport?: GooglePlaceViewportLike
+  id?: string | null
+  plusCode?: unknown
+  types?: string[] | null
+  displayName?: unknown
+  shortFormattedAddress?: string | null
+  adrFormatAddress?: string | null
+  postalAddress?: unknown
+  googleMapsURI?: string | null
+  googleMapsLinks?: unknown
+  businessStatus?: string | null
+  primaryType?: string | null
+  primaryTypeDisplayName?: unknown
+  nationalPhoneNumber?: string | null
+  internationalPhoneNumber?: string | null
+  websiteURI?: string | null
+  utcOffsetMinutes?: number | null
+  regularOpeningHours?: unknown
+} & Record<string, unknown>
+
 export type LocationAddressPickerProps = {
   formattedAddress?: string | null
   value: string
@@ -57,6 +106,87 @@ function inputClassName(error: string | null) {
       ? 'border-red-300 focus:border-red-400 focus:ring-red-100'
       : 'border-slate-300',
   ].join(' ')
+}
+
+function getCoordinateValue(
+  coordinate: (() => number) | number | null | undefined,
+) {
+  if (typeof coordinate === 'function') {
+    return coordinate()
+  }
+
+  return typeof coordinate === 'number' ? coordinate : null
+}
+
+function getViewportCorner(
+  corner: GooglePlaceViewportBoundLike | undefined,
+) {
+  if (!corner) {
+    return null
+  }
+
+  return {
+    lat: getCoordinateValue(corner.lat),
+    lng: getCoordinateValue(corner.lng),
+  }
+}
+
+function getViewportSnapshot(viewport: GooglePlaceViewportLike) {
+  if (!viewport) {
+    return null
+  }
+
+  const northEast =
+    typeof viewport.getNorthEast === 'function'
+      ? viewport.getNorthEast()
+      : viewport.northeast
+  const southWest =
+    typeof viewport.getSouthWest === 'function'
+      ? viewport.getSouthWest()
+      : viewport.southwest
+
+  return {
+    northeast: getViewportCorner(northEast),
+    southwest: getViewportCorner(southWest),
+  }
+}
+
+function buildGooglePlaceAuditSnapshot(place: GooglePlaceWithAuditFields) {
+  return {
+    ...place,
+    formatted_address: place.formattedAddress ?? null,
+    address_components:
+      place.addressComponents?.map((component) => ({
+        long_name: component.long_name ?? component.longText ?? null,
+        short_name: component.short_name ?? component.shortText ?? null,
+        types: component.types ?? null,
+      })) ?? null,
+    geometry: {
+      lat: getCoordinateValue(place.location?.lat),
+      lng: getCoordinateValue(place.location?.lng),
+      viewport: getViewportSnapshot(place.viewport ?? null),
+    },
+    place_id: place.id ?? null,
+    plus_code: place.plusCode ?? null,
+  }
+}
+
+function logGooglePlaceAudit(place: GooglePlaceWithAuditFields) {
+  const snapshot = buildGooglePlaceAuditSnapshot(place)
+
+  console.groupCollapsed('[Google Maps] Respuesta completa de la locacion seleccionada')
+  console.log('Objeto Place crudo', place)
+  console.log('Objeto Place expandido', snapshot)
+  console.log('formatted_address', snapshot.formatted_address)
+  console.log('address_components', snapshot.address_components)
+  console.log('geometry', snapshot.geometry)
+  console.log('lat', snapshot.geometry.lat)
+  console.log('lng', snapshot.geometry.lng)
+  console.log('place_id', snapshot.place_id)
+  console.log('plus_code', snapshot.plus_code)
+  console.log('types', place.types ?? null)
+  console.log('viewport', snapshot.geometry.viewport)
+  console.groupEnd()
 }
 
 function LocationAddressPickerInput({
@@ -96,8 +226,32 @@ function LocationAddressPickerInput({
 
       const place = placePrediction.toPlace()
       await place.fetchFields({
-        fields: ['addressComponents', 'formattedAddress', 'id', 'location'],
+        fields: [
+          'addressComponents',
+          'adrFormatAddress',
+          'businessStatus',
+          'displayName',
+          'formattedAddress',
+          'googleMapsLinks',
+          'googleMapsURI',
+          'id',
+          'internationalPhoneNumber',
+          'location',
+          'nationalPhoneNumber',
+          'plusCode',
+          'postalAddress',
+          'primaryType',
+          'primaryTypeDisplayName',
+          'regularOpeningHours',
+          'shortFormattedAddress',
+          'types',
+          'utcOffsetMinutes',
+          'viewport',
+          'websiteURI',
+        ],
       })
+
+      logGooglePlaceAudit(place as GooglePlaceWithAuditFields)
 
       const parsedPlace = parseGooglePlaceResult(
         place as Parameters<typeof parseGooglePlaceResult>[0],

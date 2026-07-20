@@ -6,6 +6,10 @@ type OptimizationPath = 'createImageBitmap' | 'fallbackImage' | 'skipped'
 
 export type OptimizeLocationImageResult = {
   file: File
+  outputDimensions: {
+    width: number
+    height: number
+  }
   wasOptimized: boolean
   originalSize: number
   optimizedSize: number
@@ -20,6 +24,44 @@ export type OptimizeLocationImageResult = {
     } | null
     path: OptimizationPath
     totalMs: number
+  }
+}
+
+async function readImageFileDimensions(file: File) {
+  if (typeof window.createImageBitmap === 'function') {
+    const bitmap = await window.createImageBitmap(file, {
+      imageOrientation: 'from-image',
+    })
+
+    try {
+      return {
+        height: bitmap.height,
+        path: 'createImageBitmap' as const,
+        width: bitmap.width,
+      }
+    } finally {
+      bitmap.close()
+    }
+  }
+
+  const objectUrl = URL.createObjectURL(file)
+
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const nextImage = new Image()
+      nextImage.onload = () => resolve(nextImage)
+      nextImage.onerror = () =>
+        reject(new Error('No pudimos leer la imagen seleccionada.'))
+      nextImage.src = objectUrl
+    })
+
+    return {
+      height: image.naturalHeight,
+      path: 'fallbackImage' as const,
+      width: image.naturalWidth,
+    }
+  } finally {
+    URL.revokeObjectURL(objectUrl)
   }
 }
 
@@ -151,6 +193,8 @@ export async function optimizeLocationImageFile(
   const optimizeStartedAt = performance.now()
 
   if (!shouldOptimizeLocationImageFile(file)) {
+    const dimensions = await readImageFileDimensions(file)
+
     console.log(
       '[IMAGE OPTIMIZER]',
       file.name,
@@ -161,10 +205,20 @@ export async function optimizeLocationImageFile(
 
       return {
         file,
+        outputDimensions: {
+          width: dimensions.width,
+          height: dimensions.height,
+        },
         perf: {
-          inputDimensions: null,
-          outputDimensions: null,
-          path: 'skipped',
+          inputDimensions: {
+            width: dimensions.width,
+            height: dimensions.height,
+          },
+          outputDimensions: {
+            width: dimensions.width,
+            height: dimensions.height,
+          },
+          path: dimensions.path,
           totalMs: performance.now() - optimizeStartedAt,
         },
         wasOptimized: false,
@@ -203,6 +257,10 @@ export async function optimizeLocationImageFile(
 
     return {
       file: optimizedFile,
+      outputDimensions: {
+        width: canvas.width,
+        height: canvas.height,
+      },
       perf: {
         inputDimensions: {
           width: originalWidth,
