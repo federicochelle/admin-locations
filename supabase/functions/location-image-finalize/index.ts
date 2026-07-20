@@ -1,9 +1,5 @@
 import { assertAdmin } from '../_shared/auth.ts'
-import {
-  buildCloudflarePublicUrl,
-  getCloudflareImageDetails,
-  getCloudflareImageDimensions,
-} from '../_shared/cloudflare.ts'
+import { buildCloudflarePublicUrl } from '../_shared/cloudflare.ts'
 import { errorResponse, handleOptions, HttpError, jsonResponse } from '../_shared/http.ts'
 import { assertLocationExists } from '../_shared/locations.ts'
 
@@ -11,9 +7,11 @@ type FinalizeRequestBody = {
   altText?: unknown
   caption?: unknown
   cloudflareImageId?: unknown
+  height?: unknown
   isCover?: unknown
   locationId?: unknown
   sortOrder?: unknown
+  width?: unknown
 }
 
 type CreatedLocationImageRow = {
@@ -68,6 +66,26 @@ function parseOptionalSortOrder(value: unknown) {
   return value
 }
 
+function parsePositiveDimension(value: unknown, fieldName: 'width' | 'height') {
+  if (typeof value !== 'number') {
+    throw new HttpError(400, `${fieldName} must be a number.`)
+  }
+
+  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    throw new HttpError(400, `${fieldName} must be an integer.`)
+  }
+
+  if (value <= 0) {
+    throw new HttpError(400, `${fieldName} must be greater than 0.`)
+  }
+
+  if (!Number.isSafeInteger(value)) {
+    throw new HttpError(400, `${fieldName} must be a safe integer.`)
+  }
+
+  return value
+}
+
 function parseRequestBody(body: FinalizeRequestBody) {
   const locationId =
     typeof body.locationId === 'string' ? body.locationId.trim() : ''
@@ -87,10 +105,12 @@ function parseRequestBody(body: FinalizeRequestBody) {
   return {
     locationId,
     cloudflareImageId,
+    height: parsePositiveDimension(body.height, 'height'),
     altText: toNullableText(body.altText),
     caption: toNullableText(body.caption),
     isCover: body.isCover === true,
     sortOrder: parseOptionalSortOrder(body.sortOrder),
+    width: parsePositiveDimension(body.width, 'width'),
   }
 }
 
@@ -115,9 +135,6 @@ Deno.serve(async (request) => {
     const { adminClient } = await assertAdmin(request)
 
     await assertLocationExists(adminClient, input.locationId)
-
-    const imageDetails = await getCloudflareImageDetails(input.cloudflareImageId)
-    const { width, height } = getCloudflareImageDimensions(imageDetails)
 
     const { data: existingImages, error: existingImagesError } = await adminClient
       .from('location_images')
@@ -160,13 +177,13 @@ Deno.serve(async (request) => {
       .insert({
         alt_text: input.altText,
         caption: input.caption,
-        height,
+        height: input.height,
         is_cover: isCover,
         location_id: input.locationId,
         sort_order: nextSortOrder,
         storage_key: input.cloudflareImageId,
         url: buildCloudflarePublicUrl(input.cloudflareImageId),
-        width,
+        width: input.width,
       })
       .select(
         `

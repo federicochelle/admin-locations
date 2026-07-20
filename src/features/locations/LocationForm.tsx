@@ -165,8 +165,8 @@ function buildPayload(
     department_id: values.department_id || null,
     zone_id: values.zone_id || null,
     owner_id: values.owner_id || null,
-    status: values.status,
-    published: values.published,
+    status: 'published',
+    published: true,
     premium: values.premium,
     featured: values.featured,
     visibility_level: values.visibility_level,
@@ -1811,10 +1811,12 @@ function markSaveProgressSuccess() {
         nextImages.push({
           id: crypto.randomUUID(),
           file: optimizedFile,
+          height: prepareResult.outputDimensions.height,
           previewUrl: URL.createObjectURL(optimizedFile),
           originalIndex: startingOriginalIndex + nextImages.length,
           isCover: isCoverSelection && index === 0,
           status: 'pending',
+          width: prepareResult.outputDimensions.width,
         })
       } catch (error) {
         if (isHeicImageFile(file)) {
@@ -2107,9 +2109,11 @@ function markSaveProgressSuccess() {
 
         const uploadTask = uploadLocationImage({
           file: image.file,
+          height: image.height,
           isCover: image.isCover,
           locationId: nextLocationId,
           sortOrder,
+          width: image.width,
           signal: controller.signal,
           onStatusChange: (status) => {
             updatePendingImage(image.id, {
