@@ -19,21 +19,29 @@ function Header() {
   }
 
   return (
-    <header className="border-b border-slate-200 bg-white/95 backdrop-blur">
+    <header className="hidden border-b border-slate-200 bg-white/95 backdrop-blur md:block">
       <div className="px-6 py-3 sm:px-8 sm:py-3.5">
         {header ? (
           <PageHeader
             breadcrumbItems={header.breadcrumbItems}
             content={header.content}
             utilityAction={
-              <Button variant="secondary" onClick={() => void handleSignOut()}>
+              <Button
+                variant="secondary"
+                className="hidden md:inline-flex"
+                onClick={() => void handleSignOut()}
+              >
                 Cerrar sesión
               </Button>
             }
           />
         ) : (
           <div className="flex min-h-20 items-center justify-end">
-            <Button variant="secondary" onClick={() => void handleSignOut()}>
+            <Button
+              variant="secondary"
+              className="hidden md:inline-flex"
+              onClick={() => void handleSignOut()}
+            >
               Cerrar sesión
             </Button>
           </div>

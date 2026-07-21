@@ -17,7 +17,9 @@ function PageHeader({
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           {breadcrumbItems && breadcrumbItems.length > 0 ? (
-            <PageBreadcrumb items={breadcrumbItems} />
+            <div className="hidden sm:block">
+              <PageBreadcrumb items={breadcrumbItems} />
+            </div>
           ) : null}
         </div>
 
