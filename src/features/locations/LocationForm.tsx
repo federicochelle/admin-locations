@@ -172,6 +172,15 @@ function buildPayload(
     previousLng: options?.mode === 'edit' ? options.initialValues?.lng ?? null : null,
   })
 
+  console.groupCollapsed('[Location payload audit] buildPayload')
+  console.log('mode', options?.mode ?? 'create')
+  console.log('lat', values.lat, 'type:', typeof values.lat)
+  console.log('lng', values.lng, 'type:', typeof values.lng)
+  console.log('current approx_lat', values.approx_lat, 'type:', typeof values.approx_lat)
+  console.log('current approx_lng', values.approx_lng, 'type:', typeof values.approx_lng)
+  console.log('generated publicCoordinates', publicCoordinates ?? null)
+  console.groupEnd()
+
   return {
     title: values.title.trim(),
     slug: values.slug.trim(),
