@@ -83,7 +83,7 @@ function LocationRequestsAdminTable({
 
   return (
     <Card className="-mx-6 overflow-hidden rounded-none border-x-0 p-0 sm:mx-0 sm:rounded-2xl sm:border-x sm:border-y">
-      <div className="border-b border-slate-200 px-6 py-5">
+      <div className="border-b border-slate-200 px-3 py-5 sm:px-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Listado de solicitudes</h2>
@@ -119,11 +119,11 @@ function LocationRequestsAdminTable({
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-[#f3f2ee]">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Fecha</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Campaña</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Solicitante</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Locaciones</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Estado</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Fecha</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Campaña</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Solicitante</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Locaciones</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Estado</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-transparent">
@@ -143,27 +143,27 @@ function LocationRequestsAdminTable({
                     handleRowNavigation(request.id, event)
                   }}
                 >
-                  <td className="px-6 py-4 text-sm text-slate-600">
+                  <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                     <div className="min-w-[150px]">
                       <p>{formatDateTime(request.createdAt)}</p>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-slate-900">
+                  <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                     <div className="min-w-[240px]">
                       <p className="font-medium text-slate-950">{request.title}</p>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-slate-900">
+                  <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                     <div className="min-w-[180px]">
                       <p className="font-medium text-slate-950">{formatRequesterName(request)}</p>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-slate-600">
+                  <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                     <div className="min-w-[140px]">
                       <p className="font-medium text-slate-900">{request.locationCount}</p>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-slate-600">
+                  <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                     <div className="min-w-[150px]">
                       <span
                         className={[

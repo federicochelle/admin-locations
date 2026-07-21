@@ -53,7 +53,7 @@ function ProposalsTable({
 
   return (
     <Card className="-mx-6 overflow-hidden rounded-none border-x-0 p-0 sm:mx-0 sm:rounded-2xl sm:border-x sm:border-y">
-      <div className="border-b border-slate-200 px-6 py-5">
+      <div className="border-b border-slate-200 px-3 py-5 sm:px-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Listado de propuestas</h2>
@@ -89,13 +89,13 @@ function ProposalsTable({
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-[#f3f2ee]">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Fecha</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Nombre</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Email</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Teléfono</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Ubicación</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Estado</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Acción</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Fecha</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Nombre</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Email</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Teléfono</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Ubicación</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Estado</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Acción</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-transparent">
@@ -114,27 +114,27 @@ function ProposalsTable({
                   handleRowNavigation(proposal.id, event)
                 }}
               >
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                   <div className="min-w-[160px]">{formatProposalDateTime(proposal.createdAt)}</div>
                 </td>
-                <td className="px-6 py-4 text-sm font-medium text-slate-950">
+                <td className="px-3 py-4 text-sm font-medium text-slate-950 sm:px-6">
                   <div className="min-w-[180px]">{proposal.ownerName}</div>
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                   <div className="min-w-[220px]">{proposal.ownerEmail}</div>
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                   <div className="min-w-[160px]">{proposal.ownerPhone}</div>
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                   <div className="min-w-[220px]">{getProposalLocationLabel(proposal)}</div>
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-900">
+                <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                   <div className="min-w-[150px]">
                     <ProposalStatusBadge status={proposal.status} />
                   </div>
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                   <Link
                     to={getProposalDetailPath(proposal.id)}
                     onClick={(event) => event.stopPropagation()}

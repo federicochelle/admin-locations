@@ -90,7 +90,7 @@ function FeaturesTable({
 }: FeaturesTableProps) {
   return (
     <Card className="-mx-6 overflow-hidden rounded-none border-x-0 p-0 sm:mx-0 sm:rounded-2xl sm:border-x sm:border-y">
-      <div className="border-b border-slate-200 px-6 py-5">
+      <div className="border-b border-slate-200 px-3 py-5 sm:px-6">
         <h2 className="text-lg font-semibold text-slate-950">Listado de features</h2>
         <p className="mt-1 text-sm text-slate-600">
           {features.length} features encontradas
@@ -101,23 +101,23 @@ function FeaturesTable({
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-slate-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Nombre</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Slug</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Grupo</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Tipo</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Activa</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Acciones</th>
+              <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 sm:px-6">Nombre</th>
+              <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 sm:px-6">Slug</th>
+              <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 sm:px-6">Grupo</th>
+              <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 sm:px-6">Tipo</th>
+              <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 sm:px-6">Activa</th>
+              <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 sm:px-6">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white/95 backdrop-blur-sm">
             {features.map((feature) => (
               <tr key={feature.id} className="align-top">
-                <td className="px-6 py-4 text-sm font-medium text-slate-950">{feature.name}</td>
-                <td className="px-6 py-4 text-sm text-slate-600">{feature.slug}</td>
-                <td className="px-6 py-4 text-sm text-slate-600">{formatCellValue(feature.group)}</td>
-                <td className="px-6 py-4 text-sm text-slate-600">{formatCellValue(feature.type)}</td>
-                <td className="px-6 py-4 text-sm text-slate-600">{formatActive(feature.active)}</td>
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-3 py-4 text-sm font-medium text-slate-950 sm:px-6">{feature.name}</td>
+                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">{feature.slug}</td>
+                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">{formatCellValue(feature.group)}</td>
+                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">{formatCellValue(feature.type)}</td>
+                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">{formatActive(feature.active)}</td>
+                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                   <div className="flex flex-wrap gap-2">
                     <Link
                       to={getFeatureEditPath(feature.id)}

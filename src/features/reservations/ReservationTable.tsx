@@ -135,7 +135,7 @@ function ReservationTable({
 
   return (
     <Card className="-mx-6 overflow-hidden rounded-none border-x-0 p-0 sm:mx-0 sm:rounded-2xl sm:border-x sm:border-y">
-      <div className="border-b border-slate-200 px-6 py-5">
+      <div className="border-b border-slate-200 px-3 py-5 sm:px-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Listado de reservas</h2>
@@ -167,19 +167,19 @@ function ReservationTable({
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-[#f3f2ee]">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Locación</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Título</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Inicio</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Fin</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Estado</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Creado</th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Acciones</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Locación</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Título</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Inicio</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Fin</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Estado</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Creado</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-transparent">
             {filteredReservations.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-sm text-slate-500">
+                <td colSpan={7} className="px-3 py-8 text-sm text-slate-500 sm:px-6">
                   No se encontraron reservas.
                 </td>
               </tr>
@@ -187,19 +187,19 @@ function ReservationTable({
 
             {filteredReservations.map((reservation) => (
               <tr key={reservation.id} className="align-top">
-                <td className="px-6 py-4 text-sm font-medium text-slate-950">
+                <td className="px-3 py-4 text-sm font-medium text-slate-950 sm:px-6">
                   <div className="min-w-[240px]">{formatLocation(reservation)}</div>
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-900">
+                <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                   <div className="min-w-[220px]">{reservation.title}</div>
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                   <div className="min-w-[160px]">{formatReservationDateTime(reservation.startsAt)}</div>
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                   <div className="min-w-[160px]">{formatReservationDateTime(reservation.endsAt)}</div>
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                   <div className="min-w-[140px]">
                     <span
                       className={[
@@ -211,10 +211,10 @@ function ReservationTable({
                     </span>
                   </div>
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                   <div className="min-w-[160px]">{formatReservationDateTime(reservation.createdAt)}</div>
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-900">
+                <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                   <div className="flex flex-wrap gap-2">
                     <ActionIconButton
                       actionLabel="Editar"

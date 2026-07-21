@@ -20,7 +20,7 @@ type CategorySortDirection = 'asc' | 'desc'
 
 function CoverPlaceholder() {
   return (
-    <div className="flex h-14 w-20 items-center justify-center border border-slate-300 bg-slate-50 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
+    <div className="flex h-14 w-24 items-center justify-center border border-slate-300 bg-slate-50 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
       Sin foto
     </div>
   )
@@ -242,7 +242,7 @@ function CategoriesTable({
 
   return (
     <Card className="-mx-6 overflow-hidden rounded-none border-x-0 p-0 sm:mx-0 sm:rounded-2xl sm:border-x sm:border-y">
-      <div className="border-b border-slate-200 px-6 py-5">
+      <div className="border-b border-slate-200 px-3 py-5 sm:px-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Listado de categorías</h2>
@@ -280,10 +280,10 @@ function CategoriesTable({
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-[#f3f2ee]">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                 FOTO
               </th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                 <button
                   type="button"
                   onClick={() => handleSort('name')}
@@ -302,7 +302,7 @@ function CategoriesTable({
                   </span>
                 </button>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                 <button
                   type="button"
                   onClick={() => handleSort('locationsCount')}
@@ -321,13 +321,13 @@ function CategoriesTable({
                   </span>
                 </button>
               </th>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">Acciones</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-transparent">
             {filteredCategories.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-6 py-8 text-sm text-slate-500">
+                <td colSpan={4} className="px-3 py-8 text-sm text-slate-500 sm:px-6">
                   No se encontraron categorías.
                 </td>
               </tr>
@@ -348,9 +348,9 @@ function CategoriesTable({
                 }}
                 tabIndex={0}
               >
-                <td className="px-6 py-4">
+                <td className="px-3 py-4 sm:px-6">
                   {category.image_url ? (
-                    <div className="h-14 w-20 overflow-hidden border border-slate-200 bg-slate-50">
+                    <div className="h-14 w-24 overflow-hidden border border-slate-200 bg-slate-50">
                       <img
                         src={category.image_url}
                         alt={category.name}
@@ -361,9 +361,9 @@ function CategoriesTable({
                     <CoverPlaceholder />
                   )}
                 </td>
-                <td className="px-6 py-4 text-sm font-medium text-slate-950">{category.name}</td>
-                <td className="px-6 py-4 text-sm text-slate-900">{category.locationsCount}</td>
-                <td className="px-6 py-4 text-sm text-slate-900">
+                <td className="px-3 py-4 text-sm font-medium text-slate-950 sm:px-6">{category.name}</td>
+                <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">{category.locationsCount}</td>
+                <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                   <div className="flex flex-wrap gap-2">
                     <Link
                       to={getCategoryEditPath(category.id)}
