@@ -102,7 +102,7 @@ function getWhatsappUrl(phone: string | null) {
 
 function CoverPlaceholder() {
   return (
-    <div className="flex h-14 w-20 items-center justify-center border border-slate-300 bg-slate-50 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
+    <div className="flex h-14 w-24 items-center justify-center border border-slate-300 bg-slate-50 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
       Sin foto
     </div>
   )
@@ -415,7 +415,7 @@ function LocationsTable({
 
       <Card className="-mx-6 overflow-hidden rounded-none border-x-0 p-0 sm:mx-0 sm:rounded-2xl sm:border-x sm:border-y">
         {showToolbar ? (
-        <div className="border-b border-slate-200 px-6 py-5">
+        <div className="border-b border-slate-200 px-3 py-5 sm:px-6">
         <div
           className={[
             'flex flex-col gap-4 lg:flex-row lg:items-end',
@@ -472,11 +472,11 @@ function LocationsTable({
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-[#f3f2ee]">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                 {resolvedVisibleColumns.cover ? 'Portada' : null}
               </th>
               {resolvedVisibleColumns.code ? (
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                   <button
                     type="button"
                     onClick={() => handleSort('locationCode')}
@@ -497,7 +497,7 @@ function LocationsTable({
                 </th>
               ) : null}
               {resolvedVisibleColumns.department ? (
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                   <button
                     type="button"
                     onClick={() => handleSort('departmentName')}
@@ -518,17 +518,17 @@ function LocationsTable({
                 </th>
               ) : null}
               {resolvedVisibleColumns.owner ? (
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                   Dueño
                 </th>
               ) : null}
               {resolvedVisibleColumns.phone ? (
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                   Teléfono
                 </th>
               ) : null}
               {resolvedVisibleColumns.actions ? (
-                <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                   Acciones
                 </th>
               ) : null}
@@ -551,9 +551,9 @@ function LocationsTable({
                 tabIndex={0}
               >
                 {resolvedVisibleColumns.cover ? (
-                  <td className="px-6 py-4">
+                  <td className="px-3 py-4 sm:px-6">
                     {location.coverImageUrl ? (
-                      <div className="h-14 w-20 overflow-hidden border border-slate-200 bg-slate-100">
+                      <div className="h-14 w-24 overflow-hidden border border-slate-200 bg-slate-100">
                         <img
                           src={location.coverImageUrl}
                           alt={`Portada de ${location.title}`}
@@ -566,17 +566,17 @@ function LocationsTable({
                   </td>
                 ) : null}
                 {resolvedVisibleColumns.code ? (
-                  <td className="px-6 py-4 text-sm font-medium text-slate-950">
+                  <td className="px-3 py-4 text-sm font-medium text-slate-950 sm:px-6">
                     {formatLocationCode(location.locationCode)}
                   </td>
                 ) : null}
                 {resolvedVisibleColumns.department ? (
-                  <td className="px-6 py-4 text-sm text-slate-900">
+                  <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                     {formatCellValue(location.departmentName)}
                   </td>
                 ) : null}
                 {resolvedVisibleColumns.owner ? (
-                  <td className="px-6 py-4 text-sm text-slate-900">
+                  <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                     {location.ownerId && location.ownerName ? (
                       <button
                         type="button"
@@ -594,7 +594,7 @@ function LocationsTable({
                   </td>
                 ) : null}
                 {resolvedVisibleColumns.phone ? (
-                  <td className="px-6 py-4 text-sm text-slate-900">
+                  <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                     {(() => {
                       const whatsappUrl = getWhatsappUrl(location.ownerPhone)
 
@@ -621,7 +621,7 @@ function LocationsTable({
                   </td>
                 ) : null}
                 {resolvedVisibleColumns.actions ? (
-                  <td className="px-6 py-4 text-sm text-slate-900">
+                  <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                     <div className="flex flex-nowrap items-center gap-2">
                       <Link
                         to={getLocationEditPath(location.id)}

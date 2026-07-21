@@ -192,7 +192,7 @@ function ActivityHistoryPage() {
 
       {!isLoading && !errorMessage ? (
         <Card className="-mx-6 overflow-hidden rounded-none border-x-0 p-0 sm:mx-0 sm:rounded-2xl sm:border-x sm:border-y">
-          <div className="border-b border-slate-200 px-6 py-5">
+          <div className="border-b border-slate-200 px-3 py-5 sm:px-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:justify-end">
               <div className="flex flex-col gap-3 sm:ml-auto sm:flex-row sm:items-center">
                 <label className="relative block min-w-0 sm:w-80">
@@ -223,19 +223,19 @@ function ActivityHistoryPage() {
               <table className="min-w-full divide-y divide-slate-200">
                 <thead className="bg-[#f3f2ee]">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                    <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                       Usuario
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                    <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                       Acción
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                    <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                       Nombre
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                    <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                       Tipo
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black">
+                    <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                       Fecha
                     </th>
                   </tr>
@@ -243,7 +243,7 @@ function ActivityHistoryPage() {
                 <tbody className="divide-y divide-slate-200 bg-transparent">
                   {filteredActivityLogs.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-8 text-sm text-slate-500">
+                      <td colSpan={5} className="px-3 py-8 text-sm text-slate-500 sm:px-6">
                         No se encontraron actividades.
                       </td>
                     </tr>
@@ -255,13 +255,13 @@ function ActivityHistoryPage() {
 
                     return (
                       <tr key={log.id} className="align-top">
-                        <td className="px-6 py-4 text-sm text-slate-900">
+                        <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                           {log.actor_name || '-'}
                         </td>
-                        <td className="px-6 py-4 text-sm text-slate-900">
+                        <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                           {getActivityActionCellLabel(log.action)}
                         </td>
-                        <td className="px-6 py-4 text-sm text-slate-900">
+                        <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                           {entityPath ? (
                             <button
                               type="button"
@@ -274,10 +274,10 @@ function ActivityHistoryPage() {
                             <span>{entityName}</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-sm text-slate-900">
+                        <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                           {getActivityTypeLabel(log.entity_type)}
                         </td>
-                        <td className="px-6 py-4 text-sm text-slate-500">
+                        <td className="px-3 py-4 text-sm text-slate-500 sm:px-6">
                           {formatRelativeCreatedAt(log.created_at)}
                         </td>
                       </tr>
