@@ -40,6 +40,10 @@ export type AdminLocationRequestDetail = {
   requesterEmail: string | null
   requesterCompanyName: string | null
   requesterPhone: string | null
+  locationManagerName: string | null
+  tentativeStartDate: string | null
+  tentativeEndDate: string | null
+  pdfUrl: string | null
   locations: AdminRequestLocation[]
 }
 

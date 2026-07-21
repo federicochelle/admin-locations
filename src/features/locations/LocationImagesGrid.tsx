@@ -375,8 +375,8 @@ function LocationImagesGrid(
                 Portada
               </span>
               {(hasRemoveAction || (onSetCoverHandler && galleryItems.length > 0)) ? (
-                <div className="pointer-events-none absolute inset-0 bg-slate-950/0 transition group-hover:bg-slate-950/20">
-                  <div className="pointer-events-auto absolute right-3 top-3 flex items-center gap-2 opacity-0 transition duration-200 group-hover:opacity-100">
+                <div className="pointer-events-none absolute inset-0 bg-slate-950/10 transition md:bg-slate-950/0 md:group-hover:bg-slate-950/20">
+                  <div className="pointer-events-auto absolute right-3 top-3 flex items-center gap-2 opacity-100 transition duration-200 md:opacity-0 md:group-hover:opacity-100">
                     {hasRemoveAction ? (
                       <button
                         type="button"
@@ -432,8 +432,8 @@ function LocationImagesGrid(
                 className="h-full w-full object-cover"
               />
               {(onSetCoverHandler || hasRemoveAction) ? (
-                <div className="pointer-events-none absolute inset-0 bg-slate-950/0 transition group-hover:bg-slate-950/20">
-                  <div className="pointer-events-auto absolute right-3 top-3 flex items-center gap-2 opacity-0 transition duration-200 group-hover:opacity-100">
+                <div className="pointer-events-none absolute inset-0 bg-slate-950/10 transition md:bg-slate-950/0 md:group-hover:bg-slate-950/20">
+                  <div className="pointer-events-auto absolute right-3 top-3 flex items-center gap-2 opacity-100 transition duration-200 md:opacity-0 md:group-hover:opacity-100">
                     {hasRemoveAction ? (
                       <button
                         type="button"

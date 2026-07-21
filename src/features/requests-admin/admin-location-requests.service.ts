@@ -59,6 +59,7 @@ type RequestProjectRow = {
   created_at: string
   updated_at: string | null
   request_project_locations: RequestProjectLocationRelation
+  [key: string]: unknown
 }
 
 type ProfileRow = {
@@ -67,6 +68,32 @@ type ProfileRow = {
   email: string | null
   company_name: string | null
   phone: string | null
+}
+
+function getOptionalStringValue(row: RequestProjectRow, keys: string[]) {
+  for (const key of keys) {
+    const value = row[key]
+
+    if (typeof value === 'string') {
+      const normalizedValue = value.trim()
+
+      if (normalizedValue.length > 0) {
+        return normalizedValue
+      }
+    }
+  }
+
+  return null
+}
+
+function getRequestEmail(row: RequestProjectRow) {
+  return getOptionalStringValue(row, [
+    'email',
+    'requester_email',
+    'contact_email',
+    'applicant_email',
+    'user_email',
+  ])
 }
 
 function getRelationName(relation: NameRelation) {
@@ -157,13 +184,7 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
     .from('request_projects')
     .select(
       `
-        id,
-        user_id,
-        title,
-        message,
-        status,
-        created_at,
-        updated_at,
+        *,
         request_project_locations(
           location_id,
           locations(
@@ -220,7 +241,7 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       requesterFullName: profile?.full_name?.trim() || null,
-      requesterEmail: profile?.email?.trim() || null,
+      requesterEmail: getRequestEmail(row),
       requesterCompanyName: profile?.company_name?.trim() || null,
       requesterPhone: profile?.phone?.trim() || null,
       locationCount: locationNames.length,
@@ -262,13 +283,7 @@ export async function getAdminLocationRequestById(
     .from('request_projects')
     .select(
       `
-        id,
-        user_id,
-        title,
-        message,
-        status,
-        created_at,
-        updated_at,
+        *,
         request_project_locations(
           location_id,
           locations(
@@ -332,9 +347,38 @@ export async function getAdminLocationRequestById(
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     requesterFullName: profile?.full_name?.trim() || null,
-    requesterEmail: profile?.email?.trim() || null,
+    requesterEmail: getRequestEmail(row),
     requesterCompanyName: profile?.company_name?.trim() || null,
     requesterPhone: profile?.phone?.trim() || null,
+    locationManagerName: getOptionalStringValue(row, [
+      'location_manager_name',
+      'location_manager',
+      'location_contact_name',
+      'jefe_de_locaciones',
+      'jefe_locaciones',
+    ]),
+    tentativeStartDate: getOptionalStringValue(row, [
+      'tentative_start_date',
+      'tentative_from',
+      'start_date',
+      'from_date',
+      'fecha_tentativa_desde',
+      'fecha_desde',
+    ]),
+    tentativeEndDate: getOptionalStringValue(row, [
+      'tentative_end_date',
+      'tentative_to',
+      'end_date',
+      'to_date',
+      'fecha_tentativa_hasta',
+      'fecha_hasta',
+    ]),
+    pdfUrl: getOptionalStringValue(row, [
+      'pdf_url',
+      'request_pdf_url',
+      'document_url',
+      'pdf_public_url',
+    ]),
     locations,
   }
 }
