@@ -476,7 +476,7 @@ function SectionCard({
   title?: string
 }) {
   return (
-    <section className="-mx-6 w-[calc(100%+3rem)] space-y-5 rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-sm backdrop-blur-sm sm:p-6 lg:p-7">
+    <section className="-mx-9 w-[calc(100%+4.5rem)] space-y-5 rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-sm backdrop-blur-sm sm:-mx-6 sm:w-[calc(100%+3rem)] sm:p-6 lg:p-7">
       {title || description || actions ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           {title || description ? (
@@ -515,7 +515,7 @@ function AccordionSectionCard({
   title: string
 }) {
   return (
-    <section className="-mx-6 w-[calc(100%+3rem)] space-y-5 rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-sm backdrop-blur-sm sm:p-6">
+    <section className="-mx-9 w-[calc(100%+4.5rem)] space-y-5 rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-sm backdrop-blur-sm sm:-mx-6 sm:w-[calc(100%+3rem)] sm:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <button
           type="button"
@@ -2433,12 +2433,12 @@ function markSaveProgressSuccess() {
         <div className="space-y-6">
           <div className="grid gap-6 xl:grid-cols-2 xl:items-start">
             <div className="space-y-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-2xl font-semibold text-slate-950">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="min-w-0 text-2xl font-semibold text-slate-950">
                   {getFormHeading(mode)}
                 </h3>
                 {primaryCardActions ? (
-                  <div className="sm:ml-auto">{primaryCardActions}</div>
+                  <div className="shrink-0">{primaryCardActions}</div>
                 ) : null}
               </div>
 
