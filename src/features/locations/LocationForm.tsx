@@ -40,6 +40,7 @@ import type {
   LocationAnalysisInput,
   LocationAnalysisResult,
 } from '../location-analysis/location-analysis.types'
+import { resolvePublicLocationCoordinates } from './location-public-coordinates'
 import type {
   LocationCreatePayload,
   LocationFeatureOption,
@@ -70,6 +71,8 @@ type LocationFormProps = {
   showImagesSection?: boolean
   showAdvancedSection?: boolean
 }
+
+const GOOGLE_MAPS_LIBRARIES = ['places']
 
 type LocationFormFieldErrors = {
   title: string | null
@@ -151,11 +154,23 @@ function slugifyTitle(value: string) {
 
 function buildPayload(
   values: LocationFormValues,
+  options?: {
+    mode?: LocationFormMode
+    initialValues?: LocationFormValues
+  },
 ): LocationCreatePayload | LocationUpdatePayload {
   const deduplicatedSelectedFeatureIds = Array.from(
     new Set(values.selectedFeatureIds),
   )
   const deduplicatedSelectedTagIds = Array.from(new Set(values.selectedTagIds))
+  const publicCoordinates = resolvePublicLocationCoordinates({
+    lat: values.lat,
+    lng: values.lng,
+    currentPublicLat: values.approx_lat,
+    currentPublicLng: values.approx_lng,
+    previousLat: options?.mode === 'edit' ? options.initialValues?.lat ?? null : null,
+    previousLng: options?.mode === 'edit' ? options.initialValues?.lng ?? null : null,
+  })
 
   return {
     title: values.title.trim(),
@@ -179,8 +194,8 @@ function buildPayload(
     address_components: values.address_components,
     lat: values.lat,
     lng: values.lng,
-    approx_lat: values.approx_lat,
-    approx_lng: values.approx_lng,
+    approx_lat: publicCoordinates?.lat ?? null,
+    approx_lng: publicCoordinates?.lng ?? null,
     show_exact_location: values.show_exact_location,
     map_visibility: values.map_visibility,
     selectedFeatureIds: deduplicatedSelectedFeatureIds,
@@ -312,7 +327,7 @@ function LocationGoogleProvider({
   }
 
   return (
-    <APIProvider apiKey={apiKey} libraries={['places']}>
+    <APIProvider apiKey={apiKey} libraries={GOOGLE_MAPS_LIBRARIES}>
       {children}
     </APIProvider>
   )
@@ -1745,18 +1760,31 @@ function markSaveProgressSuccess() {
       ...currentErrors,
       address_private: place.formatted_address ? null : currentErrors.address_private,
     }))
-    setValues((currentValues) => ({
-      ...currentValues,
-      address_private:
-        place.formatted_address ?? currentValues.address_private,
-      formatted_address: place.formatted_address,
-      google_place_id: place.google_place_id,
-      google_department_name: place.google_department_name,
-      google_zone_name: place.google_zone_name,
-      address_components: place.address_components,
-      lat: place.lat,
-      lng: place.lng,
-    }))
+    setValues((currentValues) => {
+      const publicCoordinates = resolvePublicLocationCoordinates({
+        lat: place.lat,
+        lng: place.lng,
+        currentPublicLat: currentValues.approx_lat,
+        currentPublicLng: currentValues.approx_lng,
+        previousLat: currentValues.lat,
+        previousLng: currentValues.lng,
+      })
+
+      return {
+        ...currentValues,
+        address_private:
+          place.formatted_address ?? currentValues.address_private,
+        formatted_address: place.formatted_address,
+        google_place_id: place.google_place_id,
+        google_department_name: place.google_department_name,
+        google_zone_name: place.google_zone_name,
+        address_components: place.address_components,
+        lat: place.lat,
+        lng: place.lng,
+        approx_lat: publicCoordinates?.lat ?? null,
+        approx_lng: publicCoordinates?.lng ?? null,
+      }
+    })
   }
 
   async function buildPendingImages(
@@ -2246,7 +2274,10 @@ function markSaveProgressSuccess() {
       openSaveProgress()
       updateStageStatus('location', 'active')
 
-      const payload = buildPayload(values)
+      const payload = buildPayload(values, {
+        mode,
+        initialValues,
+      })
 
       if (mode === 'edit') {
         if (!locationId) {
