@@ -97,6 +97,21 @@ function LoginPage() {
       <div className="mx-auto flex min-h-[calc(100vh-6rem)] max-w-5xl items-center justify-center">
         <div className="grid w-full overflow-hidden rounded-3xl border border-[#B8924A] bg-white shadow-sm lg:grid-cols-[1.1fr_0.9fr]">
           <section
+            className="flex items-center justify-center p-10 lg:hidden"
+            style={{
+              backgroundColor: '#0f1723',
+              backgroundImage:
+                'radial-gradient(circle at top left, rgba(184,146,74,.08), transparent 35%), linear-gradient(180deg, #0b0f17 0%, #0f1723 100%)',
+            }}
+          >
+            <img
+              src={logo}
+              alt="Film Locations UY"
+              className="h-auto w-full max-w-[10rem]"
+            />
+          </section>
+
+          <section
             className="hidden items-center justify-center p-10 lg:flex"
             style={{
               backgroundColor: '#0f1723',
@@ -120,9 +135,11 @@ function LoginPage() {
             }}
           >
             <div className="mx-auto w-full max-w-md">
-              <h1 className="text-center text-3xl font-extrabold uppercase tracking-[0.12em] text-slate-950">
+              <div className="flex items-center justify-center">
+                <h1 className="text-center text-[1.75rem] font-extrabold uppercase tracking-[0.12em] whitespace-nowrap text-slate-950 sm:text-3xl">
                 INICIAR SESIÓN
-              </h1>
+                </h1>
+              </div>
 
               <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
                 <div>

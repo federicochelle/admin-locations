@@ -191,7 +191,7 @@ function ActivityHistoryPage() {
       ) : null}
 
       {!isLoading && !errorMessage ? (
-        <Card className="overflow-hidden p-0">
+        <Card className="-mx-6 overflow-hidden rounded-none border-x-0 p-0 sm:mx-0 sm:rounded-2xl sm:border-x sm:border-y">
           <div className="border-b border-slate-200 px-6 py-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:justify-end">
               <div className="flex flex-col gap-3 sm:ml-auto sm:flex-row sm:items-center">
