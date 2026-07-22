@@ -3,6 +3,10 @@ const DROPBOX_SCRIPT_SRC = 'https://www.dropbox.com/static/api/2/dropins.js'
 
 let dropboxLoaderPromise: Promise<DropboxGlobal> | null = null
 
+export function getLoadedDropboxChooser() {
+  return window.Dropbox ?? null
+}
+
 function getDropboxAppKey() {
   const appKey = import.meta.env.VITE_DROPBOX_APP_KEY?.trim()
 

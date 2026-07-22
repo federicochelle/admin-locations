@@ -57,7 +57,10 @@ import type {
   PendingLocationImageStatus,
 } from './location-images.types'
 import type { ParsedGooglePlaceAddress } from './location-address-parser'
-import { loadDropboxChooser } from './dropbox/dropbox-chooser'
+import {
+  getLoadedDropboxChooser,
+  loadDropboxChooser,
+} from './dropbox/dropbox-chooser'
 import { downloadDropboxFiles } from './dropbox/dropbox-files'
 import { preparePendingLocationImages } from './location-image-selection'
 import { LOCATION_TOP_STACK_PLACEHOLDER_CLASS } from './location-top-stack.styles'
@@ -781,6 +784,7 @@ function LocationForm({
   const categoryComboboxRef = useRef<HTMLDivElement | null>(null)
   const coverImageUploaderRef = useRef<LocationImageUploaderHandle | null>(null)
   const dropboxAbortControllerRef = useRef<AbortController | null>(null)
+  const isDropboxChooserLoadingRef = useRef(false)
   const galleryImageUploaderRef = useRef<LocationImageUploaderHandle | null>(null)
   const isMountedRef = useRef(true)
   const ownerComboboxRef = useRef<HTMLDivElement | null>(null)
@@ -876,13 +880,57 @@ function LocationForm({
   }, [])
 
   useEffect(() => {
+    if (isReadOnly) {
+      return
+    }
+
+    let isActive = true
+    isDropboxChooserLoadingRef.current = true
+
+    void loadDropboxChooser()
+      .catch(() => {
+        // Si falla la precarga, reintentamos cuando el usuario abra el modal o toque Dropbox.
+      })
+      .finally(() => {
+        if (!isActive) {
+          return
+        }
+
+        isDropboxChooserLoadingRef.current = false
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [isReadOnly])
+
+  useEffect(() => {
     if (!isImageSourceModalOpen || isReadOnly) {
       return
     }
 
-    void loadDropboxChooser().catch(() => {
-      // Intentamos precargar el script para abrir el chooser desde el click del usuario.
-    })
+    if (getLoadedDropboxChooser() || isDropboxChooserLoadingRef.current) {
+      return
+    }
+
+    let isActive = true
+    isDropboxChooserLoadingRef.current = true
+
+    void loadDropboxChooser()
+      .catch(() => {
+        // Intentamos precargar el script para abrir el chooser desde el click del usuario.
+      })
+      .finally(() => {
+        if (!isActive) {
+          return
+        }
+
+        isDropboxChooserLoadingRef.current = false
+      })
+
+    return () => {
+      isActive = false
+    }
   }, [isImageSourceModalOpen, isReadOnly])
 
   useEffect(() => {
@@ -1501,45 +1549,12 @@ function LocationForm({
     }, 0)
   }
 
-  async function handleSelectDropboxSource() {
-    if (import.meta.env.DEV) {
-      console.debug('[Dropbox] handler ejecutado')
-    }
-
-    if (isDropboxImporting) {
-      return
-    }
-
-    const target = imageSelectionTarget
-
-    if (!target) {
-      setImageValidationErrors([
-        'No pudimos determinar si querías importar portada o galería.',
-      ])
-      return
-    }
-
-    abortActiveDropboxImport()
-    setIsImageSourceModalOpen(false)
-    setEditDeleteErrorMessage(null)
-
+  async function continueDropboxImport(
+    selectedFilesPromise: Promise<DropboxChooserFile[]>,
+    target: ImageSelectionTarget,
+  ) {
     try {
-      const dropbox = await loadDropboxChooser()
-
-      if (
-        typeof dropbox.isBrowserSupported === 'function' &&
-        !dropbox.isBrowserSupported()
-      ) {
-        throw new Error(
-          'Dropbox no es compatible con este navegador.',
-        )
-      }
-
-      if (import.meta.env.DEV) {
-        console.debug('[Dropbox] abriendo chooser')
-      }
-
-      const selectedFiles = await openDropboxChooser(dropbox, target)
+      const selectedFiles = await selectedFilesPromise
 
       if (!isMountedRef.current) {
         return
@@ -1620,6 +1635,77 @@ function LocationForm({
         setDropboxImportProgress(null)
       }
     }
+  }
+
+  function handleSelectDropboxSource() {
+    if (import.meta.env.DEV) {
+      console.debug('[Dropbox] handler ejecutado')
+    }
+
+    if (isDropboxImporting) {
+      return
+    }
+
+    const target = imageSelectionTarget
+
+    if (!target) {
+      setImageValidationErrors([
+        'No pudimos determinar si querías importar portada o galería.',
+      ])
+      return
+    }
+
+    abortActiveDropboxImport()
+    setEditDeleteErrorMessage(null)
+
+    const dropbox = getLoadedDropboxChooser()
+
+    if (!dropbox) {
+      setImageValidationErrors([
+        'Preparando Dropbox... Intenta nuevamente en un momento.',
+      ])
+
+      if (!isDropboxChooserLoadingRef.current) {
+        isDropboxChooserLoadingRef.current = true
+        void loadDropboxChooser()
+          .catch(() => {
+            if (!isMountedRef.current) {
+              return
+            }
+
+            setImageValidationErrors([
+              'No pudimos cargar Dropbox Chooser. Intenta nuevamente.',
+            ])
+          })
+          .finally(() => {
+            if (!isMountedRef.current) {
+              return
+            }
+
+            isDropboxChooserLoadingRef.current = false
+          })
+      }
+
+      return
+    }
+
+    if (
+      typeof dropbox.isBrowserSupported === 'function' &&
+      !dropbox.isBrowserSupported()
+    ) {
+      setImageValidationErrors([
+        'Dropbox no es compatible con este navegador.',
+      ])
+      return
+    }
+
+    if (import.meta.env.DEV) {
+      console.debug('[Dropbox] abriendo chooser')
+    }
+
+    const selectedFilesPromise = openDropboxChooser(dropbox, target)
+    setIsImageSourceModalOpen(false)
+    void continueDropboxImport(selectedFilesPromise, target)
   }
 
   async function handleOwnerQuickCreateSubmit(

@@ -20,7 +20,10 @@ import LocationImageUploader from '../locations/LocationImageUploader'
 import type { LocationImageUploaderHandle } from '../locations/LocationImageUploader'
 import LocationImageSourceModal from '../locations/LocationImageSourceModal'
 import { downloadDropboxFiles } from '../locations/dropbox/dropbox-files'
-import { loadDropboxChooser } from '../locations/dropbox/dropbox-chooser'
+import {
+  getLoadedDropboxChooser,
+  loadDropboxChooser,
+} from '../locations/dropbox/dropbox-chooser'
 import { LOCATION_TOP_STACK_PANEL_SURFACE_CLASS } from '../locations/location-top-stack.styles'
 import type {
   CategoryCreatePayload,
@@ -345,6 +348,7 @@ function CategoryForm({
   const [saveProgress, setSaveProgress] = useState<CategorySaveState | null>(null)
   const imageUploaderRef = useRef<LocationImageUploaderHandle | null>(null)
   const dropboxAbortControllerRef = useRef<AbortController | null>(null)
+  const isDropboxChooserLoadingRef = useRef(false)
   const isMountedRef = useRef(true)
   const retryCategoryIdRef = useRef<string | null>(mode === 'edit' ? categoryId ?? null : null)
 
@@ -403,6 +407,27 @@ function CategoryForm({
   }, [])
 
   useEffect(() => {
+    let isActive = true
+    isDropboxChooserLoadingRef.current = true
+
+    void loadDropboxChooser()
+      .catch(() => {
+        // Si falla la precarga, reintentamos cuando el usuario abra el modal o toque Dropbox.
+      })
+      .finally(() => {
+        if (!isActive) {
+          return
+        }
+
+        isDropboxChooserLoadingRef.current = false
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [])
+
+  useEffect(() => {
     onSubmittingChange?.(isSubmitting)
   }, [isSubmitting, onSubmittingChange])
 
@@ -433,9 +458,28 @@ function CategoryForm({
       return
     }
 
-    void loadDropboxChooser().catch(() => {
-      // Intentamos precargar el script para abrir el chooser desde el click del usuario.
-    })
+    if (getLoadedDropboxChooser() || isDropboxChooserLoadingRef.current) {
+      return
+    }
+
+    let isActive = true
+    isDropboxChooserLoadingRef.current = true
+
+    void loadDropboxChooser()
+      .catch(() => {
+        // Intentamos precargar el script para abrir el chooser desde el click del usuario.
+      })
+      .finally(() => {
+        if (!isActive) {
+          return
+        }
+
+        isDropboxChooserLoadingRef.current = false
+      })
+
+    return () => {
+      isActive = false
+    }
   }, [isImageSourceModalOpen])
 
   function openSaveProgress() {
@@ -584,32 +628,11 @@ function CategoryForm({
     }, 0)
   }
 
-  async function handleSelectDropboxSource() {
-    if (isDropboxImporting) {
-      return
-    }
-
-    dropboxAbortControllerRef.current?.abort(
-      new DOMException(
-        'La importación desde Dropbox fue cancelada.',
-        'AbortError',
-      ),
-    )
-    dropboxAbortControllerRef.current = null
-    setIsImageSourceModalOpen(false)
-    setImageError(null)
-
+  async function continueDropboxImport(
+    selectedFilesPromise: Promise<DropboxChooserFile[]>,
+  ) {
     try {
-      const dropbox = await loadDropboxChooser()
-
-      if (
-        typeof dropbox.isBrowserSupported === 'function' &&
-        !dropbox.isBrowserSupported()
-      ) {
-        throw new Error('Dropbox no es compatible con este navegador.')
-      }
-
-      const selectedFiles = await openCategoryDropboxChooser(dropbox)
+      const selectedFiles = await selectedFilesPromise
 
       if (!isMountedRef.current || selectedFiles.length === 0) {
         return
@@ -676,6 +699,60 @@ function CategoryForm({
         setDropboxImportProgress(null)
       }
     }
+  }
+
+  function handleSelectDropboxSource() {
+    if (isDropboxImporting) {
+      return
+    }
+
+    dropboxAbortControllerRef.current?.abort(
+      new DOMException(
+        'La importación desde Dropbox fue cancelada.',
+        'AbortError',
+      ),
+    )
+    dropboxAbortControllerRef.current = null
+    setImageError(null)
+
+    const dropbox = getLoadedDropboxChooser()
+
+    if (!dropbox) {
+      setImageError('Preparando Dropbox... Intenta nuevamente en un momento.')
+
+      if (!isDropboxChooserLoadingRef.current) {
+        isDropboxChooserLoadingRef.current = true
+        void loadDropboxChooser()
+          .catch(() => {
+            if (!isMountedRef.current) {
+              return
+            }
+
+            setImageError('No pudimos cargar Dropbox Chooser. Intenta nuevamente.')
+          })
+          .finally(() => {
+            if (!isMountedRef.current) {
+              return
+            }
+
+            isDropboxChooserLoadingRef.current = false
+          })
+      }
+
+      return
+    }
+
+    if (
+      typeof dropbox.isBrowserSupported === 'function' &&
+      !dropbox.isBrowserSupported()
+    ) {
+      setImageError('Dropbox no es compatible con este navegador.')
+      return
+    }
+
+    const selectedFilesPromise = openCategoryDropboxChooser(dropbox)
+    setIsImageSourceModalOpen(false)
+    void continueDropboxImport(selectedFilesPromise)
   }
 
   function handleRemoveImage() {
