@@ -9,8 +9,18 @@ import { LayoutHeaderProvider } from './LayoutHeaderContext'
 function AdminLayout() {
   const { currentUser, isLoading, isProfileLoading, profile } = useAuth()
   const hasAuthorizedAdminAccess = hasActiveAdminAccess(currentUser, profile)
+  const shouldBlockLayoutRender =
+    isLoading || (Boolean(currentUser) && !profile && isProfileLoading)
 
-  if (isLoading || (currentUser && isProfileLoading)) {
+  if (shouldBlockLayoutRender) {
+    if (import.meta.env.DEV) {
+      console.debug('[Auth] blocking route render', {
+        isLoading,
+        isProfileLoading,
+        hasProfile: Boolean(profile),
+      })
+    }
+
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100 px-6">
         <p className="text-sm text-slate-600">Verificando permisos...</p>

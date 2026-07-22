@@ -26,12 +26,23 @@ function AuthProvider({ children }: PropsWithChildren) {
   const currentUser = session?.user ?? null
   const activeProfileRequestIdRef = useRef(0)
   const expectedProfileUserIdRef = useRef<string | null>(null)
+  const latestProfileRef = useRef<Profile | null>(null)
+  const latestSessionUserIdRef = useRef<string | null>(null)
 
-  const loadProfileForUser = useCallback(async (userId: string | null) => {
+  const loadProfileForUser = useCallback(async (
+    userId: string | null,
+    options?: {
+      preserveExistingProfile?: boolean
+    },
+  ) => {
     const requestId = activeProfileRequestIdRef.current + 1
     activeProfileRequestIdRef.current = requestId
     expectedProfileUserIdRef.current = userId
-    setProfile(null)
+
+    if (!options?.preserveExistingProfile) {
+      setProfile(null)
+      latestProfileRef.current = null
+    }
 
     if (!userId) {
       setIsProfileLoading(false)
@@ -65,10 +76,12 @@ function AuthProvider({ children }: PropsWithChildren) {
 
       if (!nextProfile || nextProfile.user_id !== userId) {
         setProfile(null)
+        latestProfileRef.current = null
         return
       }
 
       setProfile(nextProfile)
+      latestProfileRef.current = nextProfile
     } catch (error) {
       if (
         activeProfileRequestIdRef.current !== requestId ||
@@ -78,7 +91,11 @@ function AuthProvider({ children }: PropsWithChildren) {
       }
 
       console.warn('No pudimos cargar el profile del usuario autenticado.', error)
-      setProfile(null)
+
+      if (!options?.preserveExistingProfile) {
+        setProfile(null)
+        latestProfileRef.current = null
+      }
     } finally {
       if (
         activeProfileRequestIdRef.current === requestId &&
@@ -103,7 +120,9 @@ function AuthProvider({ children }: PropsWithChildren) {
         }
 
         expectedProfileUserIdRef.current = nextSession?.user.id ?? null
+        latestSessionUserIdRef.current = nextSession?.user.id ?? null
         setProfile(null)
+        latestProfileRef.current = null
         setSession(nextSession)
         await loadProfileForUser(nextSession?.user.id ?? null)
       })
@@ -114,6 +133,8 @@ function AuthProvider({ children }: PropsWithChildren) {
 
         setSession(null)
         setProfile(null)
+        latestSessionUserIdRef.current = null
+        latestProfileRef.current = null
         setIsProfileLoading(false)
       })
       .finally(() => {
@@ -127,16 +148,50 @@ function AuthProvider({ children }: PropsWithChildren) {
     const supabase = getSupabaseClient()
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!isActive) {
         return
       }
 
-      expectedProfileUserIdRef.current = nextSession?.user.id ?? null
-      setProfile(null)
+      const previousUserId = latestSessionUserIdRef.current
+      const nextUserId = nextSession?.user.id ?? null
+      const isSameUser = previousUserId !== null && previousUserId === nextUserId
+      const preserveExistingProfile =
+        isSameUser &&
+        Boolean(
+          latestProfileRef.current &&
+            latestProfileRef.current.user_id === nextUserId,
+        )
+
+      if (import.meta.env.DEV) {
+        console.debug('[Auth]', {
+          event,
+          previousUserId,
+          nextUserId,
+          hasExistingProfile: preserveExistingProfile,
+        })
+      }
+
+      expectedProfileUserIdRef.current = nextUserId
+      latestSessionUserIdRef.current = nextUserId
       setSession(nextSession)
       setIsLoading(false)
-      void loadProfileForUser(nextSession?.user.id ?? null)
+
+      if (!nextUserId) {
+        setProfile(null)
+        latestProfileRef.current = null
+        setIsProfileLoading(false)
+        return
+      }
+
+      if (!preserveExistingProfile) {
+        setProfile(null)
+        latestProfileRef.current = null
+      }
+
+      void loadProfileForUser(nextUserId, {
+        preserveExistingProfile,
+      })
     })
 
     return () => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Navigate, Outlet } from 'react-router-dom'
 import useAuth from '../../features/auth/useAuth'
 import { hasActiveAdminAccess } from '../../features/auth/auth-context'
@@ -12,23 +12,24 @@ function ProtectedRoute() {
     profile,
     signOut,
   } = useAuth()
-  const [isSigningOutUnauthorizedUser, setIsSigningOutUnauthorizedUser] =
-    useState(false)
+  const isSigningOutUnauthorizedUserRef = useRef(false)
   const hasAuthorizedAdminAccess = hasActiveAdminAccess(currentUser, profile)
-
   const isUnauthorizedAdminAccess =
     Boolean(currentUser) &&
     !isProfileLoading &&
     !hasAuthorizedAdminAccess
+  const shouldBlockRouteRender =
+    isLoading ||
+    isUnauthorizedAdminAccess ||
+    (Boolean(currentUser) && !profile && isProfileLoading)
 
   useEffect(() => {
-    if (!isUnauthorizedAdminAccess || isSigningOutUnauthorizedUser) {
+    if (!isUnauthorizedAdminAccess || isSigningOutUnauthorizedUserRef.current) {
       return
     }
 
     let isActive = true
-
-    setIsSigningOutUnauthorizedUser(true)
+    isSigningOutUnauthorizedUserRef.current = true
 
     void signOut()
       .catch((error) => {
@@ -39,19 +40,27 @@ function ProtectedRoute() {
           return
         }
 
-        setIsSigningOutUnauthorizedUser(false)
+        isSigningOutUnauthorizedUserRef.current = false
       })
 
     return () => {
       isActive = false
     }
-  }, [isSigningOutUnauthorizedUser, isUnauthorizedAdminAccess, signOut])
+  }, [isUnauthorizedAdminAccess, signOut])
 
-  if (isLoading || (currentUser && isProfileLoading) || isSigningOutUnauthorizedUser) {
+  if (shouldBlockRouteRender) {
+    if (import.meta.env.DEV) {
+      console.debug('[Auth] blocking route render', {
+        isLoading,
+        isProfileLoading,
+        hasProfile: Boolean(profile),
+      })
+    }
+
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100 px-6">
         <p className="text-sm text-slate-600">
-          {isSigningOutUnauthorizedUser
+          {isUnauthorizedAdminAccess
             ? 'Verificando permisos...'
             : 'Verificando sesión...'}
         </p>

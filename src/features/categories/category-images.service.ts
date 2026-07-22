@@ -57,6 +57,9 @@ type CloudflareDirectUploadResponse = {
 type UploadCategoryImageInput = {
   categoryId: string
   file: File
+  onStatusChange?: (
+    status: 'preparing' | 'uploading' | 'finalizing',
+  ) => void
 }
 
 type UploadCategoryImageResult = {
@@ -239,6 +242,7 @@ export async function uploadCategoryImage(
   input: UploadCategoryImageInput,
 ): Promise<UploadCategoryImageResult> {
   try {
+    input.onStatusChange?.('preparing')
     const contentType = validateCategoryImageContentType(input.file.type)
 
     const uploadUrlResult = await getCategoryImageUploadUrl({
@@ -251,6 +255,7 @@ export async function uploadCategoryImage(
       throw new Error('Cloudflare no devolvió una upload URL válida.')
     }
 
+    input.onStatusChange?.('uploading')
     const directUpload = await uploadCategoryImageToCloudflare(
       uploadUrlResult.uploadURL,
       input.file,
@@ -262,6 +267,7 @@ export async function uploadCategoryImage(
       throw new Error('No pudimos identificar la imagen subida en Cloudflare.')
     }
 
+    input.onStatusChange?.('finalizing')
     const finalizedImage = await finalizeCategoryImageUpload({
       categoryId: input.categoryId,
       cloudflareImageId,

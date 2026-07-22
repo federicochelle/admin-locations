@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Button from '../../components/ui/Button'
-import { getCategoryEditPath, routePaths } from '../../app/router/route-paths'
+import SaveProgressModal, {
+  type SaveProgressModalAction,
+} from '../../components/ui/SaveProgressModal'
+import { routePaths } from '../../app/router/route-paths'
 import {
   createCategory,
   getCategoryFormOptions,
@@ -13,10 +15,13 @@ import {
 } from './category-images.service'
 import useAuth from '../auth/useAuth'
 import { prepareImageUploadFile } from '../images/image-upload.processor'
+import { SUPPORTED_IMAGE_EXTENSIONS } from '../images/image-upload.constants'
 import LocationImageUploader from '../locations/LocationImageUploader'
-import {
-  LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
-} from '../locations/location-top-stack.styles'
+import type { LocationImageUploaderHandle } from '../locations/LocationImageUploader'
+import LocationImageSourceModal from '../locations/LocationImageSourceModal'
+import { downloadDropboxFiles } from '../locations/dropbox/dropbox-files'
+import { loadDropboxChooser } from '../locations/dropbox/dropbox-chooser'
+import { LOCATION_TOP_STACK_PANEL_SURFACE_CLASS } from '../locations/location-top-stack.styles'
 import type {
   CategoryCreatePayload,
   CategoryFormValues,
@@ -26,10 +31,35 @@ import type {
 export type CategoryFormMode = 'create' | 'edit'
 
 type CategoryFormProps = {
+  formId?: string
   mode?: CategoryFormMode
   initialValues?: CategoryFormValues
   categoryId?: string
   initialSubmitError?: string | null
+  onSubmittingChange?: (isSubmitting: boolean) => void
+}
+
+type CategorySaveStageKey =
+  | 'category'
+  | 'deleteImage'
+  | 'uploadImage'
+  | 'completed'
+
+type CategorySaveStageStatus =
+  | 'pending'
+  | 'active'
+  | 'done'
+  | 'error'
+  | 'skipped'
+
+type CategorySaveState = {
+  errorMessage: string | null
+  stages: Array<{
+    key: CategorySaveStageKey
+    status: CategorySaveStageStatus
+  }>
+  successMessage: string | null
+  uploadStep: 'preparing' | 'uploading' | 'finalizing' | null
 }
 
 const defaultInitialValues: CategoryFormValues = {
@@ -41,6 +71,8 @@ const defaultInitialValues: CategoryFormValues = {
   image_url: null,
   image_cloudflare_id: null,
 }
+
+const SAVE_SUCCESS_DELAY_MS = 1000
 
 function slugifyCategoryName(value: string) {
   return value
@@ -66,6 +98,128 @@ function buildPayload(
     sort_order: Number.isNaN(parsedSortOrder) ? 0 : parsedSortOrder,
     active: values.active,
   }
+}
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
+function buildCategorySaveState(input: {
+  shouldDeleteImage: boolean
+  shouldUploadImage: boolean
+}): CategorySaveState {
+  return {
+    errorMessage: null,
+    stages: [
+      { key: 'category', status: 'pending' },
+      {
+        key: 'deleteImage',
+        status: input.shouldDeleteImage ? 'pending' : 'skipped',
+      },
+      {
+        key: 'uploadImage',
+        status: input.shouldUploadImage ? 'pending' : 'skipped',
+      },
+      { key: 'completed', status: 'pending' },
+    ],
+    successMessage: null,
+    uploadStep: null,
+  }
+}
+
+function getCategorySaveStageStatus(
+  state: CategorySaveState,
+  key: CategorySaveStageKey,
+) {
+  return state.stages.find((stage) => stage.key === key)?.status ?? 'pending'
+}
+
+function getCategorySavePercentage(state: CategorySaveState) {
+  if (state.successMessage) {
+    return 100
+  }
+
+  let completedUnits = 0
+  let totalUnits = 0
+  const categoryStatus = getCategorySaveStageStatus(state, 'category')
+  const deleteStatus = getCategorySaveStageStatus(state, 'deleteImage')
+  const uploadStatus = getCategorySaveStageStatus(state, 'uploadImage')
+  const completedStatus = getCategorySaveStageStatus(state, 'completed')
+
+  totalUnits += 1
+  completedUnits +=
+    categoryStatus === 'done' || categoryStatus === 'skipped'
+      ? 1
+      : categoryStatus === 'active'
+        ? 0.35
+        : 0
+
+  if (deleteStatus !== 'skipped') {
+    totalUnits += 1
+    completedUnits +=
+      deleteStatus === 'done'
+        ? 1
+        : deleteStatus === 'active'
+          ? 0.5
+          : 0
+  }
+
+  if (uploadStatus !== 'skipped') {
+    totalUnits += 1
+    completedUnits +=
+      uploadStatus === 'done'
+        ? 1
+        : uploadStatus === 'active'
+          ? state.uploadStep === 'finalizing'
+            ? 0.9
+            : state.uploadStep === 'uploading'
+              ? 0.65
+              : 0.3
+          : 0
+  }
+
+  totalUnits += 1
+  completedUnits += completedStatus === 'done' ? 1 : 0
+
+  return Math.max(0, Math.min(100, Math.round((completedUnits / totalUnits) * 100)))
+}
+
+function getCategorySaveMessage(state: CategorySaveState) {
+  if (state.successMessage) {
+    return state.successMessage
+  }
+
+  if (state.errorMessage) {
+    return 'Guardado interrumpido'
+  }
+
+  if (getCategorySaveStageStatus(state, 'category') === 'active') {
+    return 'Guardando categoría...'
+  }
+
+  if (getCategorySaveStageStatus(state, 'deleteImage') === 'active') {
+    return 'Eliminando imagen...'
+  }
+
+  if (getCategorySaveStageStatus(state, 'uploadImage') === 'active') {
+    if (state.uploadStep === 'uploading') {
+      return 'Subiendo imagen...'
+    }
+
+    if (state.uploadStep === 'finalizing') {
+      return 'Finalizando imagen...'
+    }
+
+    return 'Procesando imagen...'
+  }
+
+  if (getCategorySaveStageStatus(state, 'completed') === 'done') {
+    return 'Cambios guardados correctamente'
+  }
+
+  return 'Preparando cambios...'
 }
 
 function FieldLabel({
@@ -110,11 +264,60 @@ function TrashIcon() {
   )
 }
 
+function ReplaceIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M20 11a8 8 0 1 1-2.34-5.66" />
+      <path d="M20 4v7h-7" />
+    </svg>
+  )
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException
+    ? error.name === 'AbortError'
+    : error instanceof Error
+      ? error.name === 'AbortError'
+      : false
+}
+
+function openCategoryDropboxChooser(dropbox: DropboxGlobal) {
+  return new Promise<DropboxChooserFile[]>((resolve, reject) => {
+    try {
+      dropbox.choose({
+        linkType: 'direct',
+        multiselect: false,
+        folderselect: false,
+        extensions: [...SUPPORTED_IMAGE_EXTENSIONS],
+        success(files) {
+          resolve(files)
+        },
+        cancel() {
+          resolve([])
+        },
+      })
+    } catch (error) {
+      reject(error)
+    }
+  })
+}
+
 function CategoryForm({
+  formId = 'category-form',
   mode = 'create',
   initialValues = defaultInitialValues,
   categoryId,
   initialSubmitError = null,
+  onSubmittingChange,
 }: CategoryFormProps) {
   const navigate = useNavigate()
   const { profile } = useAuth()
@@ -133,6 +336,18 @@ function CategoryForm({
   )
   const [shouldRemovePersistedImage, setShouldRemovePersistedImage] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
+  const [isImageSourceModalOpen, setIsImageSourceModalOpen] = useState(false)
+  const [isDropboxImporting, setIsDropboxImporting] = useState(false)
+  const [dropboxImportProgress, setDropboxImportProgress] = useState<{
+    processed: number
+    total: number
+  } | null>(null)
+  const [saveProgress, setSaveProgress] = useState<CategorySaveState | null>(null)
+  const imageUploaderRef = useRef<LocationImageUploaderHandle | null>(null)
+  const dropboxAbortControllerRef = useRef<AbortController | null>(null)
+  const isMountedRef = useRef(true)
+  const retryCategoryIdRef = useRef<string | null>(mode === 'edit' ? categoryId ?? null : null)
+
   async function loadFormOptions() {
     try {
       setIsOptionsLoading(true)
@@ -188,12 +403,100 @@ function CategoryForm({
   }, [])
 
   useEffect(() => {
+    onSubmittingChange?.(isSubmitting)
+  }, [isSubmitting, onSubmittingChange])
+
+  useEffect(() => {
+    isMountedRef.current = true
+
+    return () => {
+      isMountedRef.current = false
+      dropboxAbortControllerRef.current?.abort(
+        new DOMException(
+          'La importación desde Dropbox fue cancelada.',
+          'AbortError',
+        ),
+      )
+    }
+  }, [])
+
+  useEffect(() => {
     return () => {
       if (previewUrl) {
         URL.revokeObjectURL(previewUrl)
       }
     }
   }, [previewUrl])
+
+  useEffect(() => {
+    if (!isImageSourceModalOpen) {
+      return
+    }
+
+    void loadDropboxChooser().catch(() => {
+      // Intentamos precargar el script para abrir el chooser desde el click del usuario.
+    })
+  }, [isImageSourceModalOpen])
+
+  function openSaveProgress() {
+    setSaveProgress(
+      buildCategorySaveState({
+        shouldDeleteImage: shouldRemovePersistedImage && Boolean(persistedImageCloudflareId),
+        shouldUploadImage: selectedImageFile !== null,
+      }),
+    )
+  }
+
+  function updateCategorySaveProgress(
+    updater: (currentState: CategorySaveState) => CategorySaveState,
+  ) {
+    setSaveProgress((currentState) => {
+      if (!currentState) {
+        return currentState
+      }
+
+      return updater(currentState)
+    })
+  }
+
+  function updateSaveProgressStage(
+    key: CategorySaveStageKey,
+    status: CategorySaveStageStatus,
+  ) {
+    updateCategorySaveProgress((currentState) => ({
+      ...currentState,
+      stages: currentState.stages.map((stage) =>
+        stage.key === key
+          ? {
+              ...stage,
+              status,
+            }
+          : stage,
+      ),
+    }))
+  }
+
+  function setSaveProgressError(key: CategorySaveStageKey, message: string) {
+    updateCategorySaveProgress((currentState) => ({
+      ...currentState,
+      errorMessage: message,
+      stages: currentState.stages.map((stage) =>
+        stage.key === key
+          ? {
+              ...stage,
+              status: 'error',
+            }
+          : stage,
+      ),
+    }))
+  }
+
+  function markSaveProgressSuccess() {
+    updateCategorySaveProgress((currentState) => ({
+      ...currentState,
+      successMessage: 'Cambios guardados correctamente',
+    }))
+  }
 
   function handleTextChange(
     event: React.ChangeEvent<
@@ -221,8 +524,8 @@ function CategoryForm({
     })
   }
 
-  async function handleImageFilesSelected(files: FileList | null) {
-    const file = files?.[0] ?? null
+  async function handleSelectedCategoryImageFiles(files: File[]) {
+    const file = files[0] ?? null
 
     if (!file) {
       return
@@ -246,6 +549,132 @@ function CategoryForm({
           : 'No pudimos procesar la imagen seleccionada.'
 
       setImageError(message)
+    }
+  }
+
+  async function handleImageFilesSelected(files: FileList | null) {
+    await handleSelectedCategoryImageFiles(Array.from(files ?? []))
+  }
+
+  function handleOpenImageSourceModal() {
+    if (isSubmitting || isDropboxImporting) {
+      return
+    }
+
+    setIsImageSourceModalOpen(true)
+  }
+
+  function handleCloseImageSourceModal() {
+    if (isDropboxImporting) {
+      return
+    }
+
+    setIsImageSourceModalOpen(false)
+  }
+
+  function handleSelectDeviceSource() {
+    if (isDropboxImporting) {
+      return
+    }
+
+    setIsImageSourceModalOpen(false)
+
+    window.setTimeout(() => {
+      imageUploaderRef.current?.openFileDialog()
+    }, 0)
+  }
+
+  async function handleSelectDropboxSource() {
+    if (isDropboxImporting) {
+      return
+    }
+
+    dropboxAbortControllerRef.current?.abort(
+      new DOMException(
+        'La importación desde Dropbox fue cancelada.',
+        'AbortError',
+      ),
+    )
+    dropboxAbortControllerRef.current = null
+    setIsImageSourceModalOpen(false)
+    setImageError(null)
+
+    try {
+      const dropbox = await loadDropboxChooser()
+
+      if (
+        typeof dropbox.isBrowserSupported === 'function' &&
+        !dropbox.isBrowserSupported()
+      ) {
+        throw new Error('Dropbox no es compatible con este navegador.')
+      }
+
+      const selectedFiles = await openCategoryDropboxChooser(dropbox)
+
+      if (!isMountedRef.current || selectedFiles.length === 0) {
+        return
+      }
+
+      const controller = new AbortController()
+      dropboxAbortControllerRef.current = controller
+      setIsDropboxImporting(true)
+      setDropboxImportProgress({
+        processed: 0,
+        total: selectedFiles.length,
+      })
+
+      const { files, errors } = await downloadDropboxFiles(selectedFiles, {
+        signal: controller.signal,
+        onProgress: (processed, total) => {
+          if (!isMountedRef.current) {
+            return
+          }
+
+          setDropboxImportProgress({
+            processed,
+            total,
+          })
+        },
+      })
+
+      if (!isMountedRef.current) {
+        return
+      }
+
+      if (files.length === 0) {
+        setImageError(
+          errors[0] ?? 'No pudimos importar la imagen desde Dropbox.',
+        )
+        return
+      }
+
+      await handleSelectedCategoryImageFiles(files)
+
+      if (!isMountedRef.current) {
+        return
+      }
+
+      if (errors.length > 0) {
+        setImageError(errors[0] ?? null)
+      }
+    } catch (error) {
+      if (!isMountedRef.current || isAbortError(error)) {
+        return
+      }
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No pudimos importar la imagen desde Dropbox.'
+
+      setImageError(message)
+    } finally {
+      dropboxAbortControllerRef.current = null
+
+      if (isMountedRef.current) {
+        setIsDropboxImporting(false)
+        setDropboxImportProgress(null)
+      }
     }
   }
 
@@ -275,9 +704,17 @@ function CategoryForm({
 
   async function syncCategoryImage(nextCategoryId: string) {
     if (selectedImageFile) {
+      updateSaveProgressStage('uploadImage', 'active')
+
       const uploadResult = await uploadCategoryImage({
         categoryId: nextCategoryId,
         file: selectedImageFile,
+        onStatusChange: (status) => {
+          updateCategorySaveProgress((currentState) => ({
+            ...currentState,
+            uploadStep: status,
+          }))
+        },
       })
 
       setPersistedImageUrl(uploadResult.finalizedImage.imageUrl)
@@ -291,10 +728,16 @@ function CategoryForm({
 
       setPreviewUrl(null)
       setImageError(null)
+      updateCategorySaveProgress((currentState) => ({
+        ...currentState,
+        uploadStep: null,
+      }))
+      updateSaveProgressStage('uploadImage', 'done')
       return
     }
 
     if (shouldRemovePersistedImage && persistedImageCloudflareId) {
+      updateSaveProgressStage('deleteImage', 'active')
       await deleteCategoryImage({
         categoryId: nextCategoryId,
       })
@@ -303,52 +746,59 @@ function CategoryForm({
       setPersistedImageCloudflareId(null)
       setShouldRemovePersistedImage(false)
       setImageError(null)
+      updateSaveProgressStage('deleteImage', 'done')
     }
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  async function performSave() {
+    let failedStage: CategorySaveStageKey = 'category'
 
     try {
       setIsSubmitting(true)
       setSubmitError(null)
       setImageError(null)
+      openSaveProgress()
+      updateSaveProgressStage('category', 'active')
 
       const payload = buildPayload(values)
+      let nextCategoryId = retryCategoryIdRef.current
 
       if (mode === 'edit') {
         if (!categoryId) {
           throw new Error('Falta el identificador de la categoría a editar.')
         }
 
-        await updateCategory(categoryId, payload, {
-          actorProfileId: profile?.id ?? null,
-        })
-
-        await syncCategoryImage(categoryId)
-      } else {
-        const createdCategoryId = await createCategory(payload, {
-          actorProfileId: profile?.id ?? null,
-        })
-
-        try {
-          await syncCategoryImage(createdCategoryId)
-        } catch (error) {
-          const message =
-            error instanceof Error
-              ? error.message
-              : 'La categoría fue creada, pero no pudimos subir la imagen.'
-
-          navigate(getCategoryEditPath(createdCategoryId), {
-            state: {
-              submitErrorMessage:
-                `La categoría fue creada correctamente, pero la imagen no se pudo completar. ${message}`,
-            },
-          })
-          return
-        }
+        nextCategoryId = categoryId
       }
 
+      if (nextCategoryId) {
+        await updateCategory(nextCategoryId, payload, {
+          actorProfileId: profile?.id ?? null,
+        })
+      } else {
+        nextCategoryId = await createCategory(payload, {
+          actorProfileId: profile?.id ?? null,
+        })
+        retryCategoryIdRef.current = nextCategoryId
+      }
+
+      updateSaveProgressStage('category', 'done')
+
+      if (!nextCategoryId) {
+        throw new Error('No pudimos determinar la categoría a guardar.')
+      }
+
+      if (shouldRemovePersistedImage && persistedImageCloudflareId) {
+        failedStage = 'deleteImage'
+      } else if (selectedImageFile) {
+        failedStage = 'uploadImage'
+      }
+
+      await syncCategoryImage(nextCategoryId)
+
+      updateSaveProgressStage('completed', 'done')
+      markSaveProgressSuccess()
+      await wait(SAVE_SUCCESS_DELAY_MS)
       navigate(routePaths.categories)
     } catch (error) {
       const message =
@@ -359,10 +809,40 @@ function CategoryForm({
             : 'No pudimos guardar la categoría.'
 
       setSubmitError(message)
+      setSaveProgressError(failedStage, message)
     } finally {
       setIsSubmitting(false)
     }
   }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    await performSave()
+  }
+
+  function handleCloseSaveProgress() {
+    if (isSubmitting) {
+      return
+    }
+
+    setSaveProgress(null)
+  }
+
+  const saveProgressActions: SaveProgressModalAction[] =
+    saveProgress?.errorMessage && !isSubmitting
+      ? [
+          {
+            label: 'Cerrar',
+            onClick: handleCloseSaveProgress,
+            variant: 'secondary',
+          },
+          {
+            label: 'Reintentar',
+            onClick: () => void performSave(),
+            variant: 'primary',
+          },
+        ]
+      : []
 
   if (isOptionsLoading) {
     return (
@@ -384,43 +864,43 @@ function CategoryForm({
           <p className="mt-2 text-sm leading-6 text-slate-600">{optionsError}</p>
         </div>
         <div className="flex gap-3">
-          <Button variant="secondary" onClick={() => void loadFormOptions()}>
-            Reintentar
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => navigate(routePaths.categories)}
+          <button
+            type="button"
+            onClick={() => void loadFormOptions()}
+            className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
           >
-            Volver
-          </Button>
+            Reintentar
+          </button>
         </div>
       </div>
     )
   }
 
   return (
-    <form className="space-y-8" onSubmit={handleSubmit}>
+    <form id={formId} className="space-y-8" onSubmit={handleSubmit}>
+      {saveProgress ? (
+        <SaveProgressModal
+          actions={saveProgressActions}
+          errorMessage={saveProgress.errorMessage}
+          message={getCategorySaveMessage(saveProgress)}
+          percentage={getCategorySavePercentage(saveProgress)}
+          title="Guardando cambios"
+        />
+      ) : null}
+
+      <LocationImageSourceModal
+        isDropboxImporting={isDropboxImporting}
+        isOpen={isImageSourceModalOpen}
+        onChooseDevice={handleSelectDeviceSource}
+        onChooseDropbox={() => void handleSelectDropboxSource()}
+        onClose={handleCloseImageSourceModal}
+        target="cover"
+        title="Agregar imagen"
+      />
+
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-slate-950">Datos principales</h2>
-        </div>
-        <div className="flex gap-3">
-          <Button
-            variant="secondary"
-            onClick={() => navigate(routePaths.categories)}
-            disabled={isSubmitting}
-          >
-            Cancelar
-          </Button>
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting
-              ? mode === 'edit'
-                ? 'Guardando cambios...'
-                : 'Guardando...'
-              : mode === 'edit'
-                ? 'Guardar cambios'
-                : 'Guardar categoría'}
-          </Button>
         </div>
       </div>
 
@@ -446,6 +926,27 @@ function CategoryForm({
         </div>
 
         <section className="space-y-4">
+          <div className="hidden">
+            <LocationImageUploader
+              ref={imageUploaderRef}
+              disabled={isSubmitting || isDropboxImporting}
+              label="Seleccionar imagen"
+              multiple={false}
+              onFilesSelected={(files) => void handleImageFilesSelected(files)}
+            />
+          </div>
+
+          {isDropboxImporting ? (
+            <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+              <p className="font-medium">Importando desde Dropbox…</p>
+              <p className="mt-1">
+                {dropboxImportProgress
+                  ? `${dropboxImportProgress.processed} de ${dropboxImportProgress.total} imagen`
+                  : 'Preparando importación…'}
+              </p>
+            </div>
+          ) : null}
+
           {imageError ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {imageError}
@@ -459,17 +960,26 @@ function CategoryForm({
                 LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
               ].join(' ')}
             >
-            <img
-              src={visibleImageUrl ?? undefined}
-              alt="Vista previa de la imagen representativa"
-              className="h-full w-full object-cover"
-            />
-            <div className="pointer-events-none absolute inset-0 bg-slate-950/0 transition group-hover:bg-slate-950/20">
+              <img
+                src={visibleImageUrl ?? undefined}
+                alt="Vista previa de la imagen representativa"
+                className="h-full w-full object-cover"
+              />
+              <div className="pointer-events-none absolute inset-0 bg-slate-950/0 transition group-hover:bg-slate-950/20">
                 <div className="pointer-events-auto absolute right-3 top-3 flex items-center gap-2 opacity-0 transition duration-200 group-hover:opacity-100">
                   <button
                     type="button"
+                    onClick={handleOpenImageSourceModal}
+                    disabled={isSubmitting || isDropboxImporting}
+                    className="inline-flex items-center gap-2 rounded-full bg-white/92 px-3 py-2 text-xs font-medium text-slate-700 shadow-sm backdrop-blur transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <ReplaceIcon />
+                    Reemplazar
+                  </button>
+                  <button
+                    type="button"
                     onClick={handleRemoveImage}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || isDropboxImporting}
                     className="inline-flex items-center gap-2 rounded-full bg-white/92 px-3 py-2 text-xs font-medium text-red-600 shadow-sm backdrop-blur transition hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <TrashIcon />
@@ -480,9 +990,11 @@ function CategoryForm({
             </div>
           ) : (
             <LocationImageUploader
-              disabled={isSubmitting}
+              ref={imageUploaderRef}
+              disabled={isSubmitting || isDropboxImporting}
               label="Seleccionar imagen"
               multiple={false}
+              onTrigger={handleOpenImageSourceModal}
               variant="empty-state"
               onFilesSelected={(files) => void handleImageFilesSelected(files)}
             />
