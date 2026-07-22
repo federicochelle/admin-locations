@@ -9,7 +9,10 @@ import CategoryForm from './CategoryForm'
 
 function CategoryCreatePage() {
   const navigate = useNavigate()
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [busyState, setBusyState] = useState({
+    isProcessingImage: false,
+    isSubmitting: false,
+  })
   const formId = 'category-create-form'
   const headerConfig = useMemo(
     () => ({
@@ -33,21 +36,25 @@ function CategoryCreatePage() {
       hideHeader
     >
       <Card className="-mx-3 rounded-none border-x-0 sm:mx-0 sm:rounded-2xl sm:border-x">
-        <CategoryForm formId={formId} onSubmittingChange={setIsSubmitting} />
+        <CategoryForm formId={formId} onBusyStateChange={setBusyState} />
       </Card>
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
         <Button
           type="submit"
           form={formId}
-          disabled={isSubmitting}
+          disabled={busyState.isSubmitting || busyState.isProcessingImage}
           className="sm:order-2"
         >
-          {isSubmitting ? 'Guardando...' : 'Guardar categoría'}
+          {busyState.isSubmitting
+            ? 'Guardando...'
+            : busyState.isProcessingImage
+              ? 'Procesando imagen...'
+              : 'Guardar categoría'}
         </Button>
         <Button
           variant="secondary"
           onClick={() => navigate(routePaths.categories)}
-          disabled={isSubmitting}
+          disabled={busyState.isSubmitting || busyState.isProcessingImage}
           className="sm:order-1"
         >
           Cancelar

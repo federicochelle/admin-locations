@@ -62,7 +62,10 @@ import {
   loadDropboxChooser,
 } from './dropbox/dropbox-chooser'
 import { downloadDropboxFiles } from './dropbox/dropbox-files'
-import { preparePendingLocationImages } from './location-image-selection'
+import {
+  createPendingLocationImagePlaceholder,
+  preparePendingLocationImage,
+} from './location-image-selection'
 import { LOCATION_TOP_STACK_PLACEHOLDER_CLASS } from './location-top-stack.styles'
 import { useLocationImages } from './useLocationImages'
 import type { GroupedSelectableOptions } from './components/location-analysis/SelectableOptionsSection'
@@ -686,6 +689,14 @@ function isAbortError(error: unknown) {
       : false
 }
 
+function revokePreviewUrl(previewUrl: string) {
+  if (!previewUrl.startsWith('blob:')) {
+    return
+  }
+
+  URL.revokeObjectURL(previewUrl)
+}
+
 function openDropboxChooser(
   dropbox: DropboxGlobal,
   target: ImageSelectionTarget,
@@ -759,7 +770,7 @@ function LocationForm({
   const [imageSelectionTarget, setImageSelectionTarget] =
     useState<ImageSelectionTarget | null>(null)
   const [isDropboxImporting, setIsDropboxImporting] = useState(false)
-  const [dropboxImportProgress, setDropboxImportProgress] = useState<{
+  const [, setDropboxImportProgress] = useState<{
     processed: number
     total: number
   } | null>(null)
@@ -788,6 +799,7 @@ function LocationForm({
   const galleryImageUploaderRef = useRef<LocationImageUploaderHandle | null>(null)
   const isMountedRef = useRef(true)
   const ownerComboboxRef = useRef<HTMLDivElement | null>(null)
+  const removedPendingImageIdsRef = useRef<Set<string>>(new Set())
   const zoneComboboxRef = useRef<HTMLDivElement | null>(null)
   const locationImages = useLocationImages(
     mode !== 'create' ? locationId ?? null : null,
@@ -874,7 +886,7 @@ function LocationForm({
         ),
       )
       pendingImagesRef.current.forEach((image) => {
-        URL.revokeObjectURL(image.previewUrl)
+        revokePreviewUrl(image.previewUrl)
       })
     }
   }, [])
@@ -986,6 +998,9 @@ function LocationForm({
       : []
   const pendingCoverImage = pendingImages.find((image) => image.isCover) ?? null
   const pendingGalleryImages = pendingImages.filter((image) => !image.isCover)
+  const hasProcessingPendingImages = pendingImages.some(
+    (image) => image.status === 'processing',
+  )
   const combinedEditGalleryImages = [
     ...persistedGalleryImages.map((image, index) => ({
       kind: 'persisted' as const,
@@ -2111,57 +2126,120 @@ function markSaveProgressSuccess() {
     }
 
     const isCoverSelection = target === 'cover'
-    const totalFiles = isCoverSelection ? Math.min(files.length, 1) : files.length
+    const selectedFiles = isCoverSelection ? files.slice(0, 1) : files
+    const totalFiles = selectedFiles.length
     setTotalImagesToProcess(totalFiles)
     setProcessedImagesCount(0)
     setIsPreparingImages(true)
+    setImageValidationErrors([])
 
     try {
       const startingOriginalIndex = getNextPendingImageOriginalIndex(
         pendingImagesRef.current,
       )
-      const { errors, images } = await preparePendingLocationImages(files, {
-        isCoverSelection,
-        startingOriginalIndex,
-        onProcessed: (processed, total) => {
-          if (!isMountedRef.current) {
+      setEditDeleteErrorMessage(null)
+      const placeholders = selectedFiles.map((file, index) => {
+        const placeholder = createPendingLocationImagePlaceholder(file, {
+          isCover: isCoverSelection && index === 0,
+          originalIndex: startingOriginalIndex + index,
+          target,
+        })
+
+        removedPendingImageIdsRef.current.delete(placeholder.id)
+        return placeholder
+      })
+
+      setPendingImages((currentImages) => {
+        if (!isCoverSelection) {
+          return [...currentImages, ...placeholders]
+        }
+
+        const nextImages: PendingLocationImageFile[] = []
+
+        currentImages.forEach((image) => {
+          if (image.selectionTarget === 'cover' && image.isCover) {
+            removedPendingImageIdsRef.current.add(image.id)
+            revokePreviewUrl(image.previewUrl)
             return
           }
 
-          setProcessedImagesCount(Math.min(processed, total))
-        },
-      })
-
-      if (!isMountedRef.current) {
-        images.forEach((image) => {
-          URL.revokeObjectURL(image.previewUrl)
-        })
-        return
-      }
-
-      setImageValidationErrors(errors)
-      setEditDeleteErrorMessage(null)
-
-      if (images.length === 0) {
-        setImageSelectionTarget(null)
-        return
-      }
-
-      if (isCoverSelection) {
-        setPendingImages((currentImages) => {
-          const normalizedImages = currentImages.map((image) => ({
+          nextImages.push({
             ...image,
             isCover: false,
-          }))
-
-          return [...normalizedImages, ...images]
+          })
         })
-        setImageSelectionTarget(null)
-        return
+
+        return [...nextImages, ...placeholders]
+      })
+      setImageSelectionTarget(null)
+
+      const nextErrors: string[] = []
+
+      for (const [index, placeholder] of placeholders.entries()) {
+        try {
+          const preparedImage = await preparePendingLocationImage(placeholder.file, {
+            id: placeholder.id,
+            isCover: placeholder.isCover,
+            originalIndex: placeholder.originalIndex,
+            target,
+          })
+
+          if (
+            !isMountedRef.current ||
+            removedPendingImageIdsRef.current.has(preparedImage.id)
+          ) {
+            revokePreviewUrl(preparedImage.previewUrl)
+            continue
+          }
+
+          setPendingImages((currentImages) =>
+            currentImages.map((image) =>
+              image.id === preparedImage.id
+                ? {
+                    ...image,
+                    errorMessage: null,
+                    file: preparedImage.file,
+                    height: preparedImage.height,
+                    previewUrl: preparedImage.previewUrl,
+                    status: 'pending',
+                    width: preparedImage.width,
+                  }
+                : image,
+            ),
+          )
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : `${placeholder.file.name}: no pudimos optimizar la imagen seleccionada.`
+
+          nextErrors.push(message)
+
+          if (!isMountedRef.current || removedPendingImageIdsRef.current.has(placeholder.id)) {
+            continue
+          }
+
+          setPendingImages((currentImages) =>
+            currentImages.map((image) =>
+              image.id === placeholder.id
+                ? {
+                    ...image,
+                    errorMessage: message,
+                    status: 'error',
+                  }
+                : image,
+            ),
+          )
+        } finally {
+          if (isMountedRef.current) {
+            setProcessedImagesCount(Math.min(index + 1, totalFiles))
+          }
+        }
       }
 
-      setPendingImages((currentImages) => [...currentImages, ...images])
-      setImageSelectionTarget(null)
+      if (isMountedRef.current) {
+        setImageValidationErrors(nextErrors)
+      }
     } finally {
       if (isMountedRef.current) {
         setIsPreparingImages(false)
@@ -2194,11 +2272,12 @@ function markSaveProgressSuccess() {
       return
     }
 
+    removedPendingImageIdsRef.current.add(imageId)
     setPendingImages((currentImages) => {
       const imageToRemove = currentImages.find((image) => image.id === imageId)
 
       if (imageToRemove) {
-        URL.revokeObjectURL(imageToRemove.previewUrl)
+        revokePreviewUrl(imageToRemove.previewUrl)
       }
 
       return currentImages.filter((image) => image.id !== imageId)
@@ -2206,22 +2285,12 @@ function markSaveProgressSuccess() {
   }
 
   function renderImageFeedback() {
-    if (!isDropboxImporting && imageValidationErrors.length === 0) {
+    if (imageValidationErrors.length === 0) {
       return null
     }
 
     return (
       <div className="space-y-3">
-        {isDropboxImporting ? (
-          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-            <p className="font-medium">Importando desde Dropbox…</p>
-            <p className="mt-1">
-              {dropboxImportProgress
-                ? `${dropboxImportProgress.processed} de ${dropboxImportProgress.total} imágenes`
-                : 'Preparando importación…'}
-            </p>
-          </div>
-        ) : null}
         {imageValidationErrors.length > 0 ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <ul className="space-y-1">
@@ -2329,11 +2398,21 @@ function markSaveProgressSuccess() {
           ) + 1
         : 0
     const uploads = [...pendingImages]
+      .filter(
+        (image) =>
+          image.status === 'pending' ||
+          (image.status === 'error' && image.width > 0 && image.height > 0),
+      )
       .sort((leftImage, rightImage) => leftImage.originalIndex - rightImage.originalIndex)
       .map((image) => ({
         image,
         sortOrder: persistedSortOrderBase + image.originalIndex,
       }))
+
+    if (uploads.length === 0) {
+      updateStageStatus('uploadImages', 'skipped')
+      return null
+    }
     const activeUploadStatuses = new Map<
       string,
       Extract<PendingLocationImageStatus, 'uploading' | 'finalizing'>
@@ -2541,7 +2620,7 @@ function markSaveProgressSuccess() {
         setPendingImages((currentImages) => {
           currentImages.forEach((image) => {
             if (image.status === 'done') {
-              URL.revokeObjectURL(image.previewUrl)
+              revokePreviewUrl(image.previewUrl)
             }
           })
 
@@ -2570,7 +2649,7 @@ function markSaveProgressSuccess() {
         setPendingImages((currentImages) => {
           currentImages.forEach((image) => {
             if (image.status === 'done') {
-              URL.revokeObjectURL(image.previewUrl)
+              revokePreviewUrl(image.previewUrl)
             }
           })
 
@@ -2962,7 +3041,7 @@ function markSaveProgressSuccess() {
                       onFilesSelected={handleCoverImageSelected}
                     />
                   }
-                  isLocked={isSubmitting || isPreparingImages}
+                  isLocked={isSubmitting}
                   onRemove={handleRemovePendingImage}
                   onSetCover={handleSetCoverImage}
                   showCount={false}
@@ -2991,7 +3070,7 @@ function markSaveProgressSuccess() {
                 {pendingCoverImage ? (
                   <LocationImagesGrid
                     images={[pendingCoverImage]}
-                    isLocked={isSubmitting || isPreparingImages}
+                    isLocked={isSubmitting}
                     mode="pending"
                     onRemove={handleRemovePendingImage}
                     onSetCover={handleSetCoverImage}
@@ -3013,7 +3092,7 @@ function markSaveProgressSuccess() {
                         onFilesSelected={handleCoverImageSelected}
                       />
                     }
-                    isLocked={isSubmitting || isPreparingImages}
+                    isLocked={isSubmitting}
                     mode="persisted"
                     onRemove={(imageId) => void handleDeletePersistedImage(imageId)}
                     showCount={false}
@@ -3317,7 +3396,7 @@ function markSaveProgressSuccess() {
             {pendingGalleryImages.length > 0 ? (
               <LocationImagesGrid
                 images={pendingGalleryImages}
-                isLocked={isSubmitting || isPreparingImages}
+                isLocked={isSubmitting}
                 onRemove={handleRemovePendingImage}
                 showCount={false}
                 showCover={false}
@@ -3354,7 +3433,7 @@ function markSaveProgressSuccess() {
             {combinedEditGalleryImages.length > 0 ? (
               <LocationImagesGrid
                 images={combinedEditGalleryImages}
-                isLocked={isSubmitting || isPreparingImages}
+                isLocked={isSubmitting}
                 mode="mixed"
                 onRemovePending={handleRemovePendingImage}
                 onRemovePersisted={(imageId) => void handleDeletePersistedImage(imageId)}
@@ -3406,19 +3485,19 @@ function markSaveProgressSuccess() {
             <Button
               variant="secondary"
               onClick={() => navigate(routePaths.locations)}
-              disabled={isSubmitting || isPreparingImages || isDropboxImporting}
+              disabled={isSubmitting || hasProcessingPendingImages || isDropboxImporting}
             >
               Cancelar
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting || isPreparingImages || isDropboxImporting}
+              disabled={isSubmitting || hasProcessingPendingImages || isDropboxImporting}
             >
               {isSubmitting
                 ? mode === 'edit'
                   ? 'Guardando cambios...'
                   : 'Guardando...'
-                : isPreparingImages
+                : hasProcessingPendingImages
                   ? `Procesando imagenes ${processedImagesCount} de ${totalImagesToProcess}...`
                 : mode === 'edit'
                   ? 'Guardar cambios'
