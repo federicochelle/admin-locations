@@ -1,5 +1,4 @@
-import { useEffect } from 'react'
-import { createPortal } from 'react-dom'
+import SaveProgressModal from '../../components/ui/SaveProgressModal'
 
 export type LocationSaveStageKey =
   | 'location'
@@ -217,82 +216,20 @@ function getProgressMessage(progress: LocationSaveProgressState) {
 function LocationSaveProgressModal({
   progress,
 }: LocationSaveProgressModalProps) {
-  useEffect(() => {
-    if (!progress) {
-      return
-    }
-
-    if (typeof document === 'undefined') {
-      return
-    }
-
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-
-    return () => {
-      document.body.style.overflow = previousOverflow
-    }
-  }, [progress])
-
   if (!progress) {
-    return null
-  }
-
-  const portalContainer =
-    typeof document === 'undefined' ? null : document.body
-
-  if (!portalContainer) {
     return null
   }
 
   const percentage = getProgressPercentage(progress)
   const message = getProgressMessage(progress)
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-sm">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="location-save-progress-title"
-        className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl"
-      >
-        <div className="space-y-5">
-          <div>
-            <h2
-              id="location-save-progress-title"
-              className="text-2xl font-semibold tracking-tight text-slate-950"
-            >
-              Guardando cambios
-            </h2>
-          </div>
-
-          <div className="space-y-3">
-            <div className="h-3 overflow-hidden rounded-full bg-slate-200">
-              <div
-                className={[
-                  'h-full rounded-full transition-[width] duration-300 ease-out',
-                  progress.errorMessage ? 'bg-red-500' : 'bg-slate-900',
-                ].join(' ')}
-                style={{ width: `${percentage}%` }}
-              />
-            </div>
-
-            <p className="text-3xl font-semibold tracking-tight text-slate-950">
-              {percentage}%
-            </p>
-
-            <p className="text-sm leading-6 text-slate-600">{message}</p>
-          </div>
-
-          {progress.errorMessage ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {progress.errorMessage}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>,
-    portalContainer,
+  return (
+    <SaveProgressModal
+      errorMessage={progress.errorMessage}
+      message={message}
+      percentage={percentage}
+      title="Guardando cambios"
+    />
   )
 }
 

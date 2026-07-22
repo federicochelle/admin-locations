@@ -1,4 +1,10 @@
-import type { ChangeEvent } from 'react'
+import {
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  type ChangeEvent,
+  type MouseEvent,
+} from 'react'
 import {
   buttonBaseClassName,
   buttonVariantClasses,
@@ -14,8 +20,13 @@ type LocationImageUploaderProps = {
   helperText?: string
   label: string
   multiple?: boolean
+  onTrigger?: () => void
   variant?: 'button' | 'empty-state'
   onFilesSelected: (files: FileList | null) => void
+}
+
+export type LocationImageUploaderHandle = {
+  openFileDialog: () => void
 }
 
 function UploadIcon() {
@@ -37,20 +48,57 @@ function UploadIcon() {
   )
 }
 
-function LocationImageUploader({
-  disabled = false,
-  label,
-  multiple = true,
-  variant = 'button',
-  onFilesSelected,
-}: LocationImageUploaderProps) {
+const LocationImageUploader = forwardRef<
+  LocationImageUploaderHandle,
+  LocationImageUploaderProps
+>(function LocationImageUploader(
+  {
+    disabled = false,
+    label,
+    multiple = true,
+    onTrigger,
+    variant = 'button',
+    onFilesSelected,
+  }: LocationImageUploaderProps,
+  ref,
+) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      openFileDialog() {
+        if (disabled) {
+          return
+        }
+
+        inputRef.current?.click()
+      },
+    }),
+    [disabled],
+  )
+
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
     onFilesSelected(event.target.files)
     event.target.value = ''
   }
 
+  function handleClick(event: MouseEvent<HTMLLabelElement>) {
+    if (event.target === inputRef.current) {
+      return
+    }
+
+    if (disabled || !onTrigger) {
+      return
+    }
+
+    event.preventDefault()
+    onTrigger()
+  }
+
   return (
     <label
+      onClick={handleClick}
       className={
         variant === 'empty-state'
           ? [
@@ -86,6 +134,7 @@ function LocationImageUploader({
         </>
       )}
       <input
+        ref={inputRef}
         type="file"
         multiple={multiple}
         accept={IMAGE_INPUT_ACCEPT}
@@ -95,6 +144,6 @@ function LocationImageUploader({
       />
     </label>
   )
-}
+})
 
 export default LocationImageUploader

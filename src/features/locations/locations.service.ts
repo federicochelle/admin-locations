@@ -526,7 +526,6 @@ export async function createLocation(
   options?: { actorProfileId?: string | null },
 ): Promise<string> {
   const supabase = getSupabaseClient()
-  const connectedProjectUrl = import.meta.env.VITE_SUPABASE_URL ?? null
   const { selectedFeatureIds, selectedTagIds, ...rawLocationPayload } = payload
   const locationPayload = normalizeLocationPayloadTitle(rawLocationPayload)
   const uniqueSlug = await getUniqueLocationSlug(locationPayload.slug)
@@ -539,32 +538,15 @@ export async function createLocation(
       : null
     generatedLocationCode = locationCode
 
-    const insertPayload = {
-      ...locationPayload,
-      slug: uniqueSlug,
-      location_code: locationCode,
-    }
-
-    console.groupCollapsed('[Location create audit] Payload antes de guardar')
-    console.log('lat', insertPayload.lat ?? null)
-    console.log('lng', insertPayload.lng ?? null)
-    console.log('approx_lat', insertPayload.approx_lat ?? null)
-    console.log('approx_lng', insertPayload.approx_lng ?? null)
-    console.log('payload', insertPayload)
-    console.log('supabaseProjectUrl', connectedProjectUrl)
-    console.groupEnd()
-
     const { data, error } = await supabase
       .from('locations')
-      .insert(insertPayload)
-      .select('id, lat, lng, approx_lat, approx_lng, approx_radius')
+      .insert({
+        ...locationPayload,
+        slug: uniqueSlug,
+        location_code: locationCode,
+      })
+      .select('id')
       .single()
-
-    console.groupCollapsed('[Location create audit] Respuesta inmediata de Supabase')
-    console.log('supabaseProjectUrl', connectedProjectUrl)
-    console.log('row', data ?? null)
-    console.log('error', error ?? null)
-    console.groupEnd()
 
     if (!error) {
       createdRow = data as CreatedLocationRow
@@ -721,7 +703,6 @@ export async function updateLocation(
   options?: { actorProfileId?: string | null },
 ): Promise<string> {
   const supabase = getSupabaseClient()
-  const connectedProjectUrl = import.meta.env.VITE_SUPABASE_URL ?? null
   const { selectedFeatureIds, selectedTagIds, ...rawLocationPayload } = payload
   const locationPayload = normalizeLocationPayloadTitle(rawLocationPayload)
   const uniqueSlug = await getUniqueLocationSlug(locationPayload.slug, id)
@@ -767,26 +748,12 @@ export async function updateLocation(
           slug: uniqueSlug,
         }
 
-    console.groupCollapsed('[Location update audit] Payload antes de guardar')
-    console.log('locationId', id)
-    console.log('approx_lat', updatePayload.approx_lat ?? null)
-    console.log('approx_lng', updatePayload.approx_lng ?? null)
-    console.log('supabaseProjectUrl', connectedProjectUrl)
-    console.groupEnd()
-
     const { data, error } = await supabase
       .from('locations')
       .update(updatePayload)
       .eq('id', id)
-      .select('id, lat, lng, approx_lat, approx_lng, approx_radius')
+      .select('id')
       .single()
-
-    console.groupCollapsed('[Location update audit] Respuesta inmediata de Supabase')
-    console.log('locationId', id)
-    console.log('supabaseProjectUrl', connectedProjectUrl)
-    console.log('row', data ?? null)
-    console.log('error', error ?? null)
-    console.groupEnd()
 
     if (!error) {
       updatedRow = data as CreatedLocationRow

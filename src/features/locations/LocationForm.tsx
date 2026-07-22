@@ -15,7 +15,10 @@ import {
 } from './locations.service'
 import LocationCategoryQuickCreateModal from './LocationCategoryQuickCreateModal'
 import LocationImagesGrid from './LocationImagesGrid'
-import LocationImageUploader from './LocationImageUploader'
+import LocationImageSourceModal from './LocationImageSourceModal'
+import LocationImageUploader, {
+  type LocationImageUploaderHandle,
+} from './LocationImageUploader'
 import LocationOwnerQuickCreateModal, {
   type LocationOwnerQuickCreateValues,
 } from './LocationOwnerQuickCreateModal'
@@ -54,11 +57,13 @@ import type {
   PendingLocationImageStatus,
 } from './location-images.types'
 import type { ParsedGooglePlaceAddress } from './location-address-parser'
-import { prepareImageUploadFile } from '../images/image-upload.processor'
-import { isHeicImageFile } from '../images/image-upload.constants'
+import { loadDropboxChooser } from './dropbox/dropbox-chooser'
+import { downloadDropboxFiles } from './dropbox/dropbox-files'
+import { preparePendingLocationImages } from './location-image-selection'
 import { LOCATION_TOP_STACK_PLACEHOLDER_CLASS } from './location-top-stack.styles'
 import { useLocationImages } from './useLocationImages'
 import type { GroupedSelectableOptions } from './components/location-analysis/SelectableOptionsSection'
+import { SUPPORTED_IMAGE_EXTENSIONS } from '../images/image-upload.constants'
 
 export type LocationFormMode = 'create' | 'edit' | 'view'
 
@@ -73,6 +78,7 @@ type LocationFormProps = {
 }
 
 const GOOGLE_MAPS_LIBRARIES = ['places']
+type ImageSelectionTarget = 'cover' | 'gallery'
 
 type LocationFormFieldErrors = {
   title: string | null
@@ -126,14 +132,6 @@ const defaultAnalysisState: LocationAnalysisState = {
   suggestedFeatures: [],
   suggestedTags: [],
   suggestedDescription: null,
-}
-
-function roundMs(value: number) {
-  return Number(value.toFixed(2))
-}
-
-function bytesToMb(bytes: number) {
-  return Number((bytes / 1024 / 1024).toFixed(2))
 }
 
 function toNullableString(value: string) {
@@ -500,7 +498,7 @@ function SectionCard({
   title?: string
 }) {
   return (
-    <section className="-mx-9 w-[calc(100%+4.5rem)] space-y-5 rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-sm backdrop-blur-sm sm:-mx-6 sm:w-[calc(100%+3rem)] sm:p-6 lg:p-7">
+    <section className="-mx-9 w-[calc(100%+4.5rem)] space-y-5 rounded-none border border-slate-200 bg-white/95 p-5 shadow-sm backdrop-blur-sm sm:-mx-6 sm:w-[calc(100%+3rem)] sm:rounded-[28px] sm:p-6 lg:p-7">
       {title || description || actions ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           {title || description ? (
@@ -539,7 +537,7 @@ function AccordionSectionCard({
   title: string
 }) {
   return (
-    <section className="-mx-9 w-[calc(100%+4.5rem)] space-y-5 rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-sm backdrop-blur-sm sm:-mx-6 sm:w-[calc(100%+3rem)] sm:p-6">
+    <section className="-mx-9 w-[calc(100%+4.5rem)] space-y-5 rounded-none border border-slate-200 bg-white/95 p-5 shadow-sm backdrop-blur-sm sm:-mx-6 sm:w-[calc(100%+3rem)] sm:rounded-[28px] sm:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <button
           type="button"
@@ -597,17 +595,6 @@ function wait(ms: number) {
   return new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms)
   })
-}
-
-function getSelectedImagesCount(
-  files: FileList | null,
-  isCoverSelection: boolean,
-) {
-  if (!files || files.length === 0) {
-    return 0
-  }
-
-  return isCoverSelection ? 1 : files.length
 }
 
 function buildOwnerQuickCreatePayload(values: LocationOwnerQuickCreateValues) {
@@ -688,6 +675,38 @@ function getNextPendingImageOriginalIndex(
   return highestOriginalIndex + 1
 }
 
+function isAbortError(error: unknown) {
+  return error instanceof DOMException
+    ? error.name === 'AbortError'
+    : error instanceof Error
+      ? error.name === 'AbortError'
+      : false
+}
+
+function openDropboxChooser(
+  dropbox: DropboxGlobal,
+  target: ImageSelectionTarget,
+) {
+  return new Promise<DropboxChooserFile[]>((resolve, reject) => {
+    try {
+      dropbox.choose({
+        linkType: 'direct',
+        multiselect: target === 'gallery',
+        folderselect: false,
+        extensions: [...SUPPORTED_IMAGE_EXTENSIONS],
+        success(files) {
+          resolve(files)
+        },
+        cancel() {
+          resolve([])
+        },
+      })
+    } catch (error) {
+      reject(error)
+    }
+  })
+}
+
 function LocationForm({
   mode = 'create',
   initialValues = defaultInitialValues,
@@ -733,6 +752,14 @@ function LocationForm({
     useState<LocationOwnerQuickCreateValues>(defaultOwnerQuickCreateValues)
   const [ownerCreateError, setOwnerCreateError] = useState<string | null>(null)
   const [isCreatingOwner, setIsCreatingOwner] = useState(false)
+  const [isImageSourceModalOpen, setIsImageSourceModalOpen] = useState(false)
+  const [imageSelectionTarget, setImageSelectionTarget] =
+    useState<ImageSelectionTarget | null>(null)
+  const [isDropboxImporting, setIsDropboxImporting] = useState(false)
+  const [dropboxImportProgress, setDropboxImportProgress] = useState<{
+    processed: number
+    total: number
+  } | null>(null)
   const [pendingImages, setPendingImages] = useState<PendingLocationImageFile[]>(
     [],
   )
@@ -752,6 +779,10 @@ function LocationForm({
     null,
   )
   const categoryComboboxRef = useRef<HTMLDivElement | null>(null)
+  const coverImageUploaderRef = useRef<LocationImageUploaderHandle | null>(null)
+  const dropboxAbortControllerRef = useRef<AbortController | null>(null)
+  const galleryImageUploaderRef = useRef<LocationImageUploaderHandle | null>(null)
+  const isMountedRef = useRef(true)
   const ownerComboboxRef = useRef<HTMLDivElement | null>(null)
   const zoneComboboxRef = useRef<HTMLDivElement | null>(null)
   const locationImages = useLocationImages(
@@ -828,12 +859,31 @@ function LocationForm({
   }, [pendingImages])
 
   useEffect(() => {
+    isMountedRef.current = true
+
     return () => {
+      isMountedRef.current = false
+      dropboxAbortControllerRef.current?.abort(
+        new DOMException(
+          'La importación desde Dropbox fue cancelada.',
+          'AbortError',
+        ),
+      )
       pendingImagesRef.current.forEach((image) => {
         URL.revokeObjectURL(image.previewUrl)
       })
     }
   }, [])
+
+  useEffect(() => {
+    if (!isImageSourceModalOpen || isReadOnly) {
+      return
+    }
+
+    void loadDropboxChooser().catch(() => {
+      // Intentamos precargar el script para abrir el chooser desde el click del usuario.
+    })
+  }, [isImageSourceModalOpen, isReadOnly])
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
@@ -873,6 +923,9 @@ function LocationForm({
           (image) => !pendingDeletedPersistedImageIds.includes(image.id),
         )
       : []
+  const hasAnalyzablePersistedImages =
+    mode === 'edit' &&
+    visiblePersistedImages.some((image) => image.url.trim().length > 0)
   const persistedCoverImage: LocationImageRecord | null =
     hasPersistedImagesMode
       ? visiblePersistedImages.find((image) => image.is_cover === true) ?? null
@@ -1402,6 +1455,173 @@ function LocationForm({
     setOwnerCreateValues(defaultOwnerQuickCreateValues)
   }
 
+  function abortActiveDropboxImport() {
+    dropboxAbortControllerRef.current?.abort(
+      new DOMException(
+        'La importación desde Dropbox fue cancelada.',
+        'AbortError',
+      ),
+    )
+    dropboxAbortControllerRef.current = null
+  }
+
+  function handleOpenImageSourceModal(target: ImageSelectionTarget) {
+    if (isReadOnly || isDropboxImporting) {
+      return
+    }
+
+    setImageSelectionTarget(target)
+    setIsImageSourceModalOpen(true)
+  }
+
+  function handleCloseImageSourceModal() {
+    if (isDropboxImporting) {
+      return
+    }
+
+    setIsImageSourceModalOpen(false)
+    setImageSelectionTarget(null)
+  }
+
+  function handleSelectDeviceSource() {
+    if (!imageSelectionTarget || isDropboxImporting) {
+      return
+    }
+
+    const target = imageSelectionTarget
+    setIsImageSourceModalOpen(false)
+
+    window.setTimeout(() => {
+      if (target === 'cover') {
+        coverImageUploaderRef.current?.openFileDialog()
+        return
+      }
+
+      galleryImageUploaderRef.current?.openFileDialog()
+    }, 0)
+  }
+
+  async function handleSelectDropboxSource() {
+    if (import.meta.env.DEV) {
+      console.debug('[Dropbox] handler ejecutado')
+    }
+
+    if (isDropboxImporting) {
+      return
+    }
+
+    const target = imageSelectionTarget
+
+    if (!target) {
+      setImageValidationErrors([
+        'No pudimos determinar si querías importar portada o galería.',
+      ])
+      return
+    }
+
+    abortActiveDropboxImport()
+    setIsImageSourceModalOpen(false)
+    setEditDeleteErrorMessage(null)
+
+    try {
+      const dropbox = await loadDropboxChooser()
+
+      if (
+        typeof dropbox.isBrowserSupported === 'function' &&
+        !dropbox.isBrowserSupported()
+      ) {
+        throw new Error(
+          'Dropbox no es compatible con este navegador.',
+        )
+      }
+
+      if (import.meta.env.DEV) {
+        console.debug('[Dropbox] abriendo chooser')
+      }
+
+      const selectedFiles = await openDropboxChooser(dropbox, target)
+
+      if (!isMountedRef.current) {
+        return
+      }
+
+      if (selectedFiles.length === 0) {
+        setImageSelectionTarget(null)
+        return
+      }
+
+      const controller = new AbortController()
+      dropboxAbortControllerRef.current = controller
+      setIsDropboxImporting(true)
+      setDropboxImportProgress({
+        processed: 0,
+        total: selectedFiles.length,
+      })
+
+      const { files, errors } = await downloadDropboxFiles(selectedFiles, {
+        signal: controller.signal,
+        onProgress: (processed, total) => {
+          if (!isMountedRef.current) {
+            return
+          }
+
+          setDropboxImportProgress({
+            processed,
+            total,
+          })
+        },
+      })
+
+      if (!isMountedRef.current) {
+        return
+      }
+
+      if (files.length === 0) {
+        setImageValidationErrors(
+          errors.length > 0
+            ? errors
+            : ['No pudimos importar archivos desde Dropbox.'],
+        )
+        setImageSelectionTarget(null)
+        return
+      }
+
+      await handleSelectedImageFiles(files, target)
+
+      if (!isMountedRef.current) {
+        return
+      }
+
+      if (errors.length > 0) {
+        setImageValidationErrors((currentErrors) => [
+          ...errors,
+          ...currentErrors,
+        ])
+      }
+
+      setImageSelectionTarget(null)
+    } catch (error) {
+      if (!isMountedRef.current || isAbortError(error)) {
+        return
+      }
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No pudimos importar las imágenes desde Dropbox.'
+
+      setImageValidationErrors([message])
+      setImageSelectionTarget(null)
+    } finally {
+      dropboxAbortControllerRef.current = null
+
+      if (isMountedRef.current) {
+        setIsDropboxImporting(false)
+        setDropboxImportProgress(null)
+      }
+    }
+  }
+
   async function handleOwnerQuickCreateSubmit(
     event: React.FormEvent<HTMLFormElement>,
   ) {
@@ -1796,107 +2016,16 @@ function markSaveProgressSuccess() {
     })
   }
 
-  async function buildPendingImages(
-    files: FileList | null,
-    isCoverSelection: boolean,
-    startingOriginalIndex: number,
+  async function handleSelectedImageFiles(
+    files: File[],
+    target: 'cover' | 'gallery',
   ) {
-    if (!files || files.length === 0) {
-      return {
-        errors: [] as string[],
-        images: [] as PendingLocationImageFile[],
-      }
-    }
-
-    const nextErrors: string[] = []
-    const nextImages: PendingLocationImageFile[] = []
-    const selectedFiles = isCoverSelection ? [files[0]] : Array.from(files)
-
-    for (const [index, file] of selectedFiles.entries()) {
-      if (!file) {
-        continue
-      }
-
-      try {
-        const prepareResult = await prepareImageUploadFile(file)
-        const optimizedFile = prepareResult.file
-        const dimensionsLabel = `${prepareResult.outputDimensions.width}x${prepareResult.outputDimensions.height}`
-
-        if (prepareResult.heicPerf) {
-          console.log('[HEIC_PERF] summary', {
-            convertedSizeMb: bytesToMb(prepareResult.heicPerf.convertedSize),
-            conversionMs: roundMs(prepareResult.heicPerf.conversionMs),
-            decodeMs: roundMs(prepareResult.heicPerf.decodeMs),
-            fileName: file.name,
-            optimizedSizeMb: bytesToMb(optimizedFile.size),
-            originalSizeMb: bytesToMb(prepareResult.heicPerf.originalSize),
-            resizeEncodeMs: roundMs(prepareResult.heicPerf.resizeEncodeMs),
-            totalMs: roundMs(prepareResult.heicPerf.totalMs),
-          })
-          console.groupEnd()
-        }
-
-        console.log(
-          '[IMAGE SIZE]',
-          optimizedFile.name,
-          `${(optimizedFile.size / 1024).toFixed(0)} KB`,
-          `${(optimizedFile.size / 1024 / 1024).toFixed(2)} MB`,
-          dimensionsLabel,
-          `${selectedFiles.length} seleccionadas`,
-        )
-
-        nextImages.push({
-          id: crypto.randomUUID(),
-          file: optimizedFile,
-          height: prepareResult.outputDimensions.height,
-          previewUrl: URL.createObjectURL(optimizedFile),
-          originalIndex: startingOriginalIndex + nextImages.length,
-          isCover: isCoverSelection && index === 0,
-          status: 'pending',
-          width: prepareResult.outputDimensions.width,
-        })
-      } catch (error) {
-        if (isHeicImageFile(file)) {
-          console.groupEnd()
-        }
-
-        const message =
-          error instanceof Error
-            ? error.message
-            : `${file.name}: no pudimos optimizar la imagen seleccionada.`
-
-        nextErrors.push(message)
-      } finally {
-        setProcessedImagesCount((currentCount) =>
-          Math.min(currentCount + 1, selectedFiles.length),
-        )
-      }
-    }
-
-    const totalBytes = nextImages.reduce((sum, image) => sum + image.file.size, 0)
-
-    console.log(
-      '[UPLOAD BATCH]',
-      `${nextImages.length} imágenes`,
-      `${(totalBytes / 1024 / 1024).toFixed(2)} MB totales`,
-    )
-
-    return {
-      errors: nextErrors,
-      images: nextImages,
-    }
-  }
-
-  async function handleCoverImageSelected(files: FileList | null) {
-    if (isReadOnly) {
+    if (isReadOnly || files.length === 0) {
       return
     }
 
-    if (!files || files.length === 0) {
-      return
-    }
-
-    const totalFiles = getSelectedImagesCount(files, true)
+    const isCoverSelection = target === 'cover'
+    const totalFiles = isCoverSelection ? Math.min(files.length, 1) : files.length
     setTotalImagesToProcess(totalFiles)
     setProcessedImagesCount(0)
     setIsPreparingImages(true)
@@ -1905,65 +2034,73 @@ function markSaveProgressSuccess() {
       const startingOriginalIndex = getNextPendingImageOriginalIndex(
         pendingImagesRef.current,
       )
-      const { errors, images } = await buildPendingImages(
-        files,
-        true,
+      const { errors, images } = await preparePendingLocationImages(files, {
+        isCoverSelection,
         startingOriginalIndex,
-      )
-      setImageValidationErrors(errors)
-      setEditDeleteErrorMessage(null)
+        onProcessed: (processed, total) => {
+          if (!isMountedRef.current) {
+            return
+          }
 
-      if (images.length === 0) {
+          setProcessedImagesCount(Math.min(processed, total))
+        },
+      })
+
+      if (!isMountedRef.current) {
+        images.forEach((image) => {
+          URL.revokeObjectURL(image.previewUrl)
+        })
         return
       }
 
-      setPendingImages((currentImages) => {
-        const normalizedImages = currentImages.map((image) => ({
-          ...image,
-          isCover: false,
-        }))
-
-        return [...normalizedImages, ...images]
-      })
-    } finally {
-      setIsPreparingImages(false)
-    }
-  }
-
-  async function handleGalleryImagesSelected(files: FileList | null) {
-    if (isReadOnly) {
-      return
-    }
-
-    if (!files || files.length === 0) {
-      return
-    }
-
-    const totalFiles = getSelectedImagesCount(files, false)
-    setTotalImagesToProcess(totalFiles)
-    setProcessedImagesCount(0)
-    setIsPreparingImages(true)
-
-    try {
-      const startingOriginalIndex = getNextPendingImageOriginalIndex(
-        pendingImagesRef.current,
-      )
-      const { errors, images } = await buildPendingImages(
-        files,
-        false,
-        startingOriginalIndex,
-      )
       setImageValidationErrors(errors)
       setEditDeleteErrorMessage(null)
 
       if (images.length === 0) {
+        setImageSelectionTarget(null)
+        return
+      }
+
+      if (isCoverSelection) {
+        setPendingImages((currentImages) => {
+          const normalizedImages = currentImages.map((image) => ({
+            ...image,
+            isCover: false,
+          }))
+
+          return [...normalizedImages, ...images]
+        })
+        setImageSelectionTarget(null)
         return
       }
 
       setPendingImages((currentImages) => [...currentImages, ...images])
+      setImageSelectionTarget(null)
     } finally {
-      setIsPreparingImages(false)
+      if (isMountedRef.current) {
+        setIsPreparingImages(false)
+      }
     }
+  }
+
+  async function handleCoverImageSelected(files: FileList | null) {
+    const filesArray = Array.from(files ?? [])
+
+    if (filesArray.length === 0) {
+      return
+    }
+
+    await handleSelectedImageFiles(filesArray, 'cover')
+  }
+
+  async function handleGalleryImagesSelected(files: FileList | null) {
+    const filesArray = Array.from(files ?? [])
+
+    if (filesArray.length === 0) {
+      return
+    }
+
+    await handleSelectedImageFiles(filesArray, 'gallery')
   }
 
   function handleRemovePendingImage(imageId: string) {
@@ -1983,19 +2120,31 @@ function markSaveProgressSuccess() {
   }
 
   function renderImageFeedback() {
-    if (imageValidationErrors.length === 0) {
+    if (!isDropboxImporting && imageValidationErrors.length === 0) {
       return null
     }
 
     return (
       <div className="space-y-3">
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <ul className="space-y-1">
-            {imageValidationErrors.map((error) => (
-              <li key={error}>{error}</li>
-            ))}
-          </ul>
-        </div>
+        {isDropboxImporting ? (
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+            <p className="font-medium">Importando desde Dropbox…</p>
+            <p className="mt-1">
+              {dropboxImportProgress
+                ? `${dropboxImportProgress.processed} de ${dropboxImportProgress.total} imágenes`
+                : 'Preparando importación…'}
+            </p>
+          </div>
+        ) : null}
+        {imageValidationErrors.length > 0 ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <ul className="space-y-1">
+              {imageValidationErrors.map((error) => (
+                <li key={error}>{error}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     )
   }
@@ -2427,6 +2576,16 @@ function markSaveProgressSuccess() {
     <>
       {!isReadOnly ? <LocationSaveProgressModal progress={saveProgress} /> : null}
       {!isReadOnly ? (
+        <LocationImageSourceModal
+          isDropboxImporting={isDropboxImporting}
+          isOpen={isImageSourceModalOpen}
+          onChooseDevice={handleSelectDeviceSource}
+          onChooseDropbox={() => void handleSelectDropboxSource()}
+          onClose={handleCloseImageSourceModal}
+          target={imageSelectionTarget}
+        />
+      ) : null}
+      {!isReadOnly ? (
         <LocationZoneQuickCreateModal
           departmentName={selectedDepartment?.name ?? ''}
           errorMessage={zoneCreateError}
@@ -2707,10 +2866,12 @@ function markSaveProgressSuccess() {
                   images={pendingCoverImage ? [pendingCoverImage] : []}
                   emptyCoverAction={
                     <LocationImageUploader
-                      disabled={isSubmitting || isPreparingImages}
+                      ref={coverImageUploaderRef}
+                      disabled={isSubmitting || isPreparingImages || isDropboxImporting}
                       helperText="Selecciona una sola imagen para portada."
                       label="Subir portada"
                       multiple={false}
+                      onTrigger={() => handleOpenImageSourceModal('cover')}
                       variant="empty-state"
                       onFilesSelected={handleCoverImageSelected}
                     />
@@ -2756,10 +2917,12 @@ function markSaveProgressSuccess() {
                     images={persistedCoverImage ? [persistedCoverImage] : []}
                     emptyCoverAction={
                       <LocationImageUploader
-                        disabled={isSubmitting || isPreparingImages}
+                        ref={coverImageUploaderRef}
+                        disabled={isSubmitting || isPreparingImages || isDropboxImporting}
                         helperText="Selecciona una sola imagen para portada."
                         label="Subir portada"
                         multiple={false}
+                        onTrigger={() => handleOpenImageSourceModal('cover')}
                         variant="empty-state"
                         onFilesSelected={handleCoverImageSelected}
                       />
@@ -2933,18 +3096,24 @@ function markSaveProgressSuccess() {
         onToggle={() => setIsFeaturesSectionOpen((currentValue) => !currentValue)}
       >
         <div className="space-y-8">
-          <LocationAnalysisPanel
-            analysisError={analysisState.analysisError}
-            analysisLoading={analysisState.analysisLoading}
-            analysisResult={analysisState.analysisResult}
-            isDisabled={isSubmitting || isPreparingImages}
-            isReadOnly={isReadOnly}
-            onAnalyze={() => void handleAnalyzeLocation()}
-            onApplyChanges={handleApplyAnalysisChanges}
-            onDiscard={resetAnalysisState}
-            suggestedFeatureNames={suggestedFeatureNames}
-            suggestedTagNames={suggestedTagNames}
-          />
+          {mode === 'edit' ? (
+            <LocationAnalysisPanel
+              analysisError={analysisState.analysisError}
+              analysisLoading={analysisState.analysisLoading}
+              analysisResult={analysisState.analysisResult}
+              isDisabled={
+                isSubmitting ||
+                isPreparingImages ||
+                !hasAnalyzablePersistedImages
+              }
+              isReadOnly={isReadOnly}
+              onAnalyze={() => void handleAnalyzeLocation()}
+              onApplyChanges={handleApplyAnalysisChanges}
+              onDiscard={resetAnalysisState}
+              suggestedFeatureNames={suggestedFeatureNames}
+              suggestedTagNames={suggestedTagNames}
+            />
+          ) : null}
           <DescriptionEditor
             className={inputClassName()}
             description={values.description}
@@ -3048,12 +3217,14 @@ function markSaveProgressSuccess() {
           <div className="space-y-4">
             <div className="flex justify-end">
               <LocationImageUploader
-                disabled={isSubmitting || isPreparingImages}
+                ref={galleryImageUploaderRef}
+                disabled={isSubmitting || isPreparingImages || isDropboxImporting}
                 label={getGalleryUploadLabel(
                   isPreparingImages,
                   processedImagesCount,
                   totalImagesToProcess,
                 )}
+                onTrigger={() => handleOpenImageSourceModal('gallery')}
                 onFilesSelected={handleGalleryImagesSelected}
               />
             </div>
@@ -3083,12 +3254,14 @@ function markSaveProgressSuccess() {
           <div className="space-y-4">
             <div className="flex justify-end">
               <LocationImageUploader
-                disabled={isSubmitting || isPreparingImages}
+                ref={galleryImageUploaderRef}
+                disabled={isSubmitting || isPreparingImages || isDropboxImporting}
                 label={getGalleryUploadLabel(
                   isPreparingImages,
                   processedImagesCount,
                   totalImagesToProcess,
                 )}
+                onTrigger={() => handleOpenImageSourceModal('gallery')}
                 onFilesSelected={handleGalleryImagesSelected}
               />
             </div>
@@ -3147,11 +3320,14 @@ function markSaveProgressSuccess() {
             <Button
               variant="secondary"
               onClick={() => navigate(routePaths.locations)}
-              disabled={isSubmitting || isPreparingImages}
+              disabled={isSubmitting || isPreparingImages || isDropboxImporting}
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={isSubmitting || isPreparingImages}>
+            <Button
+              type="submit"
+              disabled={isSubmitting || isPreparingImages || isDropboxImporting}
+            >
               {isSubmitting
                 ? mode === 'edit'
                   ? 'Guardando cambios...'

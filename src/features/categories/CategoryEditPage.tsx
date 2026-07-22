@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import { routePaths } from '../../app/router/route-paths'
+import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import PageContainer from '../../components/ui/PageContainer'
 import CategoryForm, { type CategoryFormMode } from './CategoryForm'
@@ -43,7 +44,10 @@ function isMissingCategoryError(error: unknown) {
 
 function CategoryEditPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const location = useLocation()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const formId = 'category-edit-form'
   const [initialValues, setInitialValues] = useState<CategoryFormValues | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -157,7 +161,7 @@ function CategoryEditPage() {
       }
       hideHeader
     >
-      <Card>
+      <Card className="-mx-3 rounded-none border-x-0 sm:mx-0 sm:rounded-2xl sm:border-x">
         {isLoading ? (
           <div className="flex min-h-72 items-center justify-center">
             <p className="text-sm text-slate-600">Cargando categoría...</p>
@@ -181,13 +185,35 @@ function CategoryEditPage() {
 
         {!isLoading && !errorMessage && initialValues && id ? (
           <CategoryForm
+            formId={formId}
             mode={'edit' satisfies CategoryFormMode}
             categoryId={id}
             initialValues={initialValues}
             initialSubmitError={initialSubmitError}
+            onSubmittingChange={setIsSubmitting}
           />
         ) : null}
       </Card>
+      {!isLoading && !errorMessage && initialValues && id ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <Button
+            type="submit"
+            form={formId}
+            disabled={isSubmitting}
+            className="sm:order-2"
+          >
+            {isSubmitting ? 'Guardando cambios...' : 'Guardar cambios'}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => navigate(routePaths.categories)}
+            disabled={isSubmitting}
+            className="sm:order-1"
+          >
+            Cancelar
+          </Button>
+        </div>
+      ) : null}
     </PageContainer>
   )
 }
