@@ -372,7 +372,7 @@ function CategoryForm({
   const [imageError, setImageError] = useState<string | null>(null)
   const [isImageSourceModalOpen, setIsImageSourceModalOpen] = useState(false)
   const [isDropboxImporting, setIsDropboxImporting] = useState(false)
-  const [dropboxImportProgress, setDropboxImportProgress] = useState<{
+  const [, setDropboxImportProgress] = useState<{
     processed: number
     total: number
   } | null>(null)
