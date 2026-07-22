@@ -91,6 +91,7 @@ export type DeleteLocationImageResult = {
 }
 
 export type PendingLocationImageStatus =
+  | 'processing'
   | 'pending'
   | 'uploading'
   | 'finalizing'
@@ -105,6 +106,7 @@ export type PendingLocationImageFile = {
   height: number
   originalIndex: number
   isCover: boolean
+  selectionTarget?: 'cover' | 'gallery'
   status: PendingLocationImageStatus
   errorMessage?: string | null
 }

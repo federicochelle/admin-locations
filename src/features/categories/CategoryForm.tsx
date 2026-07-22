@@ -39,7 +39,10 @@ type CategoryFormProps = {
   initialValues?: CategoryFormValues
   categoryId?: string
   initialSubmitError?: string | null
-  onSubmittingChange?: (isSubmitting: boolean) => void
+  onBusyStateChange?: (state: {
+    isProcessingImage: boolean
+    isSubmitting: boolean
+  }) => void
 }
 
 type CategorySaveStageKey =
@@ -65,6 +68,15 @@ type CategorySaveState = {
   uploadStep: 'preparing' | 'uploading' | 'finalizing' | null
 }
 
+type CategoryPendingImageStatus = 'processing' | 'pending' | 'error'
+
+type CategoryPendingImageState = {
+  file: File
+  previewUrl: string
+  status: CategoryPendingImageStatus
+  errorMessage: string | null
+}
+
 const defaultInitialValues: CategoryFormValues = {
   name: '',
   slug: '',
@@ -76,6 +88,8 @@ const defaultInitialValues: CategoryFormValues = {
 }
 
 const SAVE_SUCCESS_DELAY_MS = 1000
+const CATEGORY_IMAGE_PLACEHOLDER_PREVIEW_URL =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
 
 function slugifyCategoryName(value: string) {
   return value
@@ -293,6 +307,22 @@ function isAbortError(error: unknown) {
       : false
 }
 
+function revokePreviewUrl(previewUrl: string | null) {
+  if (!previewUrl || !previewUrl.startsWith('blob:')) {
+    return
+  }
+
+  URL.revokeObjectURL(previewUrl)
+}
+
+function ProcessingSpinner() {
+  return (
+    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/40 bg-white/15">
+      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
+    </span>
+  )
+}
+
 function openCategoryDropboxChooser(dropbox: DropboxGlobal) {
   return new Promise<DropboxChooserFile[]>((resolve, reject) => {
     try {
@@ -320,7 +350,7 @@ function CategoryForm({
   initialValues = defaultInitialValues,
   categoryId,
   initialSubmitError = null,
-  onSubmittingChange,
+  onBusyStateChange,
 }: CategoryFormProps) {
   const navigate = useNavigate()
   const { profile } = useAuth()
@@ -329,8 +359,9 @@ function CategoryForm({
   const [optionsError, setOptionsError] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(initialSubmitError)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [pendingImage, setPendingImage] = useState<CategoryPendingImageState | null>(
+    null,
+  )
   const [persistedImageUrl, setPersistedImageUrl] = useState<string | null>(
     initialValues.image_url ?? null,
   )
@@ -350,7 +381,10 @@ function CategoryForm({
   const dropboxAbortControllerRef = useRef<AbortController | null>(null)
   const isDropboxChooserLoadingRef = useRef(false)
   const isMountedRef = useRef(true)
+  const pendingImageRef = useRef<CategoryPendingImageState | null>(null)
+  const pendingImageSelectionIdRef = useRef(0)
   const retryCategoryIdRef = useRef<string | null>(mode === 'edit' ? categoryId ?? null : null)
+  const isProcessingPendingImage = pendingImage?.status === 'processing'
 
   async function loadFormOptions() {
     try {
@@ -428,8 +462,11 @@ function CategoryForm({
   }, [])
 
   useEffect(() => {
-    onSubmittingChange?.(isSubmitting)
-  }, [isSubmitting, onSubmittingChange])
+    onBusyStateChange?.({
+      isProcessingImage: isProcessingPendingImage,
+      isSubmitting,
+    })
+  }, [isProcessingPendingImage, isSubmitting, onBusyStateChange])
 
   useEffect(() => {
     isMountedRef.current = true
@@ -446,12 +483,14 @@ function CategoryForm({
   }, [])
 
   useEffect(() => {
+    pendingImageRef.current = pendingImage
+  }, [pendingImage])
+
+  useEffect(() => {
     return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl)
-      }
+      revokePreviewUrl(pendingImageRef.current?.previewUrl ?? null)
     }
-  }, [previewUrl])
+  }, [])
 
   useEffect(() => {
     if (!isImageSourceModalOpen) {
@@ -486,7 +525,7 @@ function CategoryForm({
     setSaveProgress(
       buildCategorySaveState({
         shouldDeleteImage: shouldRemovePersistedImage && Boolean(persistedImageCloudflareId),
-        shouldUploadImage: selectedImageFile !== null,
+        shouldUploadImage: pendingImage?.status === 'pending',
       }),
     )
   }
@@ -575,23 +614,70 @@ function CategoryForm({
       return
     }
 
+    const selectionId = pendingImageSelectionIdRef.current + 1
+    pendingImageSelectionIdRef.current = selectionId
+
     try {
       setImageError(null)
-      const nextFile = (await prepareImageUploadFile(file)).file
+      setPendingImage((currentImage) => {
+        if (currentImage) {
+          revokePreviewUrl(currentImage.previewUrl)
+        }
 
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl)
+        return {
+          errorMessage: null,
+          file,
+          previewUrl: CATEGORY_IMAGE_PLACEHOLDER_PREVIEW_URL,
+          status: 'processing',
+        }
+      })
+      setShouldRemovePersistedImage(false)
+
+      const nextFile = (await prepareImageUploadFile(file)).file
+      const nextPreviewUrl = URL.createObjectURL(nextFile)
+
+      if (
+        !isMountedRef.current ||
+        pendingImageSelectionIdRef.current !== selectionId
+      ) {
+        revokePreviewUrl(nextPreviewUrl)
+        return
       }
 
-      setSelectedImageFile(nextFile)
-      setPreviewUrl(URL.createObjectURL(nextFile))
-      setShouldRemovePersistedImage(false)
+      setPendingImage((currentImage) => {
+        if (currentImage?.previewUrl && currentImage.previewUrl !== nextPreviewUrl) {
+          revokePreviewUrl(currentImage.previewUrl)
+        }
+
+        return {
+          errorMessage: null,
+          file: nextFile,
+          previewUrl: nextPreviewUrl,
+          status: 'pending',
+        }
+      })
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
           : 'No pudimos procesar la imagen seleccionada.'
 
+      if (
+        !isMountedRef.current ||
+        pendingImageSelectionIdRef.current !== selectionId
+      ) {
+        return
+      }
+
+      setPendingImage((currentImage) =>
+        currentImage
+          ? {
+              ...currentImage,
+              errorMessage: message,
+              status: 'error',
+            }
+          : currentImage,
+      )
       setImageError(message)
     }
   }
@@ -757,15 +843,11 @@ function CategoryForm({
 
   function handleRemoveImage() {
     setImageError(null)
+    pendingImageSelectionIdRef.current += 1
 
-    if (selectedImageFile || previewUrl) {
-      setSelectedImageFile(null)
-
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl)
-      }
-
-      setPreviewUrl(null)
+    if (pendingImage) {
+      revokePreviewUrl(pendingImage.previewUrl)
+      setPendingImage(null)
       return
     }
 
@@ -775,17 +857,17 @@ function CategoryForm({
   }
 
   const visibleImageUrl =
-    previewUrl ?? (shouldRemovePersistedImage ? null : persistedImageUrl)
+    pendingImage?.previewUrl ?? (shouldRemovePersistedImage ? null : persistedImageUrl)
 
-  const hasAnyVisibleImage = Boolean(visibleImageUrl)
+  const hasAnyVisibleImage = Boolean(pendingImage || visibleImageUrl)
 
   async function syncCategoryImage(nextCategoryId: string) {
-    if (selectedImageFile) {
+    if (pendingImage?.status === 'pending') {
       updateSaveProgressStage('uploadImage', 'active')
 
       const uploadResult = await uploadCategoryImage({
         categoryId: nextCategoryId,
-        file: selectedImageFile,
+        file: pendingImage.file,
         onStatusChange: (status) => {
           updateCategorySaveProgress((currentState) => ({
             ...currentState,
@@ -797,13 +879,8 @@ function CategoryForm({
       setPersistedImageUrl(uploadResult.finalizedImage.imageUrl)
       setPersistedImageCloudflareId(uploadResult.finalizedImage.imageCloudflareId)
       setShouldRemovePersistedImage(false)
-      setSelectedImageFile(null)
-
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl)
-      }
-
-      setPreviewUrl(null)
+      revokePreviewUrl(pendingImage.previewUrl)
+      setPendingImage(null)
       setImageError(null)
       updateCategorySaveProgress((currentState) => ({
         ...currentState,
@@ -867,7 +944,7 @@ function CategoryForm({
 
       if (shouldRemovePersistedImage && persistedImageCloudflareId) {
         failedStage = 'deleteImage'
-      } else if (selectedImageFile) {
+      } else if (pendingImage?.status === 'pending') {
         failedStage = 'uploadImage'
       }
 
@@ -1006,23 +1083,12 @@ function CategoryForm({
           <div className="hidden">
             <LocationImageUploader
               ref={imageUploaderRef}
-              disabled={isSubmitting || isDropboxImporting}
+              disabled={isSubmitting || isDropboxImporting || isProcessingPendingImage}
               label="Seleccionar imagen"
               multiple={false}
               onFilesSelected={(files) => void handleImageFilesSelected(files)}
             />
           </div>
-
-          {isDropboxImporting ? (
-            <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
-              <p className="font-medium">Importando desde Dropbox…</p>
-              <p className="mt-1">
-                {dropboxImportProgress
-                  ? `${dropboxImportProgress.processed} de ${dropboxImportProgress.total} imagen`
-                  : 'Preparando importación…'}
-              </p>
-            </div>
-          ) : null}
 
           {imageError ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -1037,17 +1103,39 @@ function CategoryForm({
                 LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
               ].join(' ')}
             >
-              <img
-                src={visibleImageUrl ?? undefined}
-                alt="Vista previa de la imagen representativa"
-                className="h-full w-full object-cover"
-              />
+              {pendingImage?.status === 'processing' ? (
+                <div className="flex h-full w-full items-center justify-center bg-slate-200 text-center text-sm text-slate-500" />
+              ) : (
+                <img
+                  src={visibleImageUrl ?? undefined}
+                  alt="Vista previa de la imagen representativa"
+                  className="h-full w-full object-cover"
+                />
+              )}
+              {pendingImage &&
+              (pendingImage.status === 'processing' || pendingImage.status === 'error') ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/45 px-5 text-center text-white backdrop-blur-[1px]">
+                  {pendingImage.status === 'processing' ? <ProcessingSpinner /> : null}
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold">
+                      {pendingImage.status === 'processing'
+                        ? 'Procesando imagen...'
+                        : pendingImage.status === 'error'
+                          ? 'No se pudo procesar'
+                          : ''}
+                    </p>
+                    <p className="line-clamp-2 text-xs text-white/80">
+                      {pendingImage.file.name}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
               <div className="pointer-events-none absolute inset-0 bg-slate-950/0 transition group-hover:bg-slate-950/20">
                 <div className="pointer-events-auto absolute right-3 top-3 flex items-center gap-2 opacity-0 transition duration-200 group-hover:opacity-100">
                   <button
                     type="button"
                     onClick={handleOpenImageSourceModal}
-                    disabled={isSubmitting || isDropboxImporting}
+                    disabled={isSubmitting || isDropboxImporting || isProcessingPendingImage}
                     className="inline-flex items-center gap-2 rounded-full bg-white/92 px-3 py-2 text-xs font-medium text-slate-700 shadow-sm backdrop-blur transition hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <ReplaceIcon />
@@ -1068,7 +1156,7 @@ function CategoryForm({
           ) : (
             <LocationImageUploader
               ref={imageUploaderRef}
-              disabled={isSubmitting || isDropboxImporting}
+              disabled={isSubmitting || isDropboxImporting || isProcessingPendingImage}
               label="Seleccionar imagen"
               multiple={false}
               onTrigger={handleOpenImageSourceModal}
@@ -1077,7 +1165,7 @@ function CategoryForm({
             />
           )}
 
-          {shouldRemovePersistedImage && !previewUrl ? (
+          {shouldRemovePersistedImage && !pendingImage?.previewUrl ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               La imagen actual se eliminará cuando guardes la categoría.
             </div>

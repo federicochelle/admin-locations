@@ -46,7 +46,10 @@ function CategoryEditPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const location = useLocation()
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [busyState, setBusyState] = useState({
+    isProcessingImage: false,
+    isSubmitting: false,
+  })
   const formId = 'category-edit-form'
   const [initialValues, setInitialValues] = useState<CategoryFormValues | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -190,7 +193,7 @@ function CategoryEditPage() {
             categoryId={id}
             initialValues={initialValues}
             initialSubmitError={initialSubmitError}
-            onSubmittingChange={setIsSubmitting}
+            onBusyStateChange={setBusyState}
           />
         ) : null}
       </Card>
@@ -199,15 +202,19 @@ function CategoryEditPage() {
           <Button
             type="submit"
             form={formId}
-            disabled={isSubmitting}
+            disabled={busyState.isSubmitting || busyState.isProcessingImage}
             className="sm:order-2"
           >
-            {isSubmitting ? 'Guardando cambios...' : 'Guardar cambios'}
+            {busyState.isSubmitting
+              ? 'Guardando cambios...'
+              : busyState.isProcessingImage
+                ? 'Procesando imagen...'
+                : 'Guardar cambios'}
           </Button>
           <Button
             variant="secondary"
             onClick={() => navigate(routePaths.categories)}
-            disabled={isSubmitting}
+            disabled={busyState.isSubmitting || busyState.isProcessingImage}
             className="sm:order-1"
           >
             Cancelar

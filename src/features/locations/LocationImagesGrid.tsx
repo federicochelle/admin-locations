@@ -62,8 +62,10 @@ type LocationImagesGridBaseProps = {
 type GridImageItem = {
   detailBadges: string[]
   errorMessage?: string | null
+  hasPreview: boolean
   id: string
   isCover: boolean
+  isProcessing?: boolean
   kind: 'pending' | 'persisted'
   previewUrl: string
   secondaryLabel: string
@@ -93,6 +95,14 @@ function TrashIcon() {
   )
 }
 
+function ProcessingSpinner() {
+  return (
+    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/40 bg-white/15">
+      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent" />
+    </span>
+  )
+}
+
 function overlayActionClassName(tone: 'danger') {
   return tone === 'danger'
     ? 'bg-white/92 text-red-600 hover:bg-red-600 hover:text-white'
@@ -117,6 +127,8 @@ function getImageDimensionsLabel(image: LocationImageRecord) {
 
 function getPendingStatusLabel(image: PendingLocationImageFile) {
   switch (image.status) {
+    case 'processing':
+      return image.isCover ? 'Procesando portada' : 'Procesando'
     case 'uploading':
       return 'Subiendo'
     case 'finalizing':
@@ -147,11 +159,18 @@ function getPendingStatusTone(
 }
 
 function mapPendingImage(image: PendingLocationImageFile): GridImageItem {
+  const dimensionsLabel =
+    image.width > 0 && image.height > 0 ? `${image.width} x ${image.height}` : null
+
   return {
-    detailBadges: [formatFileSize(image.file.size)],
+    detailBadges: [formatFileSize(image.file.size), dimensionsLabel].filter(
+      (value): value is string => Boolean(value),
+    ),
     errorMessage: image.errorMessage,
+    hasPreview: image.width > 0 && image.height > 0,
     id: image.id,
     isCover: image.isCover,
+    isProcessing: image.status === 'processing',
     kind: 'pending',
     previewUrl: image.previewUrl,
     secondaryLabel: 'Imagen pendiente',
@@ -171,6 +190,7 @@ function mapPersistedImage(
 
   return {
     detailBadges,
+    hasPreview: true,
     id: image.id,
     isCover: image.is_cover,
     kind: 'persisted',
@@ -221,11 +241,13 @@ function LocationImagesGrid(
   const gridClassName = showGallery
     ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'
     : 'grid grid-cols-1 gap-4'
-  const lightboxImages: ImageLightboxItem[] = orderedItems.map((image) => ({
-    id: image.id,
-    title: image.title,
-    url: image.previewUrl,
-  }))
+  const lightboxImages: ImageLightboxItem[] = orderedItems
+    .filter((image) => image.hasPreview)
+    .map((image) => ({
+      id: image.id,
+      title: image.title,
+      url: image.previewUrl,
+    }))
 
   function handleCoverDragOver(event: React.DragEvent<HTMLElement>) {
     if (!canDragToCover) {
@@ -360,20 +382,43 @@ function LocationImagesGrid(
           >
             <div
               className={[
-                'group relative cursor-zoom-in',
+                'group relative',
+                coverItem.hasPreview ? 'cursor-zoom-in' : 'cursor-default',
                 LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
                 coverDropActive ? 'border-sky-500 bg-sky-50' : '',
               ].join(' ')}
-              onClick={() => handleOpenLightbox(coverItem.id)}
+              onClick={() => {
+                if (!coverItem.hasPreview) {
+                  return
+                }
+
+                handleOpenLightbox(coverItem.id)
+              }}
             >
-              <img
-                src={coverItem.previewUrl}
-                alt={coverItem.title}
-                className="h-full w-full object-cover"
-              />
+              {coverItem.hasPreview ? (
+                <img
+                  src={coverItem.previewUrl}
+                  alt={coverItem.title}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-slate-200 text-center text-sm text-slate-500" />
+              )}
               <span className="absolute left-3 top-3 inline-flex rounded-full bg-white/92 px-3 py-1 text-xs font-semibold text-slate-900 shadow-sm">
                 Portada
               </span>
+              {coverItem.kind === 'pending' &&
+              (coverItem.isProcessing || coverItem.errorMessage) ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/45 px-6 text-center text-white backdrop-blur-[1px]">
+                  {coverItem.isProcessing ? <ProcessingSpinner /> : null}
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold">
+                      {coverItem.isProcessing ? 'Procesando portada...' : 'No se pudo procesar'}
+                    </p>
+                    <p className="text-xs text-white/80">{coverItem.title}</p>
+                  </div>
+                </div>
+              ) : null}
               {(hasRemoveAction || (onSetCoverHandler && galleryItems.length > 0)) ? (
                 <div className="pointer-events-none absolute inset-0 bg-slate-950/10 transition md:bg-slate-950/0 md:group-hover:bg-slate-950/20">
                   <div className="pointer-events-auto absolute right-3 top-3 flex items-center gap-2 opacity-100 transition duration-200 md:opacity-0 md:group-hover:opacity-100">
@@ -423,14 +468,38 @@ function LocationImagesGrid(
             onDragStart={(event) => handleImageDragStart(event, image.id)}
           >
             <div
-              className="group relative aspect-[16/10] cursor-zoom-in bg-slate-100"
-              onClick={() => handleOpenLightbox(image.id)}
+              className={[
+                'group relative aspect-[16/10] bg-slate-100',
+                image.hasPreview ? 'cursor-zoom-in' : 'cursor-default',
+              ].join(' ')}
+              onClick={() => {
+                if (!image.hasPreview) {
+                  return
+                }
+
+                handleOpenLightbox(image.id)
+              }}
             >
-              <img
-                src={image.previewUrl}
-                alt={image.title}
-                className="h-full w-full object-cover"
-              />
+              {image.hasPreview ? (
+                <img
+                  src={image.previewUrl}
+                  alt={image.title}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-slate-200 text-center text-sm text-slate-500" />
+              )}
+              {image.kind === 'pending' && (image.isProcessing || image.errorMessage) ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/45 px-5 text-center text-white backdrop-blur-[1px]">
+                  {image.isProcessing ? <ProcessingSpinner /> : null}
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold">
+                      {image.isProcessing ? 'Procesando...' : 'No se pudo procesar'}
+                    </p>
+                    <p className="line-clamp-2 text-xs text-white/80">{image.title}</p>
+                  </div>
+                </div>
+              ) : null}
               {(onSetCoverHandler || hasRemoveAction) ? (
                 <div className="pointer-events-none absolute inset-0 bg-slate-950/10 transition md:bg-slate-950/0 md:group-hover:bg-slate-950/20">
                   <div className="pointer-events-auto absolute right-3 top-3 flex items-center gap-2 opacity-100 transition duration-200 md:opacity-0 md:group-hover:opacity-100">
