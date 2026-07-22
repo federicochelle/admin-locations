@@ -32,23 +32,14 @@ function createAdminClient() {
   )
 }
 
-export async function assertAdmin(request: Request): Promise<AdminContext> {
-  const token = getBearerToken(request)
-  const adminClient = createAdminClient()
-
-  const {
-    data: { user },
-    error: userError,
-  } = await adminClient.auth.getUser(token)
-
-  if (userError || !user) {
-    throw new HttpError(401, 'Invalid or expired user session.', userError?.message)
-  }
-
+export async function assertActiveAdminProfile(
+  adminClient: SupabaseClient,
+  userId: string,
+) {
   const { data: profile, error: profileError } = await adminClient
     .from('profiles')
     .select('id, user_id, role, status')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .maybeSingle()
 
   if (profileError) {
@@ -62,8 +53,30 @@ export async function assertAdmin(request: Request): Promise<AdminContext> {
     typedProfile.role !== 'admin' ||
     typedProfile.status !== 'active'
   ) {
-    throw new HttpError(403, 'You are not allowed to manage location images.')
+    throw new HttpError(403, 'You are not allowed to access this resource.')
   }
+
+  return typedProfile
+}
+
+export function getServiceRoleClient() {
+  return createAdminClient()
+}
+
+export async function assertAdmin(request: Request): Promise<AdminContext> {
+  const token = getBearerToken(request)
+  const adminClient = createAdminClient()
+
+  const {
+    data: { user },
+    error: userError,
+  } = await adminClient.auth.getUser(token)
+
+  if (userError || !user) {
+    throw new HttpError(401, 'Invalid or expired user session.', userError?.message)
+  }
+
+  const typedProfile = await assertActiveAdminProfile(adminClient, user.id)
 
   return {
     adminClient,

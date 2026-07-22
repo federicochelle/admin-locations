@@ -130,7 +130,7 @@ export const navigationItems: NavigationItem[] = [
   },
   {
     label: 'Configuración',
-    disabled: true,
+    to: routePaths.settings,
     icon: {
       paths: [
         'M12 8.5A3.5 3.5 0 1 0 12 15.5A3.5 3.5 0 1 0 12 8.5z',

@@ -55,12 +55,12 @@ function LocationOwnerQuickCreateModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[9999] overflow-y-auto bg-slate-950/35 px-4 py-4 backdrop-blur-sm sm:flex sm:items-center sm:justify-center sm:py-6">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="quick-owner-modal-title"
-        className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl"
+        className="mx-auto w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-6"
       >
         <form className="space-y-6" onSubmit={onSubmit}>
           <div>
@@ -142,6 +142,7 @@ function LocationOwnerQuickCreateModal({
 
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
             <Button
+              type="button"
               variant="secondary"
               onClick={onClose}
               disabled={isSubmitting}
