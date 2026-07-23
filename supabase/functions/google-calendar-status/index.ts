@@ -1,5 +1,11 @@
 import { assertAdmin } from '../_shared/auth.ts'
-import { errorResponse, handleOptions, HttpError, jsonResponse } from '../_shared/http.ts'
+import {
+  errorResponse,
+  handleOptions,
+  HttpError,
+  jsonResponse,
+  logInternalError,
+} from '../_shared/http.ts'
 
 type GoogleCalendarConnectionRow = {
   connected: boolean
@@ -40,6 +46,11 @@ Deno.serve(async (request) => {
       .maybeSingle()
 
     if (error) {
+      logInternalError(
+        '[google-calendar-status] connection_select_failed',
+        'google_calendar_connections.select_status',
+        error,
+      )
       throw new HttpError(500, 'Could not load Google Calendar connection status.')
     }
 
@@ -56,9 +67,7 @@ Deno.serve(async (request) => {
       origin,
     )
   } catch (error) {
-    console.error('[google-calendar-status] request_failed', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-    })
+    logInternalError('[google-calendar-status] request_failed', 'request', error)
 
     return errorResponse(error, origin)
   }

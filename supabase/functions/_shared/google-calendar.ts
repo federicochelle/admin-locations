@@ -1,4 +1,4 @@
-import { HttpError } from './http.ts'
+import { HttpError, logInternalError } from './http.ts'
 import { getRequiredEnv } from './env.ts'
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
 
@@ -35,6 +35,10 @@ const GOOGLE_CALENDAR_SCOPES = [
   'email',
   'https://www.googleapis.com/auth/calendar.events',
 ] as const
+const GOOGLE_EMAIL_SCOPE_EQUIVALENTS = new Set([
+  'email',
+  'https://www.googleapis.com/auth/userinfo.email',
+])
 const GOOGLE_STATE_MAX_AGE_MS = 10 * 60 * 1000
 
 function bytesToBase64Url(bytes: Uint8Array) {
@@ -187,6 +191,11 @@ export async function persistGoogleCalendarOAuthState(
     })
 
   if (error) {
+    logInternalError(
+      '[google-calendar-connect] oauth_state_insert_failed',
+      'google_calendar_oauth_states.insert',
+      error,
+    )
     throw new HttpError(500, 'Could not initialize Google Calendar OAuth state.')
   }
 }
@@ -208,6 +217,11 @@ export async function consumeGoogleCalendarOAuthState(
     .maybeSingle()
 
   if (error) {
+    logInternalError(
+      '[google-calendar-callback] oauth_state_consume_failed',
+      'google_calendar_oauth_states.update_consume',
+      error,
+    )
     throw new HttpError(500, 'Could not validate Google Calendar OAuth state.')
   }
 
@@ -329,11 +343,14 @@ export function getGrantedGoogleCalendarScopes(scopeValue?: string) {
 
 export function assertRequiredGoogleCalendarScopes(scopes: string[]) {
   const grantedScopes = new Set(scopes)
-  const missingScopes = GOOGLE_CALENDAR_SCOPES.filter(
-    (scope) => !grantedScopes.has(scope),
+
+  const hasOpenId = grantedScopes.has('openid')
+  const hasEmail = scopes.some((scope) => GOOGLE_EMAIL_SCOPE_EQUIVALENTS.has(scope))
+  const hasCalendarEvents = grantedScopes.has(
+    'https://www.googleapis.com/auth/calendar.events',
   )
 
-  if (missingScopes.length > 0) {
+  if (!hasOpenId || !hasEmail || !hasCalendarEvents) {
     throw new HttpError(400, 'Google Calendar authorization is missing required scopes.')
   }
 }

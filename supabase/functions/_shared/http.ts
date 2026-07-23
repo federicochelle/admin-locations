@@ -10,6 +10,61 @@ export class HttpError extends Error {
   }
 }
 
+type SafeErrorLog = {
+  code?: string
+  details?: string
+  hint?: string
+  message: string
+  operation: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function getStringField(record: Record<string, unknown>, key: string) {
+  const value = record[key]
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function extractStructuredErrorFields(error: unknown) {
+  if (!isRecord(error)) {
+    return {}
+  }
+
+  return {
+    code: getStringField(error, 'code'),
+    details: getStringField(error, 'details'),
+    hint: getStringField(error, 'hint'),
+    message: getStringField(error, 'message'),
+  }
+}
+
+export function buildSafeErrorLog(operation: string, error: unknown): SafeErrorLog {
+  const baseMessage =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string' && error.trim()
+        ? error
+        : 'Unknown error'
+
+  const errorFields = extractStructuredErrorFields(error)
+  const nestedFields =
+    error instanceof HttpError ? extractStructuredErrorFields(error.details) : {}
+
+  return {
+    operation,
+    message: nestedFields.message ?? errorFields.message ?? baseMessage,
+    code: nestedFields.code ?? errorFields.code,
+    details: nestedFields.details ?? errorFields.details,
+    hint: nestedFields.hint ?? errorFields.hint,
+  }
+}
+
+export function logInternalError(scope: string, operation: string, error: unknown) {
+  console.error(scope, buildSafeErrorLog(operation, error))
+}
+
 export function getCorsHeaders(origin?: string | null) {
   return {
     'Access-Control-Allow-Origin': origin ?? '*',
