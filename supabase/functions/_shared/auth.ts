@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient, type User } from 'npm:@supabase/supabase-js@2'
 import { getRequiredEnv } from './env.ts'
-import { HttpError } from './http.ts'
+import { HttpError, logInternalError } from './http.ts'
 
 type AdminProfile = {
   id: string
@@ -43,6 +43,11 @@ export async function assertActiveAdminProfile(
     .maybeSingle()
 
   if (profileError) {
+    logInternalError(
+      '[google-calendar-auth] admin_profile_select_failed',
+      'profiles.select_active_admin',
+      profileError,
+    )
     throw new HttpError(500, 'Could not validate admin profile.', profileError.message)
   }
 

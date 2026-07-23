@@ -64,3 +64,11 @@ create index if not exists google_calendar_oauth_states_active_lookup_idx
 
 alter table public.google_calendar_connections enable row level security;
 alter table public.google_calendar_oauth_states enable row level security;
+
+grant select, insert, update, delete
+on public.google_calendar_connections
+to service_role;
+
+grant select, insert, update, delete
+on public.google_calendar_oauth_states
+to service_role;

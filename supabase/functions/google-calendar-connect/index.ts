@@ -4,7 +4,7 @@ import {
   createGoogleCalendarOAuthState,
   persistGoogleCalendarOAuthState,
 } from '../_shared/google-calendar.ts'
-import { errorResponse, handleOptions, jsonResponse } from '../_shared/http.ts'
+import { errorResponse, handleOptions, jsonResponse, logInternalError } from '../_shared/http.ts'
 
 Deno.serve(async (request) => {
   const origin = request.headers.get('origin')
@@ -35,9 +35,7 @@ Deno.serve(async (request) => {
       origin,
     )
   } catch (error) {
-    console.error('[google-calendar-connect] request_failed', {
-      message: error instanceof Error ? error.message : 'Unknown error',
-    })
+    logInternalError('[google-calendar-connect] request_failed', 'request', error)
 
     return errorResponse(error, origin)
   }

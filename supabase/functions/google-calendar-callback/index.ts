@@ -11,7 +11,7 @@ import {
   getGrantedGoogleCalendarScopes,
   verifyGoogleCalendarOAuthState,
 } from '../_shared/google-calendar.ts'
-import { HttpError } from '../_shared/http.ts'
+import { buildSafeErrorLog, HttpError, logInternalError } from '../_shared/http.ts'
 
 type ExistingConnectionRow = {
   id: string
@@ -94,6 +94,11 @@ Deno.serve(async (request) => {
       .maybeSingle()
 
     if (existingConnectionError) {
+      logInternalError(
+        '[google-calendar-callback] connection_select_failed',
+        'google_calendar_connections.select_existing',
+        existingConnectionError,
+      )
       throw new HttpError(
         500,
         'Could not load the existing Google Calendar connection.',
@@ -129,13 +134,18 @@ Deno.serve(async (request) => {
       )
 
     if (upsertError) {
+      logInternalError(
+        '[google-calendar-callback] connection_upsert_failed',
+        'google_calendar_connections.upsert_primary',
+        upsertError,
+      )
       throw new HttpError(500, 'Could not save the Google Calendar connection.')
     }
 
     return redirectToSettings('success')
   } catch (error) {
     console.error('[google-calendar-callback] request_failed', {
-      message: error instanceof Error ? error.message : 'Unknown error',
+      ...buildSafeErrorLog('request', error),
       reason: toSafeReason(error),
     })
 
