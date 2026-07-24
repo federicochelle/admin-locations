@@ -44,6 +44,25 @@ function GoogleCalendarIcon() {
   )
 }
 
+function ChevronRightIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      className="h-4 w-4"
+    >
+      <path
+        d="m9 6 6 6-6 6"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function SettingsPage() {
   const [searchParams] = useSearchParams()
   const [connection, setConnection] = useState<GoogleCalendarConnectionStatus | null>(
@@ -138,6 +157,7 @@ function SettingsPage() {
     <PageContainer
       title="Configuración"
       description="Área reservada para parámetros generales del panel y catálogos secundarios que necesiten administración."
+      hideHeader
     >
       {oauthFeedback ? (
         <Card
@@ -160,101 +180,94 @@ function SettingsPage() {
       ) : null}
 
       <Card>
-        <h2 className="text-lg font-semibold text-slate-950">
-          Configuración general
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          Acá podremos ubicar más adelante ajustes operativos, taxonomías y
-          configuraciones complementarias del sistema.
-        </p>
-      </Card>
-
-      <Card>
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-4">
-            <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
-              <GoogleCalendarIcon />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-slate-950">
-                Google Calendar
-              </h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                Conectá una cuenta de Google para preparar la futura sincronización
-                de eventos desde el panel administrador.
-              </p>
-            </div>
-          </div>
-
-          <div className="lg:shrink-0">
-            <Button
-              type="button"
-              disabled={isLoadingConnection || isConnecting}
-              onClick={() => void handleConnectGoogleCalendar()}
-            >
-              {isConnecting ? 'Abriendo Google...' : 'Conectar Google Calendar'}
-            </Button>
-          </div>
-        </div>
-
-        <div className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-medium text-slate-700">Estado</span>
-            <span
-              className={[
-                'inline-flex rounded-full border px-3 py-1 text-xs font-semibold',
-                connection?.connected
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  : 'border-slate-200 bg-white text-slate-600',
-              ].join(' ')}
-            >
-              {isLoadingConnection
-                ? 'Cargando...'
-                : connection?.connected
-                  ? 'Conectado'
-                  : 'Desconectado'}
-            </span>
-          </div>
-
+        <div className="space-y-8">
           {connectionError ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {connectionError}
             </div>
           ) : null}
 
-          {connection?.connected ? (
-            <dl className="grid gap-4 md:grid-cols-2">
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Cuenta conectada
-                </dt>
-                <dd className="mt-1 text-sm font-medium text-slate-900">
-                  {connection.googleAccountEmail}
-                </dd>
+          <div className="space-y-3 border-t border-slate-200 pt-6">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-4">
+                  <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+                    <GoogleCalendarIcon />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h4 className="text-base font-semibold text-slate-950">
+                        Google Calendar
+                      </h4>
+                      <span
+                        className={[
+                          'inline-flex rounded-full border px-3 py-1 text-xs font-semibold',
+                          connection?.connected
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : 'border-slate-200 bg-slate-50 text-slate-600',
+                        ].join(' ')}
+                      >
+                        {isLoadingConnection
+                          ? 'Cargando...'
+                          : connection?.connected
+                            ? 'Conectado'
+                            : 'Pendiente'}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      Conectá una cuenta de Google para que el panel pueda operar
+                      la sincronización de reservas con calendario.
+                    </p>
+                    {connection?.connected ? (
+                      <dl className="mt-4 grid gap-4 md:grid-cols-3">
+                        <div>
+                          <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            Cuenta
+                          </dt>
+                          <dd className="mt-1 text-sm font-medium text-slate-900">
+                            {connection.googleAccountEmail}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            Conectado
+                          </dt>
+                          <dd className="mt-1 text-sm font-medium text-slate-900">
+                            {formatDateTime(connection.connectedAt)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            Actualizado
+                          </dt>
+                          <dd className="mt-1 text-sm font-medium text-slate-900">
+                            {formatDateTime(connection.updatedAt)}
+                          </dd>
+                        </div>
+                      </dl>
+                    ) : (
+                      <p className="mt-3 text-sm leading-6 text-slate-600">
+                        Todavía no hay ninguna cuenta conectada para este panel.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-3">
+                  <Button
+                    type="button"
+                    disabled={isLoadingConnection || isConnecting}
+                    onClick={() => void handleConnectGoogleCalendar()}
+                  >
+                    {isConnecting ? 'Abriendo Google...' : 'Conectar'}
+                  </Button>
+                  <span className="text-slate-400">
+                    <ChevronRightIcon />
+                  </span>
+                </div>
               </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Fecha de conexión
-                </dt>
-                <dd className="mt-1 text-sm font-medium text-slate-900">
-                  {formatDateTime(connection.connectedAt)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Última actualización
-                </dt>
-                <dd className="mt-1 text-sm font-medium text-slate-900">
-                  {formatDateTime(connection.updatedAt)}
-                </dd>
-              </div>
-            </dl>
-          ) : (
-            <p className="text-sm leading-6 text-slate-600">
-              Todavía no hay ninguna cuenta de Google Calendar conectada para este
-              panel.
-            </p>
-          )}
+            </div>
+          </div>
         </div>
       </Card>
     </PageContainer>

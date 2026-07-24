@@ -11,6 +11,7 @@ type LocationSubmissionRow = {
   id: string
   status: ProposalStatus
   created_at: string
+  submitted_at: string
   updated_at: string | null
   owner_name: string
   owner_email: string
@@ -58,7 +59,7 @@ function mapProposalListItem(row: LocationSubmissionRow): ProposalListItem {
   return {
     id: row.id,
     status: row.status,
-    createdAt: row.created_at,
+    submittedAt: row.submitted_at,
     ownerName: normalizeRequiredText(row.owner_name, 'Sin nombre'),
     ownerEmail: normalizeRequiredText(row.owner_email, 'Sin email'),
     ownerPhone: normalizeRequiredText(row.owner_phone, 'Sin teléfono'),
@@ -78,7 +79,7 @@ export async function getProposalSubmissions(): Promise<ProposalListItem[]> {
       `
         id,
         status,
-        created_at,
+        submitted_at,
         owner_name,
         owner_email,
         owner_phone,
@@ -88,13 +89,28 @@ export async function getProposalSubmissions(): Promise<ProposalListItem[]> {
         title
       `,
     )
-    .order('created_at', { ascending: false })
+    .order('submitted_at', { ascending: false })
 
   if (error) {
     throw new Error(error.message)
   }
 
   return ((data ?? []) as LocationSubmissionRow[]).map(mapProposalListItem)
+}
+
+export async function getPendingProposalSubmissionsCount(): Promise<number> {
+  const supabase = getSupabaseClient()
+
+  const { count, error } = await supabase
+    .from('location_submissions')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending')
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return count ?? 0
 }
 
 export async function getProposalSubmissionById(
@@ -108,7 +124,7 @@ export async function getProposalSubmissionById(
       `
         id,
         status,
-        created_at,
+        submitted_at,
         updated_at,
         owner_name,
         owner_email,

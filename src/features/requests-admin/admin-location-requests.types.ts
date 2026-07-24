@@ -8,7 +8,7 @@ export type AdminLocationRequest = {
   title: string
   message: string | null
   status: LocationRequestStatus
-  createdAt: string
+  submittedAt: string
   updatedAt: string | null
   requesterFullName: string | null
   requesterEmail: string | null
@@ -26,6 +26,10 @@ export type AdminRequestLocation = {
   categoryName: string | null
   departmentName: string | null
   zoneName: string | null
+  ownerId: string | null
+  ownerName: string | null
+  ownerPhone: string | null
+  ownerEmail: string | null
 }
 
 export type AdminLocationRequestDetail = {
@@ -34,7 +38,7 @@ export type AdminLocationRequestDetail = {
   title: string
   message: string | null
   status: LocationRequestStatus
-  createdAt: string
+  submittedAt: string
   updatedAt: string | null
   requesterFullName: string | null
   requesterEmail: string | null
@@ -43,7 +47,14 @@ export type AdminLocationRequestDetail = {
   locationManagerName: string | null
   tentativeStartDate: string | null
   tentativeEndDate: string | null
-  pdfUrl: string | null
+  officialPdf: {
+    bucket: string
+    path: string
+    fileName: string | null
+    generatedAt: string | null
+    uploadedAt: string | null
+    sizeBytes: number | null
+  } | null
   locations: AdminRequestLocation[]
 }
 

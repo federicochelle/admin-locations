@@ -18,7 +18,7 @@ export type ProposalImage = {
 export type ProposalListItem = {
   id: string
   status: ProposalStatus
-  createdAt: string
+  submittedAt: string
   ownerName: string
   ownerEmail: string
   ownerPhone: string

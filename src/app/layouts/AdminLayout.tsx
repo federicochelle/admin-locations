@@ -5,6 +5,7 @@ import { routePaths } from '../router/route-paths'
 import { hasActiveAdminAccess } from '../../features/auth/auth-context'
 import useAuth from '../../features/auth/useAuth'
 import { LayoutHeaderProvider } from './LayoutHeaderContext'
+import { PendingNavCountsProvider } from './PendingNavCountsContext'
 
 function AdminLayout() {
   const { currentUser, isLoading, isProfileLoading, profile } = useAuth()
@@ -34,15 +35,17 @@ function AdminLayout() {
 
   return (
     <LayoutHeaderProvider>
-      <div className="min-h-screen bg-black text-slate-900">
-        <Sidebar />
-        <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(184,146,74,0.10),_transparent_24%),linear-gradient(180deg,_#111111_0%,_#151515_52%,_#1a1a1a_100%)] md:ml-72">
-          <Header />
-          <main className="relative px-3 py-4 sm:px-8 sm:py-5">
-            <Outlet />
-          </main>
+      <PendingNavCountsProvider>
+        <div className="min-h-screen bg-black text-slate-900">
+          <Sidebar />
+          <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(184,146,74,0.10),_transparent_24%),linear-gradient(180deg,_#111111_0%,_#151515_52%,_#1a1a1a_100%)] md:ml-72">
+            <Header />
+            <main className="relative px-3 py-4 sm:px-8 sm:py-5">
+              <Outlet />
+            </main>
+          </div>
         </div>
-      </div>
+      </PendingNavCountsProvider>
     </LayoutHeaderProvider>
   )
 }

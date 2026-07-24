@@ -4,6 +4,7 @@ import {
   updateProposalSubmission,
 } from './proposal-submissions.service'
 import { isProposalSubmissionNotFoundError } from './proposal-submissions.helpers'
+import { usePendingNavCounts } from '../../app/layouts/PendingNavCountsContext'
 import type {
   ProposalDetails,
   ProposalStatus,
@@ -32,6 +33,7 @@ export function useProposalSubmissionDetail(
   submissionId: string | null | undefined,
   enabled = true,
 ): UseProposalSubmissionDetailResult {
+  const { refreshCounts } = usePendingNavCounts()
   const [proposal, setProposal] = useState<ProposalDetails | null>(null)
   const [isLoading, setIsLoading] = useState(enabled && Boolean(submissionId))
   const [isSaving, setIsSaving] = useState(false)
@@ -94,6 +96,7 @@ export function useProposalSubmissionDetail(
             }
           : currentProposal,
       )
+      await refreshCounts()
       setSaveSuccessMessage('Propuesta actualizada correctamente.')
     } catch (error) {
       setSaveErrorMessage(

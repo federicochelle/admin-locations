@@ -14,11 +14,16 @@ type LocationRequestsAdminTableProps = {
   onSelectedStatusChange: (status: 'all' | LocationRequestStatus) => void
 }
 
-function formatDateTime(value: string) {
+function formatDate(value: string) {
   return new Intl.DateTimeFormat('es-UY', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
+  }).format(new Date(value))
+}
+
+function formatTime(value: string) {
+  return new Intl.DateTimeFormat('es-UY', {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
@@ -145,7 +150,12 @@ function LocationRequestsAdminTable({
                 >
                   <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                     <div className="min-w-[150px]">
-                      <p>{formatDateTime(request.createdAt)}</p>
+                      <p className="font-medium text-slate-900">
+                        {formatDate(request.submittedAt)}
+                      </p>
+                      <p className="mt-1 text-slate-500">
+                        {formatTime(request.submittedAt)}
+                      </p>
                     </div>
                   </td>
                   <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
