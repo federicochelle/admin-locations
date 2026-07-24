@@ -1,4 +1,9 @@
-import { getSupabaseClient } from '../../lib/supabase'
+import {
+  FunctionsFetchError,
+  FunctionsHttpError,
+  FunctionsRelayError,
+  getSupabaseClient,
+} from '../../lib/supabase'
 import type {
   ReservationCreatePayload,
   ReservationListItem,
@@ -35,6 +40,18 @@ type ReservationIdRow = {
   id: string
 }
 
+type GoogleCalendarSyncInput = {
+  reservationId: string
+}
+
+type ReservationSaveResult = {
+  id: string
+  syncWarning: string | null
+}
+
+const GOOGLE_CALENDAR_SYNC_WARNING_MESSAGE =
+  'Reserva guardada, pero no se pudo sincronizar con Google Calendar.'
+
 function getLocationRelation(relation: LocationRelation) {
   if (!relation) {
     return null
@@ -64,6 +81,86 @@ function mapReservation(row: ReservationRow): ReservationListItem {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
+}
+
+async function getEdgeFunctionErrorMessage(
+  error: unknown,
+  fallbackMessage: string,
+): Promise<string> {
+  if (error instanceof FunctionsHttpError) {
+    const response = error.context
+
+    try {
+      const payload = await response.json()
+
+      if (
+        typeof payload === 'object' &&
+        payload !== null &&
+        'message' in payload &&
+        typeof payload.message === 'string' &&
+        payload.message.trim()
+      ) {
+        return payload.message
+      }
+
+      if (
+        typeof payload === 'object' &&
+        payload !== null &&
+        'error' in payload &&
+        typeof payload.error === 'string' &&
+        payload.error.trim()
+      ) {
+        return payload.error
+      }
+    } catch {
+      try {
+        const text = await response.text()
+
+        if (text.trim().length > 0) {
+          return text
+        }
+      } catch {
+        return fallbackMessage
+      }
+    }
+
+    return fallbackMessage
+  }
+
+  if (error instanceof FunctionsRelayError || error instanceof FunctionsFetchError) {
+    return error.message
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+
+  return fallbackMessage
+}
+
+async function syncReservationWithGoogleCalendar(
+  input: GoogleCalendarSyncInput,
+): Promise<string | null> {
+  const supabase = getSupabaseClient()
+
+  const { error } = await supabase.functions.invoke('google-calendar-sync-reservation', {
+    body: {
+      reservationId: input.reservationId,
+    },
+  })
+
+  if (!error) {
+    return null
+  }
+
+  const syncErrorMessage = await getEdgeFunctionErrorMessage(
+    error,
+    GOOGLE_CALENDAR_SYNC_WARNING_MESSAGE,
+  )
+
+  return syncErrorMessage.trim()
+    ? `${GOOGLE_CALENDAR_SYNC_WARNING_MESSAGE} ${syncErrorMessage.trim()}`
+    : GOOGLE_CALENDAR_SYNC_WARNING_MESSAGE
 }
 
 export async function getReservations(): Promise<ReservationListItem[]> {
@@ -100,7 +197,7 @@ export async function getReservations(): Promise<ReservationListItem[]> {
 
 export async function createReservation(
   payload: ReservationCreatePayload,
-): Promise<string> {
+): Promise<ReservationSaveResult> {
   const supabase = getSupabaseClient()
 
   const { data, error } = await supabase
@@ -113,13 +210,19 @@ export async function createReservation(
     throw new Error(error.message)
   }
 
-  return (data as ReservationIdRow).id
+  const id = (data as ReservationIdRow).id
+  const syncWarning = await syncReservationWithGoogleCalendar({ reservationId: id })
+
+  return {
+    id,
+    syncWarning,
+  }
 }
 
 export async function updateReservation(
   id: string,
   payload: ReservationUpdatePayload,
-): Promise<string> {
+): Promise<ReservationSaveResult> {
   const supabase = getSupabaseClient()
 
   const { data, error } = await supabase
@@ -133,12 +236,19 @@ export async function updateReservation(
     throw new Error(error.message)
   }
 
-  return (data as ReservationIdRow).id
+  const savedId = (data as ReservationIdRow).id
+  const syncWarning = await syncReservationWithGoogleCalendar({ reservationId: savedId })
+
+  return {
+    id: savedId,
+    syncWarning,
+  }
 }
 
 export async function deleteReservation(id: string): Promise<string> {
   const supabase = getSupabaseClient()
 
+  // TODO: Sync Google Calendar before hard delete because the Edge Function needs to read the reservation first.
   const { data, error } = await supabase
     .from('reservations')
     .delete()

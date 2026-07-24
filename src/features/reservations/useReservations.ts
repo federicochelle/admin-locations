@@ -89,9 +89,11 @@ export function useReservations(): UseReservationsResult {
       setActionErrorMessage(null)
       setActionSuccessMessage(null)
 
-      await createReservation(payload)
+      const result = await createReservation(payload)
       await loadReservations()
-      setActionSuccessMessage('Reserva creada correctamente.')
+      setActionSuccessMessage(
+        result.syncWarning ?? 'Reserva creada correctamente.',
+      )
       return true
     } catch (error) {
       setActionErrorMessage(
@@ -109,9 +111,11 @@ export function useReservations(): UseReservationsResult {
       setActionErrorMessage(null)
       setActionSuccessMessage(null)
 
-      await updateReservation(id, payload)
+      const result = await updateReservation(id, payload)
       await loadReservations()
-      setActionSuccessMessage('Reserva actualizada correctamente.')
+      setActionSuccessMessage(
+        result.syncWarning ?? 'Reserva actualizada correctamente.',
+      )
       return true
     } catch (error) {
       setActionErrorMessage(
