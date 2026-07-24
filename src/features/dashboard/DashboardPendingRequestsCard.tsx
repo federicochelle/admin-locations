@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { routePaths } from '../../app/router/route-paths'
+import { Link, useNavigate } from 'react-router-dom'
+import { getRequestDetailPath, routePaths } from '../../app/router/route-paths'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import { formatRelativeCreatedAt } from '../activity/activity-logs.helpers'
@@ -34,6 +34,7 @@ function getPendingRequests(requests: AdminLocationRequest[]) {
 }
 
 function DashboardPendingRequestsCard() {
+  const navigate = useNavigate()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [requests, setRequests] = useState<AdminLocationRequest[]>([])
@@ -100,8 +101,8 @@ function DashboardPendingRequestsCard() {
   const visibleRequests = pendingRequests.slice(0, DASHBOARD_PENDING_REQUESTS_LIMIT)
 
   return (
-    <Card>
-      <div className="-mx-6 -mt-6 flex items-center justify-between gap-4 rounded-t-2xl border-b border-slate-200 bg-white/95 px-6 py-3 backdrop-blur-sm">
+    <Card className="-mx-4 rounded-none border-x-0 sm:mx-0 sm:rounded-2xl sm:border-x">
+      <div className="-mx-6 -mt-6 flex items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-6 py-3 backdrop-blur-sm sm:rounded-t-2xl">
         <div className="min-w-0">
           <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
             Solicitudes pendientes
@@ -142,23 +143,26 @@ function DashboardPendingRequestsCard() {
           {visibleRequests.map((request) => (
             <li
               key={request.id}
-              className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between"
+              className="cursor-pointer py-3 transition first:pt-0 last:pb-0 hover:bg-[rgba(184,146,74,0.08)]"
+              onClick={() => navigate(getRequestDetailPath(request.id))}
             >
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-slate-950">
-                  {request.title}
-                </p>
-                <p className="mt-1 text-sm text-slate-700">
-                  {getRequesterName(request)}
-                </p>
-                <p className="mt-1 text-sm text-slate-500">
-                  {formatRelativeCreatedAt(request.submittedAt)}
-                </p>
-              </div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-950">
+                    {request.title}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-700">
+                    {getRequesterName(request)}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {formatRelativeCreatedAt(request.submittedAt)}
+                  </p>
+                </div>
 
-              <span className="inline-flex w-fit rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                Pendiente
-              </span>
+                <span className="inline-flex w-fit shrink-0 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                  Pendiente
+                </span>
+              </div>
             </li>
           ))}
         </ul>

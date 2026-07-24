@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import { routePaths } from '../../app/router/route-paths'
 import Button from '../../components/ui/Button'
@@ -228,14 +228,18 @@ function ReadOnlyField({
 }
 
 function RequestManagementCard({
+  isDeleting,
   isGeneratingPdf,
   isSaving,
+  onDelete,
   onOpenPdf,
   request,
   onSave,
 }: {
+  isDeleting: boolean
   isGeneratingPdf: boolean
   isSaving: boolean
+  onDelete: () => void
   onOpenPdf: () => void
   request: AdminLocationRequestDetail
   onSave: (status: LocationRequestStatus) => Promise<void>
@@ -261,7 +265,7 @@ function RequestManagementCard({
         <button
           type="button"
           onClick={onOpenPdf}
-          disabled={isGeneratingPdf}
+          disabled={isGeneratingPdf || isDeleting}
           aria-label="Ver PDF"
           title="Ver PDF"
           className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:border-slate-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
@@ -282,6 +286,28 @@ function RequestManagementCard({
             <path d="M16 14.75h1.5" />
           </svg>
         </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={isDeleting || isSaving || isGeneratingPdf}
+          aria-label={isDeleting ? 'Eliminando solicitud...' : 'Eliminar solicitud'}
+          title={isDeleting ? 'Eliminando solicitud...' : 'Eliminar solicitud'}
+          className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-700 shadow-sm transition hover:border-red-300 hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            className="h-6 w-6"
+            aria-hidden="true"
+          >
+            <path d="M3 6h18" />
+            <path d="M8 6V4h8v2" />
+            <path d="M19 6l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <path d="M10 11v6M14 11v6" />
+          </svg>
+        </button>
       </div>
     </div>
   )
@@ -289,14 +315,18 @@ function RequestManagementCard({
 
 function AdminRequestDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const {
     request,
     isLoading,
     isSaving,
+    isDeleting,
     errorMessage,
     saveErrorMessage,
+    deleteErrorMessage,
     reload,
     save,
+    remove,
   } = useAdminRequestDetail(id)
 
   const headerConfig = useMemo(
@@ -347,6 +377,24 @@ function AdminRequestDetailPage() {
       )
     } finally {
       setIsGeneratingPdf(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!request || isDeleting) {
+      return
+    }
+
+    const confirmed = window.confirm('¿Estás seguro que querés eliminar?')
+
+    if (!confirmed) {
+      return
+    }
+
+    const deleted = await remove()
+
+    if (deleted) {
+      navigate(routePaths.requests)
     }
   }
 
@@ -403,6 +451,19 @@ function AdminRequestDetailPage() {
             </Card>
           ) : null}
 
+          {deleteErrorMessage ? (
+            <Card>
+              <div>
+                <h2 className="text-lg font-semibold text-slate-950">
+                  No pudimos eliminar la solicitud
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  {deleteErrorMessage}
+                </p>
+              </div>
+            </Card>
+          ) : null}
+
           {pdfErrorMessage ? (
             <Card>
               <div>
@@ -432,8 +493,10 @@ function AdminRequestDetailPage() {
                   <RequestManagementCard
                     key={`${request.id}:${request.updatedAt ?? request.status}`}
                     request={request}
+                    isDeleting={isDeleting}
                     isGeneratingPdf={isGeneratingPdf}
                     isSaving={isSaving}
+                    onDelete={() => void handleDelete()}
                     onOpenPdf={() => void handleOpenPdf()}
                     onSave={save}
                   />

@@ -348,6 +348,23 @@ export async function updateAdminLocationRequestStatus(
   return data.id
 }
 
+export async function deleteAdminLocationRequest(
+  requestId: string,
+): Promise<string> {
+  const supabase = getSupabaseClient()
+
+  const { error } = await supabase
+    .from('request_projects')
+    .delete()
+    .eq('id', requestId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return requestId
+}
+
 export async function getAdminLocationRequestById(
   requestId: string,
 ): Promise<AdminLocationRequestDetail> {

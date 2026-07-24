@@ -81,8 +81,8 @@ function DashboardRecentActivityCard() {
   }, [])
 
   return (
-    <Card className="h-full">
-      <div className="-mx-6 -mt-6 flex items-center justify-between gap-4 rounded-t-2xl border-b border-slate-200 bg-white/95 px-6 py-3 backdrop-blur-sm">
+    <Card className="-mx-4 h-full rounded-none border-x-0 sm:mx-0 sm:rounded-2xl sm:border-x">
+      <div className="-mx-6 -mt-6 flex items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-6 py-3 backdrop-blur-sm sm:rounded-t-2xl">
         <div className="min-w-0">
           <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
             Actividad reciente
