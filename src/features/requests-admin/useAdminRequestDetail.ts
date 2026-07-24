@@ -3,6 +3,7 @@ import {
   getAdminLocationRequestById,
   updateAdminLocationRequestStatus,
 } from './admin-location-requests.service'
+import { usePendingNavCounts } from '../../app/layouts/PendingNavCountsContext'
 import type {
   AdminLocationRequestDetail,
   LocationRequestStatus,
@@ -14,7 +15,6 @@ type UseAdminRequestDetailResult = {
   isSaving: boolean
   errorMessage: string | null
   saveErrorMessage: string | null
-  saveSuccessMessage: string | null
   reload: () => Promise<void>
   save: (status: LocationRequestStatus) => Promise<void>
 }
@@ -31,12 +31,12 @@ export function useAdminRequestDetail(
   requestId: string | null | undefined,
   enabled = true,
 ): UseAdminRequestDetailResult {
+  const { refreshCounts } = usePendingNavCounts()
   const [request, setRequest] = useState<AdminLocationRequestDetail | null>(null)
   const [isLoading, setIsLoading] = useState(enabled && Boolean(requestId))
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
-  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null)
 
   async function loadRequest() {
     if (!enabled || !requestId) {
@@ -75,7 +75,6 @@ export function useAdminRequestDetail(
     try {
       setIsSaving(true)
       setSaveErrorMessage(null)
-      setSaveSuccessMessage(null)
 
       await updateAdminLocationRequestStatus(request.id, status)
 
@@ -88,7 +87,7 @@ export function useAdminRequestDetail(
             }
           : currentRequest,
       )
-      setSaveSuccessMessage('Solicitud actualizada correctamente.')
+      await refreshCounts()
     } catch (error) {
       setSaveErrorMessage(
         getErrorMessage(error, 'No pudimos guardar los cambios de la solicitud.'),
@@ -144,7 +143,6 @@ export function useAdminRequestDetail(
     isSaving,
     errorMessage: enabled && requestId ? errorMessage : null,
     saveErrorMessage,
-    saveSuccessMessage,
     reload,
     save,
   }

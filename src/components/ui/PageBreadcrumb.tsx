@@ -13,7 +13,7 @@ type PageBreadcrumbProps = {
 function PageBreadcrumb({ items }: PageBreadcrumbProps) {
   return (
     <nav aria-label="Breadcrumb">
-      <ol className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-lg text-slate-700 sm:text-xl">
+      <ol className="font-display flex flex-wrap items-center gap-x-2.5 gap-y-1 text-lg text-slate-700 sm:text-xl">
         {items.map((item, index) => {
           const isLastItem = index === items.length - 1
 

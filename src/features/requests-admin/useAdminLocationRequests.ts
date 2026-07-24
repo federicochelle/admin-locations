@@ -3,6 +3,7 @@ import {
   getAdminLocationRequests,
   updateAdminLocationRequestStatus,
 } from './admin-location-requests.service'
+import { usePendingNavCounts } from '../../app/layouts/PendingNavCountsContext'
 import type {
   AdminLocationRequest,
   LocationRequestStatus,
@@ -31,6 +32,7 @@ function getErrorMessage(error: unknown) {
 export function useAdminLocationRequests(
   enabled = true,
 ): UseAdminLocationRequestsResult {
+  const { refreshCounts } = usePendingNavCounts()
   const [requests, setRequests] = useState<AdminLocationRequest[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -80,6 +82,7 @@ export function useAdminLocationRequests(
             : request,
         ),
       )
+      await refreshCounts()
       setActionSuccessMessage('Estado actualizado correctamente.')
     } catch (error) {
       setActionErrorMessage(getErrorMessage(error))

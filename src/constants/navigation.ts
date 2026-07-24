@@ -10,6 +10,7 @@ export type NavigationIcon = {
 }
 
 export type NavigationItem = {
+  badgeKey?: 'pendingRequests' | 'pendingProposals'
   disabled?: boolean
   label: string
   to?: string
@@ -65,21 +66,23 @@ export const navigationItems: NavigationItem[] = [
     type: 'divider',
   },
   {
+    badgeKey: 'pendingRequests',
     label: 'Solicitudes',
     to: routePaths.requests,
     icon: {
       paths: [
-        'M8 6h8M8 12h8M8 18h5M5 6h.01M5 12h.01M5 18h.01',
+        'M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z',
+        'm8 9 4 3 4-3',
       ],
     },
   },
   {
+    badgeKey: 'pendingProposals',
     label: 'Propuestas',
     to: routePaths.proposals,
     icon: {
       paths: [
-        'M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z',
-        'm8 9 4 3 4-3',
+        'M8 6h8M8 12h8M8 18h5M5 6h.01M5 12h.01M5 18h.01',
       ],
     },
   },

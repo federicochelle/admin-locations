@@ -206,7 +206,7 @@ function ProposalDetailPage() {
                     Datos de la propuesta
                   </h3>
                   <p className="mt-2 text-sm font-medium leading-6 text-slate-700">
-                    {formatProposalDateTime(proposal.createdAt)}
+                    {formatProposalDateTime(proposal.submittedAt)}
                   </p>
                 </div>
 

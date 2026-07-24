@@ -22,6 +22,21 @@ type LocationImageRelation =
     }[]
   | null
 
+type OwnerRelation =
+  | {
+      id: string | null
+      full_name: string | null
+      phone: string | null
+      email: string | null
+    }
+  | {
+      id: string | null
+      full_name: string | null
+      phone: string | null
+      email: string | null
+    }[]
+  | null
+
 type RequestProjectLocationItem = {
   location_id: string
   locations:
@@ -33,6 +48,7 @@ type RequestProjectLocationItem = {
         categories?: NameRelation
         departments?: NameRelation
         zones?: NameRelation
+        owners?: OwnerRelation
       }
     | {
         id: string
@@ -42,6 +58,7 @@ type RequestProjectLocationItem = {
         categories?: NameRelation
         departments?: NameRelation
         zones?: NameRelation
+        owners?: OwnerRelation
       }[]
     | null
 }
@@ -57,7 +74,14 @@ type RequestProjectRow = {
   message: string | null
   status: LocationRequestStatus
   created_at: string
+  submitted_at?: string | null
   updated_at: string | null
+  official_pdf_bucket?: string | null
+  official_pdf_path?: string | null
+  official_pdf_file_name?: string | null
+  official_pdf_generated_at?: string | null
+  official_pdf_uploaded_at?: string | null
+  official_pdf_size_bytes?: number | null
   request_project_locations: RequestProjectLocationRelation
   [key: string]: unknown
 }
@@ -96,6 +120,18 @@ function getRequestEmail(row: RequestProjectRow) {
   ])
 }
 
+function getOptionalNumberValue(row: RequestProjectRow, keys: string[]) {
+  for (const key of keys) {
+    const value = row[key]
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value
+    }
+  }
+
+  return null
+}
+
 function getRelationName(relation: NameRelation) {
   if (!relation) {
     return null
@@ -118,6 +154,7 @@ function getLocationRelation(
         categories?: NameRelation
         departments?: NameRelation
         zones?: NameRelation
+        owners?: OwnerRelation
       }
     | {
         id: string
@@ -127,9 +164,22 @@ function getLocationRelation(
         categories?: NameRelation
         departments?: NameRelation
         zones?: NameRelation
+        owners?: OwnerRelation
       }[]
     | null,
 ) {
+  if (!relation) {
+    return null
+  }
+
+  if (Array.isArray(relation)) {
+    return relation[0] ?? null
+  }
+
+  return relation
+}
+
+function getOwnerRelation(relation: OwnerRelation) {
   if (!relation) {
     return null
   }
@@ -174,6 +224,10 @@ function mapLocationItemToDetail(item: RequestProjectLocationItem): AdminRequest
     categoryName: getRelationName(location.categories ?? null)?.trim() || null,
     departmentName: getRelationName(location.departments ?? null)?.trim() || null,
     zoneName: getRelationName(location.zones ?? null)?.trim() || null,
+    ownerId: getOwnerRelation(location.owners ?? null)?.id?.trim() || null,
+    ownerName: getOwnerRelation(location.owners ?? null)?.full_name?.trim() || null,
+    ownerPhone: getOwnerRelation(location.owners ?? null)?.phone?.trim() || null,
+    ownerEmail: getOwnerRelation(location.owners ?? null)?.email?.trim() || null,
   }
 }
 
@@ -195,7 +249,7 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
       `,
     )
     .neq('status', 'draft')
-    .order('created_at', { ascending: false })
+    .order('submitted_at', { ascending: false, nullsFirst: false })
 
   if (requestsError) {
     throw new Error(requestsError.message)
@@ -238,7 +292,12 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
           : locationNames[0] ?? 'Solicitud sin titulo',
       message: row.message?.trim() || null,
       status: row.status,
-      createdAt: row.created_at,
+      submittedAt:
+        getOptionalStringValue(row, [
+          'submitted_at',
+          'official_pdf_uploaded_at',
+          'updated_at',
+        ]) ?? row.created_at,
       updatedAt: row.updated_at,
       requesterFullName: profile?.full_name?.trim() || null,
       requesterEmail: getRequestEmail(row),
@@ -248,6 +307,21 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
       locationNames,
     }
   })
+}
+
+export async function getPendingRequestsCount(): Promise<number> {
+  const supabase = getSupabaseClient()
+
+  const { count, error } = await supabase
+    .from('request_projects')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'submitted')
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return count ?? 0
 }
 
 export async function updateAdminLocationRequestStatus(
@@ -293,7 +367,8 @@ export async function getAdminLocationRequestById(
             location_images(url, is_cover),
             categories(name),
             departments(name),
-            zones(name)
+            zones(name),
+            owners(id, full_name, phone, email)
           )
         )
       `,
@@ -344,7 +419,12 @@ export async function getAdminLocationRequestById(
         : locations[0]?.title ?? 'Solicitud sin titulo',
     message: row.message?.trim() || null,
     status: row.status,
-    createdAt: row.created_at,
+    submittedAt:
+      getOptionalStringValue(row, [
+        'submitted_at',
+        'official_pdf_uploaded_at',
+        'updated_at',
+      ]) ?? row.created_at,
     updatedAt: row.updated_at,
     requesterFullName: profile?.full_name?.trim() || null,
     requesterEmail: getRequestEmail(row),
@@ -373,12 +453,23 @@ export async function getAdminLocationRequestById(
       'fecha_tentativa_hasta',
       'fecha_hasta',
     ]),
-    pdfUrl: getOptionalStringValue(row, [
-      'pdf_url',
-      'request_pdf_url',
-      'document_url',
-      'pdf_public_url',
-    ]),
+    officialPdf: (() => {
+      const bucket = getOptionalStringValue(row, ['official_pdf_bucket'])
+      const path = getOptionalStringValue(row, ['official_pdf_path'])
+
+      if (!bucket || !path) {
+        return null
+      }
+
+      return {
+        bucket,
+        path,
+        fileName: getOptionalStringValue(row, ['official_pdf_file_name']),
+        generatedAt: getOptionalStringValue(row, ['official_pdf_generated_at']),
+        uploadedAt: getOptionalStringValue(row, ['official_pdf_uploaded_at']),
+        sizeBytes: getOptionalNumberValue(row, ['official_pdf_size_bytes']),
+      }
+    })(),
     locations,
   }
 }

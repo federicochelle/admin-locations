@@ -3,7 +3,6 @@ import Card from '../../components/ui/Card'
 import { buttonBaseClassName, buttonVariantClasses } from '../../components/ui/button.styles'
 import { getProposalDetailPath } from '../../app/router/route-paths'
 import {
-  formatProposalDateTime,
   getProposalLocationLabel,
 } from './proposal-submissions.helpers'
 import {
@@ -18,6 +17,21 @@ type ProposalsTableProps = {
   totalCount: number
   selectedStatus: 'all' | ProposalStatus
   onSelectedStatusChange: (status: 'all' | ProposalStatus) => void
+}
+
+function formatProposalDate(value: string) {
+  return new Intl.DateTimeFormat('es-UY', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date(value))
+}
+
+function formatProposalTime(value: string) {
+  return new Intl.DateTimeFormat('es-UY', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
 }
 
 function ProposalsTable({
@@ -115,7 +129,14 @@ function ProposalsTable({
                 }}
               >
                 <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
-                  <div className="min-w-[160px]">{formatProposalDateTime(proposal.createdAt)}</div>
+                  <div className="min-w-[160px]">
+                      <p className="font-medium text-slate-900">
+                        {formatProposalDate(proposal.submittedAt)}
+                      </p>
+                      <p className="mt-1 text-slate-500">
+                        {formatProposalTime(proposal.submittedAt)}
+                      </p>
+                  </div>
                 </td>
                 <td className="px-3 py-4 text-sm font-medium text-slate-950 sm:px-6">
                   <div className="min-w-[180px]">{proposal.ownerName}</div>

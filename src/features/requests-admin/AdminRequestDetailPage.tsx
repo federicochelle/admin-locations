@@ -1,17 +1,16 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
-import { getLocationDetailPath, routePaths } from '../../app/router/route-paths'
+import { routePaths } from '../../app/router/route-paths'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
-import EmptyState from '../../components/ui/EmptyState'
 import PageContainer from '../../components/ui/PageContainer'
-import { openSelectionPdfFromRequest } from './pdf/request-selection-pdf.service'
+import RequestIncludedLocationsTable from './RequestIncludedLocationsTable'
+import { openOfficialRequestProjectPdf } from './pdf/request-selection-pdf.service'
 import { useAdminRequestDetail } from './useAdminRequestDetail'
 import {
   LOCATION_REQUEST_STATUS_OPTIONS,
   type AdminLocationRequestDetail,
-  type AdminRequestLocation,
   type LocationRequestStatus,
 } from './admin-location-requests.types'
 
@@ -181,20 +180,6 @@ function formatDisplayDate(value: string | null | undefined) {
   return value
 }
 
-function formatLocationIdentifier(location: AdminRequestLocation) {
-  const locationCode = location.locationCode?.trim()
-
-  return locationCode ? locationCode.replaceAll('-', ' ') : location.title
-}
-
-function formatLocationMeta(location: AdminRequestLocation) {
-  const values = [location.departmentName, location.zoneName]
-    .map((value) => value?.trim() || null)
-    .filter((value): value is string => Boolean(value))
-
-  return values.length > 0 ? values.join(' · ') : 'Sin zona definida'
-}
-
 function RequestDetailField({
   label,
   value,
@@ -310,7 +295,6 @@ function AdminRequestDetailPage() {
     isSaving,
     errorMessage,
     saveErrorMessage,
-    saveSuccessMessage,
     reload,
     save,
   } = useAdminRequestDetail(id)
@@ -347,19 +331,19 @@ function AdminRequestDetailPage() {
   const displayMessage = parsedMessage.message
 
   async function handleOpenPdf() {
-    if (!request) {
+    if (!request || isGeneratingPdf) {
       return
     }
 
     try {
       setIsGeneratingPdf(true)
       setPdfErrorMessage(null)
-      await openSelectionPdfFromRequest(request.id)
+      await openOfficialRequestProjectPdf(request.officialPdf)
     } catch (error) {
       setPdfErrorMessage(
         error instanceof Error
           ? error.message
-          : 'No pudimos regenerar el PDF de la solicitud.',
+          : 'No pudimos abrir el PDF oficial de la solicitud.',
       )
     } finally {
       setIsGeneratingPdf(false)
@@ -419,19 +403,6 @@ function AdminRequestDetailPage() {
             </Card>
           ) : null}
 
-          {saveSuccessMessage ? (
-            <Card>
-              <div>
-                <h2 className="text-lg font-semibold text-slate-950">
-                  Solicitud actualizada
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {saveSuccessMessage}
-                </p>
-              </div>
-            </Card>
-          ) : null}
-
           {pdfErrorMessage ? (
             <Card>
               <div>
@@ -453,7 +424,7 @@ function AdminRequestDetailPage() {
                     Datos de la solicitud
                   </h3>
                   <p className="mt-2 text-sm font-medium leading-6 text-slate-700">
-                    {formatDateTime(request.createdAt)}
+                    {formatDateTime(request.submittedAt)}
                   </p>
                 </div>
 
@@ -470,108 +441,46 @@ function AdminRequestDetailPage() {
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
-                <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_18rem]">
-                  <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
-                    <RequestDetailField label="Título" value={request.title} />
-                    <RequestDetailField label="Productora" value={companyName} />
-                    <RequestDetailField
-                      label="Jefe de locaciones"
-                      value={locationManagerName}
-                    />
-                    <RequestDetailField label="Email" value={requestEmail} />
+                <div className="space-y-6">
+                  <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_18rem]">
+                    <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+                      <RequestDetailField label="Título" value={request.title} />
+                      <RequestDetailField label="Productora" value={companyName} />
+                      <RequestDetailField
+                        label="Jefe de locaciones"
+                        value={locationManagerName}
+                      />
+                      <RequestDetailField label="Email" value={requestEmail} />
+                    </div>
+
+                    <div className="space-y-5 border-t border-slate-200 pt-5 md:border-t-0 md:border-l md:pl-6 md:pt-0">
+                      <RequestDetailField
+                        label="Fecha tentativa desde"
+                        value={formatDisplayDate(tentativeStartDate)}
+                      />
+                      <RequestDetailField
+                        label="Fecha tentativa hasta"
+                        value={formatDisplayDate(tentativeEndDate)}
+                      />
+                    </div>
                   </div>
 
-                  <div className="space-y-5 border-t border-slate-200 pt-5 md:border-t-0 md:border-l md:pl-6 md:pt-0">
-                    <RequestDetailField
-                      label="Fecha tentativa desde"
-                      value={formatDisplayDate(tentativeStartDate)}
-                    />
-                    <RequestDetailField
-                      label="Fecha tentativa hasta"
-                      value={formatDisplayDate(tentativeEndDate)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <ReadOnlyField label="Mensaje u observaciones">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <ReadOnlyField label="Mensaje u observaciones">
                     <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
                       {displayMessage || 'Sin mensaje'}
                     </p>
-                  </div>
-                </ReadOnlyField>
+                  </ReadOnlyField>
+                </div>
               </div>
             </div>
           </Card>
 
-          <Card className="-mx-4 rounded-none border-x-0 sm:mx-0 sm:rounded-2xl sm:border-x">
-            <div className="space-y-6">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-950">
-                    Locaciones incluidas
-                  </h3>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {request.locations.length} locaciones asociadas a esta solicitud.
-                  </p>
-                </div>
-              </div>
-
-              {request.locations.length === 0 ? (
-                <EmptyState
-                  title="No hay locaciones asociadas"
-                  description="Esta solicitud no tiene locaciones vinculadas para mostrar en la ficha."
-                />
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2">
-                  {request.locations.map((location) => (
-                    <a
-                      key={`${request.id}:${location.id}`}
-                      href={getLocationDetailPath(location.id)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 transition hover:border-slate-300 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
-                    >
-                      {location.coverImageUrl ? (
-                        <img
-                          src={location.coverImageUrl}
-                          alt={`Imagen de ${location.title}`}
-                          className="h-44 w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-44 items-center justify-center bg-slate-200 text-sm font-medium uppercase tracking-[0.18em] text-slate-500">
-                          Sin imagen
-                        </div>
-                      )}
-
-                      <div className="p-5">
-                        <div className="grid gap-4 sm:grid-cols-2 sm:items-start">
-                          <div>
-                            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#B8924A]">
-                              {formatLocationIdentifier(location)}
-                            </p>
-                            <h4 className="mt-1 text-lg font-semibold text-slate-950">
-                              {location.title}
-                            </h4>
-                          </div>
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                              Ubicación
-                            </p>
-                            <p className="mt-1 text-sm text-slate-700">
-                              {formatLocationMeta(location)}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-          </Card>
+          <RequestIncludedLocationsTable
+            locations={request.locations}
+            tentativeStartDate={tentativeStartDate}
+            tentativeEndDate={tentativeEndDate}
+            companyName={companyName}
+          />
         </>
       ) : null}
     </PageContainer>
