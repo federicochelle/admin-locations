@@ -11,12 +11,22 @@ type GoogleCalendarStatePayload = {
 }
 
 type GoogleOAuthTokenResponse = {
+  error?: string
+  error_description?: string
   access_token?: string
   expires_in?: number
   id_token?: string
   refresh_token?: string
   scope?: string
   token_type?: string
+}
+
+type GoogleCalendarApiErrorPayload = {
+  error?: {
+    code?: number
+    message?: string
+    status?: string
+  }
 }
 
 type GoogleIdTokenPayload = {
@@ -30,6 +40,8 @@ type GoogleIdTokenPayload = {
 
 const GOOGLE_OAUTH_AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token'
+const GOOGLE_CALENDAR_EVENTS_URL =
+  'https://www.googleapis.com/calendar/v3/calendars/primary/events'
 const GOOGLE_CALENDAR_SCOPES = [
   'openid',
   'email',
@@ -40,6 +52,32 @@ const GOOGLE_EMAIL_SCOPE_EQUIVALENTS = new Set([
   'https://www.googleapis.com/auth/userinfo.email',
 ])
 const GOOGLE_STATE_MAX_AGE_MS = 10 * 60 * 1000
+
+export type ActiveGoogleCalendarConnection = {
+  googleAccountEmail: string
+  refreshToken: string
+}
+
+export type GoogleCalendarAccessToken = {
+  accessToken: string
+  expiresIn: number | null
+  scope: string | null
+  tokenType: string | null
+}
+
+export type GoogleCalendarEventInput = {
+  description: string
+  endsAt: string
+  location?: string | null
+  reservationId: string
+  startsAt: string
+  summary: string
+  timeZone: string
+}
+
+export type GoogleCalendarEventRecord = {
+  id: string
+}
 
 function bytesToBase64Url(bytes: Uint8Array) {
   const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('')
@@ -111,8 +149,108 @@ function getGoogleCalendarClientSecret() {
   return getRequiredEnv('GOOGLE_CALENDAR_CLIENT_SECRET')
 }
 
+function getGoogleCalendarApiErrorMessage(payload: GoogleCalendarApiErrorPayload | null) {
+  return payload?.error?.message?.trim() || 'Unknown Google Calendar API error.'
+}
+
+function createGoogleCalendarApiError(
+  operation: string,
+  response: Response,
+  payload: GoogleCalendarApiErrorPayload | null,
+) {
+  return new HttpError(
+    response.status === 404 ? 404 : 502,
+    `Google Calendar ${operation} failed.`,
+    {
+      code: payload?.error?.status ?? `GOOGLE_CALENDAR_${response.status}`,
+      details: getGoogleCalendarApiErrorMessage(payload),
+      hint: response.status === 404 ? 'Google Calendar event not found.' : undefined,
+      message: getGoogleCalendarApiErrorMessage(payload),
+    },
+  )
+}
+
+async function authorizedGoogleCalendarFetch(
+  accessToken: string,
+  input: string,
+  init?: RequestInit,
+) {
+  const headers = new Headers(init?.headers)
+  headers.set('Authorization', `Bearer ${accessToken}`)
+  headers.set('Accept', 'application/json')
+
+  if (init?.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  return await fetch(input, {
+    ...init,
+    headers,
+  })
+}
+
+function buildGoogleCalendarEventPayload(input: GoogleCalendarEventInput) {
+  return {
+    description: input.description,
+    end: {
+      dateTime: input.endsAt,
+      timeZone: input.timeZone,
+    },
+    extendedProperties: {
+      private: {
+        reservationId: input.reservationId,
+      },
+    },
+    location: input.location?.trim() || undefined,
+    start: {
+      dateTime: input.startsAt,
+      timeZone: input.timeZone,
+    },
+    summary: input.summary,
+  }
+}
+
 export function getGoogleCalendarScopes() {
   return [...GOOGLE_CALENDAR_SCOPES]
+}
+
+export async function getActiveGoogleCalendarConnection(
+  adminClient: SupabaseClient,
+): Promise<ActiveGoogleCalendarConnection> {
+  const { data, error } = await adminClient
+    .from('google_calendar_connections')
+    .select('google_account_email, refresh_token, is_active')
+    .eq('connection_key', 'primary')
+    .maybeSingle()
+
+  if (error) {
+    logInternalError(
+      '[google-calendar-sync-reservation] connection_select_failed',
+      'google_calendar_connections.select_active',
+      error,
+    )
+    throw new HttpError(500, 'Could not load the Google Calendar connection.')
+  }
+
+  const connection = (data ?? null) as {
+    google_account_email: string | null
+    is_active: boolean | null
+    refresh_token: string | null
+  } | null
+
+  if (
+    !connection ||
+    connection.is_active !== true ||
+    !connection.google_account_email?.trim() ||
+    !connection.refresh_token?.trim()
+  ) {
+    throw new HttpError(503, 'Google Calendar connection is not available.')
+  }
+
+  return {
+    googleAccountEmail: connection.google_account_email.trim().toLowerCase(),
+    refreshToken: connection.refresh_token.trim(),
+  }
 }
 
 export async function createGoogleCalendarOAuthState(userId: string) {
@@ -269,6 +407,40 @@ export async function exchangeGoogleCalendarCode(code: string) {
   return payload
 }
 
+export async function refreshGoogleCalendarAccessToken(
+  refreshToken: string,
+): Promise<GoogleCalendarAccessToken> {
+  const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
+    body: new URLSearchParams({
+      client_id: getGoogleCalendarClientId(),
+      client_secret: getGoogleCalendarClientSecret(),
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    }),
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    method: 'POST',
+  })
+
+  const payload = (await response.json().catch(() => null)) as GoogleOAuthTokenResponse | null
+
+  if (!response.ok || !payload?.access_token) {
+    throw new HttpError(502, 'Could not refresh the Google Calendar access token.', {
+      code: payload?.error ?? `GOOGLE_OAUTH_${response.status}`,
+      details: payload?.error_description ?? 'Unknown Google OAuth refresh error.',
+      message: payload?.error_description ?? payload?.error ?? 'Unknown Google OAuth refresh error.',
+    })
+  }
+
+  return {
+    accessToken: payload.access_token,
+    expiresIn: typeof payload.expires_in === 'number' ? payload.expires_in : null,
+    scope: payload.scope?.trim() || null,
+    tokenType: payload.token_type?.trim() || null,
+  }
+}
+
 function decodeJwtPayload<T>(token: string) {
   const [, payload] = token.split('.')
 
@@ -324,6 +496,150 @@ export function getGoogleCalendarIdentity(idToken: string) {
     email: payload.email.trim().toLowerCase(),
     subject: payload.sub.trim(),
   }
+}
+
+export async function getGoogleCalendarEvent(
+  accessToken: string,
+  eventId: string,
+): Promise<GoogleCalendarEventRecord | null> {
+  const response = await authorizedGoogleCalendarFetch(
+    accessToken,
+    `${GOOGLE_CALENDAR_EVENTS_URL}/${encodeURIComponent(eventId)}`,
+  )
+
+  if (response.status === 404) {
+    return null
+  }
+
+  const payload = (await response.json().catch(() => null)) as
+    | (GoogleCalendarApiErrorPayload & { id?: string })
+    | null
+
+  if (!response.ok) {
+    throw createGoogleCalendarApiError('event lookup', response, payload)
+  }
+
+  if (!payload?.id?.trim()) {
+    throw new HttpError(502, 'Google Calendar event lookup returned an invalid event.')
+  }
+
+  return {
+    id: payload.id.trim(),
+  }
+}
+
+export async function searchGoogleCalendarEventsByReservationId(
+  accessToken: string,
+  reservationId: string,
+): Promise<GoogleCalendarEventRecord[]> {
+  const url = new URL(GOOGLE_CALENDAR_EVENTS_URL)
+  url.searchParams.set('maxResults', '10')
+  url.searchParams.set('privateExtendedProperty', `reservationId=${reservationId}`)
+  url.searchParams.set('showDeleted', 'false')
+  url.searchParams.set('singleEvents', 'false')
+
+  const response = await authorizedGoogleCalendarFetch(accessToken, url.toString())
+  const payload = (await response.json().catch(() => null)) as
+    | (GoogleCalendarApiErrorPayload & { items?: Array<{ id?: string }> })
+    | null
+
+  if (!response.ok) {
+    throw createGoogleCalendarApiError('event search', response, payload)
+  }
+
+  return (payload?.items ?? [])
+    .map((item) => item.id?.trim() || '')
+    .filter((id) => id.length > 0)
+    .map((id) => ({ id }))
+}
+
+export async function createGoogleCalendarEvent(
+  accessToken: string,
+  input: GoogleCalendarEventInput,
+): Promise<GoogleCalendarEventRecord> {
+  const response = await authorizedGoogleCalendarFetch(
+    accessToken,
+    GOOGLE_CALENDAR_EVENTS_URL,
+    {
+      body: JSON.stringify(buildGoogleCalendarEventPayload(input)),
+      method: 'POST',
+    },
+  )
+
+  const payload = (await response.json().catch(() => null)) as
+    | (GoogleCalendarApiErrorPayload & { id?: string })
+    | null
+
+  if (!response.ok) {
+    throw createGoogleCalendarApiError('event creation', response, payload)
+  }
+
+  if (!payload?.id?.trim()) {
+    throw new HttpError(502, 'Google Calendar event creation returned an invalid event.')
+  }
+
+  return {
+    id: payload.id.trim(),
+  }
+}
+
+export async function updateGoogleCalendarEvent(
+  accessToken: string,
+  eventId: string,
+  input: GoogleCalendarEventInput,
+): Promise<GoogleCalendarEventRecord | null> {
+  const response = await authorizedGoogleCalendarFetch(
+    accessToken,
+    `${GOOGLE_CALENDAR_EVENTS_URL}/${encodeURIComponent(eventId)}`,
+    {
+      body: JSON.stringify(buildGoogleCalendarEventPayload(input)),
+      method: 'PATCH',
+    },
+  )
+
+  if (response.status === 404) {
+    return null
+  }
+
+  const payload = (await response.json().catch(() => null)) as
+    | (GoogleCalendarApiErrorPayload & { id?: string })
+    | null
+
+  if (!response.ok) {
+    throw createGoogleCalendarApiError('event update', response, payload)
+  }
+
+  if (!payload?.id?.trim()) {
+    throw new HttpError(502, 'Google Calendar event update returned an invalid event.')
+  }
+
+  return {
+    id: payload.id.trim(),
+  }
+}
+
+export async function deleteGoogleCalendarEvent(
+  accessToken: string,
+  eventId: string,
+): Promise<boolean> {
+  const response = await authorizedGoogleCalendarFetch(
+    accessToken,
+    `${GOOGLE_CALENDAR_EVENTS_URL}/${encodeURIComponent(eventId)}`,
+    {
+      method: 'DELETE',
+    },
+  )
+
+  if (response.status === 404) {
+    return false
+  }
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as GoogleCalendarApiErrorPayload | null
+    throw createGoogleCalendarApiError('event deletion', response, payload)
+  }
+
+  return true
 }
 
 export function getGrantedGoogleCalendarScopes(scopeValue?: string) {
