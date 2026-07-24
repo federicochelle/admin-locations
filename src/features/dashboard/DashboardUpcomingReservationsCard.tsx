@@ -108,8 +108,8 @@ function DashboardUpcomingReservationsCard() {
   )
 
   return (
-    <Card className="h-full">
-      <div className="-mx-6 -mt-6 flex items-center justify-between gap-4 rounded-t-2xl border-b border-slate-200 bg-white/95 px-6 py-3 backdrop-blur-sm">
+    <Card className="-mx-4 h-full rounded-none border-x-0 sm:mx-0 sm:rounded-2xl sm:border-x">
+      <div className="-mx-6 -mt-6 flex items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-6 py-3 backdrop-blur-sm sm:rounded-t-2xl">
         <div className="min-w-0">
           <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
             Próximas reservas
@@ -150,28 +150,30 @@ function DashboardUpcomingReservationsCard() {
           {visibleReservations.map((reservation) => (
             <li
               key={reservation.id}
-              className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between"
+              className="py-3 first:pt-0 last:pb-0"
             >
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-slate-950">
-                  {formatReservationDateTime(reservation.startsAt)}
-                </p>
-                <p className="mt-1 text-sm text-slate-700">
-                  {formatReservationLocation(reservation)}
-                </p>
-                <p className="mt-1 truncate text-sm text-slate-500">
-                  {reservation.title}
-                </p>
-              </div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-950">
+                    {formatReservationDateTime(reservation.startsAt)}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-700">
+                    {formatReservationLocation(reservation)}
+                  </p>
+                  <p className="mt-1 truncate text-sm text-slate-500">
+                    {reservation.title}
+                  </p>
+                </div>
 
-              <span
-                className={[
-                  'inline-flex w-fit rounded-full border px-3 py-1 text-xs font-semibold',
-                  getReservationStatusBadgeClassName(reservation.status),
-                ].join(' ')}
-              >
-                {getReservationStatusLabel(reservation.status)}
-              </span>
+                <span
+                  className={[
+                    'inline-flex w-fit shrink-0 rounded-full border px-3 py-1 text-xs font-semibold',
+                    getReservationStatusBadgeClassName(reservation.status),
+                  ].join(' ')}
+                >
+                  {getReservationStatusLabel(reservation.status)}
+                </span>
+              </div>
             </li>
           ))}
         </ul>

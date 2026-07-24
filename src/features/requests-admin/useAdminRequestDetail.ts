@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
+  deleteAdminLocationRequest,
   getAdminLocationRequestById,
   updateAdminLocationRequestStatus,
 } from './admin-location-requests.service'
@@ -13,10 +14,13 @@ type UseAdminRequestDetailResult = {
   request: AdminLocationRequestDetail | null
   isLoading: boolean
   isSaving: boolean
+  isDeleting: boolean
   errorMessage: string | null
   saveErrorMessage: string | null
+  deleteErrorMessage: string | null
   reload: () => Promise<void>
   save: (status: LocationRequestStatus) => Promise<void>
+  remove: () => Promise<boolean>
 }
 
 function getErrorMessage(error: unknown, fallbackMessage: string) {
@@ -35,8 +39,10 @@ export function useAdminRequestDetail(
   const [request, setRequest] = useState<AdminLocationRequestDetail | null>(null)
   const [isLoading, setIsLoading] = useState(enabled && Boolean(requestId))
   const [isSaving, setIsSaving] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null)
 
   async function loadRequest() {
     if (!enabled || !requestId) {
@@ -49,6 +55,7 @@ export function useAdminRequestDetail(
     try {
       setIsLoading(true)
       setErrorMessage(null)
+      setDeleteErrorMessage(null)
 
       const nextRequest = await getAdminLocationRequestById(requestId)
       setRequest(nextRequest)
@@ -75,6 +82,7 @@ export function useAdminRequestDetail(
     try {
       setIsSaving(true)
       setSaveErrorMessage(null)
+      setDeleteErrorMessage(null)
 
       await updateAdminLocationRequestStatus(request.id, status)
 
@@ -97,12 +105,43 @@ export function useAdminRequestDetail(
     }
   }
 
-  useEffect(() => {
-    if (!enabled || !requestId) {
-      return
+  async function remove() {
+    if (!request) {
+      return false
     }
 
+    try {
+      setIsDeleting(true)
+      setDeleteErrorMessage(null)
+      setSaveErrorMessage(null)
+
+      await deleteAdminLocationRequest(request.id)
+      await refreshCounts()
+
+      return true
+    } catch (error) {
+      setDeleteErrorMessage(
+        getErrorMessage(error, 'No pudimos eliminar la solicitud.'),
+      )
+
+      return false
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  useEffect(() => {
     let isActive = true
+
+    if (!enabled || !requestId) {
+      setRequest(null)
+      setErrorMessage(null)
+      setIsLoading(false)
+
+      return () => {
+        isActive = false
+      }
+    }
 
     void getAdminLocationRequestById(requestId)
       .then((nextRequest) => {
@@ -141,9 +180,12 @@ export function useAdminRequestDetail(
     request: enabled && requestId ? request : null,
     isLoading,
     isSaving,
+    isDeleting,
     errorMessage: enabled && requestId ? errorMessage : null,
     saveErrorMessage,
+    deleteErrorMessage,
     reload,
     save,
+    remove,
   }
 }
