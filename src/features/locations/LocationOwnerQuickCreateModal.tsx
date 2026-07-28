@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import Button from '../../components/ui/Button'
 
 export type LocationOwnerQuickCreateValues = {
@@ -54,7 +55,7 @@ function LocationOwnerQuickCreateModal({
     return null
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[9999] overflow-y-auto bg-slate-950/35 px-4 py-4 backdrop-blur-sm sm:flex sm:items-center sm:justify-center sm:py-6">
       <div
         role="dialog"
@@ -155,7 +156,8 @@ function LocationOwnerQuickCreateModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
