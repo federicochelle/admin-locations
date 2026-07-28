@@ -475,7 +475,7 @@ export async function getLocationFormOptions(): Promise<LocationFormOptions> {
       supabase.from('zones').select('id, name, department_id').order('name'),
       supabase
         .from('features')
-        .select('id, name, slug, group, type, active')
+        .select('id, name, slug, aliases, group, type, active')
         .eq('active', true)
         .order('group', { ascending: true })
         .order('name', { ascending: true }),
@@ -516,8 +516,21 @@ export async function getLocationFormOptions(): Promise<LocationFormOptions> {
     categories: (categoriesResult.data ?? []) as LocationCategoryOption[],
     departments: (departmentsResult.data ?? []) as LocationDepartmentOption[],
     zones: (zonesResult.data ?? []) as LocationZoneOption[],
-    features: (featuresResult.data ?? []) as LocationFeatureOption[],
-    tags: (tagsResult.data ?? []) as LocationTagOption[],
+    features: ((featuresResult.data ?? []) as Array<
+      Omit<LocationFeatureOption, 'aliases'> & { aliases?: string[] | null }
+    >).map((feature) => ({
+      ...feature,
+      aliases: Array.isArray(feature.aliases)
+        ? feature.aliases
+            .filter((alias): alias is string => typeof alias === 'string')
+            .map((alias) => alias.trim())
+            .filter((alias) => alias.length > 0)
+        : [],
+    })),
+    tags: ((tagsResult.data ?? []) as LocationTagOption[]).map((tag) => ({
+      ...tag,
+      aliases: [],
+    })),
   }
 }
 

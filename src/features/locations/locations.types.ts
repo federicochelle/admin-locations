@@ -46,6 +46,7 @@ export type LocationFeatureOption = {
   id: string
   name: string
   slug: string
+  aliases: string[]
   group: string | null
   type: string | null
   active: boolean | null
@@ -55,6 +56,7 @@ export type LocationTagOption = {
   id: string
   name: string
   slug: string
+  aliases: string[]
   group: string | null
   active: boolean | null
 }
