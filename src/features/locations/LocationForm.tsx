@@ -146,6 +146,22 @@ function toNullableString(value: string) {
   return trimmed.length > 0 ? trimmed : null
 }
 
+function normalizeDepartmentName(value: string | null | undefined) {
+  const trimmedValue = value?.trim()
+
+  if (!trimmedValue) {
+    return null
+  }
+
+  return trimmedValue
+    .toLocaleLowerCase('es-UY')
+    .replace(/^departamento de\s+/i, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function slugifyTitle(value: string) {
   return value
     .normalize('NFD')
@@ -1994,13 +2010,13 @@ function markSaveProgressSuccess() {
         name: feature.name,
         slug: feature.slug,
         group: feature.group,
-        aliases: [],
+        aliases: [...feature.aliases],
       })),
       availableTags: (options.tags ?? []).map((tag) => ({
         name: tag.name,
         slug: tag.slug,
         category: tag.group,
-        aliases: [],
+        aliases: [...tag.aliases],
       })),
       images: [
         ...visiblePersistedImages.map((image) => ({
@@ -2091,6 +2107,20 @@ function markSaveProgressSuccess() {
       address_private: place.formatted_address ? null : currentErrors.address_private,
     }))
     setValues((currentValues) => {
+      const normalizedGoogleDepartment = normalizeDepartmentName(
+        place.google_department_name,
+      )
+      const matchingDepartments = normalizedGoogleDepartment
+        ? (options?.departments ?? []).filter(
+            (department) =>
+              normalizeDepartmentName(department.name) ===
+              normalizedGoogleDepartment,
+          )
+        : []
+      const departmentId =
+        matchingDepartments.length === 1
+          ? matchingDepartments[0]?.id ?? currentValues.department_id
+          : currentValues.department_id
       const publicCoordinates = resolvePublicLocationCoordinates({
         lat: place.lat,
         lng: place.lng,
@@ -2107,6 +2137,7 @@ function markSaveProgressSuccess() {
         formatted_address: place.formatted_address,
         google_place_id: place.google_place_id,
         google_department_name: place.google_department_name,
+        department_id: departmentId,
         google_zone_name: place.google_zone_name,
         address_components: place.address_components,
         lat: place.lat,

@@ -1,5 +1,47 @@
 import type { LocationAnalysisRequest } from '../location-analysis.types.ts'
 
+function formatAliases(aliases: string[]) {
+  return aliases.length > 0 ? aliases.join(', ') : 'ninguno'
+}
+
+function formatFeatureCatalog(
+  features: LocationAnalysisRequest['availableFeatures'],
+) {
+  if (features.length === 0) {
+    return '- ninguno'
+  }
+
+  return features
+    .map((feature) =>
+      [
+        `- Nombre: ${feature.name}`,
+        `  Slug: ${feature.slug}`,
+        `  Grupo: ${feature.group ?? 'ninguno'}`,
+        `  Aliases: ${formatAliases(feature.aliases)}`,
+      ].join('\n'),
+    )
+    .join('\n')
+}
+
+function formatTagCatalog(
+  tags: LocationAnalysisRequest['availableTags'],
+) {
+  if (tags.length === 0) {
+    return '- ninguno'
+  }
+
+  return tags
+    .map((tag) =>
+      [
+        `- Nombre: ${tag.name}`,
+        `  Slug: ${tag.slug}`,
+        `  Categoría: ${tag.category ?? 'ninguna'}`,
+        `  Aliases: ${formatAliases(tag.aliases)}`,
+      ].join('\n'),
+    )
+    .join('\n')
+}
+
 export function buildLocationAnalysisUserPrompt(
   input: LocationAnalysisRequest,
 ) {
@@ -42,10 +84,10 @@ export function buildLocationAnalysisUserPrompt(
     ),
     '',
     'Catálogo disponible de features:',
-    JSON.stringify(input.availableFeatures, null, 2),
+    formatFeatureCatalog(input.availableFeatures),
     '',
     'Catálogo disponible de tags:',
-    JSON.stringify(input.availableTags, null, 2),
+    formatTagCatalog(input.availableTags),
     '',
     'Imágenes disponibles:',
     JSON.stringify(input.images, null, 2),
