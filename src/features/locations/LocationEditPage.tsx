@@ -3,7 +3,7 @@ import { useLocation, useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import {
   getCategoryEditPath,
-  getOwnerEditPath,
+  getOwnerDetailPath,
   routePaths,
 } from '../../app/router/route-paths'
 import Card from '../../components/ui/Card'
@@ -169,7 +169,7 @@ function LocationEditPage() {
             { label: 'Listado de dueños', to: routePaths.owners },
             {
               label: ownerContext.ownerName,
-              to: getOwnerEditPath(ownerContext.ownerId),
+              to: getOwnerDetailPath(ownerContext.ownerId),
             },
             { label: breadcrumbCurrentLabel },
           ]

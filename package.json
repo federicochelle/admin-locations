@@ -15,8 +15,10 @@
     "@vis.gl/react-google-maps": "^1.8.3",
     "heic-to": "^1.5.2",
     "jspdf": "^4.2.1",
+    "libphonenumber-js": "^1.13.9",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-phone-number-input": "^3.4.17",
     "react-router-dom": "^7.17.0",
     "tailwindcss": "^4.3.0"
   },

@@ -2,9 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { APIProvider } from '@vis.gl/react-google-maps'
 import Button from '../../components/ui/Button'
+import PhoneInputField from '../../components/ui/PhoneInputField'
 import { getLocationEditPath, routePaths } from '../../app/router/route-paths'
 import useAuth from '../auth/useAuth'
 import { getGoogleMapsApiKey } from '../../lib/env'
+import {
+  formatOwnerPhoneForInput,
+  isValidOwnerPhone,
+  toE164OwnerPhone,
+} from '../../lib/phone'
 import { createCategory } from '../categories/categories.service'
 import { createOwner } from '../owners/owners.service'
 import { createZone } from '../zones/zones.service'
@@ -90,6 +96,8 @@ type LocationFormFieldErrors = {
   title: string | null
   address_private: string | null
   category_id: string | null
+  owner_name: string | null
+  owner_phone: string | null
 }
 
 type LocationAnalysisState = {
@@ -144,6 +152,10 @@ function toNullableString(value: string) {
   const trimmed = value.trim()
 
   return trimmed.length > 0 ? trimmed : null
+}
+
+function normalizeInlineOwnerValue(value: string) {
+  return value.replace(/\s+/g, ' ').trim()
 }
 
 function normalizeDepartmentName(value: string | null | undefined) {
@@ -433,12 +445,21 @@ function getDefaultFieldErrors(): LocationFormFieldErrors {
     title: null,
     address_private: null,
     category_id: null,
+    owner_name: null,
+    owner_phone: null,
   }
 }
 
 function validateRequiredFields(
   values: LocationFormValues,
+  options: {
+    ownerName: string
+    ownerPhone: string
+  },
 ): LocationFormFieldErrors {
+  const normalizedOwnerName = normalizeInlineOwnerValue(options.ownerName)
+  const normalizedOwnerPhone = normalizeInlineOwnerValue(options.ownerPhone)
+
   return {
     title:
       values.title.trim().length > 0 ? null : 'El título es obligatorio.',
@@ -450,6 +471,16 @@ function validateRequiredFields(
       values.address_private.trim().length > 0
         ? null
         : 'Debe ingresar una dirección.',
+    owner_name:
+      normalizedOwnerName.length === 0
+        ? 'Debe ingresar el nombre del dueño.'
+        : null,
+    owner_phone:
+      normalizedOwnerPhone.length === 0
+        ? 'Debe ingresar el teléfono del dueño.'
+        : values.owner_id.trim().length === 0 && !isValidOwnerPhone(normalizedOwnerPhone)
+          ? 'Ingresá un teléfono válido con código de país.'
+        : null,
   }
 }
 
@@ -621,13 +652,29 @@ function wait(ms: number) {
 
 function buildOwnerQuickCreatePayload(values: LocationOwnerQuickCreateValues) {
   return {
-    full_name: values.full_name.trim(),
+    full_name: normalizeInlineOwnerValue(values.full_name),
     company_name: toNullableString(values.company_name),
     email: toNullableString(values.email),
-    phone: toNullableString(values.phone),
+    phone: toE164OwnerPhone(values.phone),
     whatsapp: null,
     document_or_rut: null,
     notes: toNullableString(values.notes),
+    status: 'active',
+  }
+}
+
+function buildInlineOwnerCreatePayload(input: {
+  full_name: string
+  phone: string
+}) {
+  return {
+    full_name: normalizeInlineOwnerValue(input.full_name),
+    company_name: null,
+    email: null,
+    phone: toE164OwnerPhone(input.phone),
+    whatsapp: null,
+    document_or_rut: null,
+    notes: null,
     status: 'active',
   }
 }
@@ -777,6 +824,7 @@ function LocationForm({
   const [zoneDepartmentPrompt, setZoneDepartmentPrompt] = useState<string | null>(null)
   const [isOwnerComboboxOpen, setIsOwnerComboboxOpen] = useState(false)
   const [ownerSearchTerm, setOwnerSearchTerm] = useState('')
+  const [ownerPhoneInput, setOwnerPhoneInput] = useState('')
   const [isOwnerModalOpen, setIsOwnerModalOpen] = useState(false)
   const [ownerCreateValues, setOwnerCreateValues] =
     useState<LocationOwnerQuickCreateValues>(defaultOwnerQuickCreateValues)
@@ -1033,8 +1081,10 @@ function LocationForm({
     null
   const selectedCategoryName =
     options?.categories.find((category) => category.id === values.category_id)?.name ?? ''
-  const selectedOwnerName =
-    options?.owners.find((owner) => owner.id === values.owner_id)?.full_name ?? ''
+  const selectedOwner =
+    options?.owners.find((owner) => owner.id === values.owner_id) ?? null
+  const selectedOwnerName = selectedOwner?.full_name ?? ''
+  const selectedOwnerPhone = formatOwnerPhoneForInput(selectedOwner?.phone)
   const filteredZones = useMemo(
     () =>
       options?.zones.filter((zone) => zone.department_id === values.department_id) ??
@@ -1051,6 +1101,10 @@ function LocationForm({
     ownerSearchTerm.length > 0 || values.owner_id === ''
       ? ownerSearchTerm
       : selectedOwnerName
+  const ownerPhoneValue =
+    ownerPhoneInput.length > 0 || values.owner_id === ''
+      ? ownerPhoneInput
+      : selectedOwnerPhone
   const zoneInputValue =
     zoneSearchTerm.length > 0 || values.zone_id === ''
       ? zoneSearchTerm
@@ -1251,11 +1305,13 @@ function LocationForm({
 
     setOwnerSearchTerm(nextValue)
     setIsOwnerComboboxOpen(true)
-
-    const selectedOwner =
-      options?.owners.find((owner) => owner.id === values.owner_id) ?? null
+    setFieldErrors((currentErrors) => ({
+      ...currentErrors,
+      owner_name: null,
+    }))
 
     if (nextValue.trim().length === 0) {
+      setOwnerPhoneInput('')
       setValues((currentValues) => ({
         ...currentValues,
         owner_id: '',
@@ -1264,6 +1320,7 @@ function LocationForm({
     }
 
     if (selectedOwner && selectedOwner.full_name !== nextValue) {
+      setOwnerPhoneInput(formatOwnerPhoneForInput(selectedOwner.phone))
       setValues((currentValues) => ({
         ...currentValues,
         owner_id: '',
@@ -1276,12 +1333,33 @@ function LocationForm({
       return
     }
 
+    const selectedOwnerOption =
+      options?.owners.find((owner) => owner.id === ownerId) ?? null
+
+    setFieldErrors((currentErrors) => ({
+      ...currentErrors,
+      owner_name: null,
+      owner_phone: null,
+    }))
     setValues((currentValues) => ({
       ...currentValues,
       owner_id: ownerId,
     }))
     setOwnerSearchTerm(ownerName)
+    setOwnerPhoneInput(formatOwnerPhoneForInput(selectedOwnerOption?.phone))
     setIsOwnerComboboxOpen(false)
+  }
+
+  function handleOwnerPhoneChange(event: React.ChangeEvent<HTMLInputElement>) {
+    if (isReadOnly || values.owner_id) {
+      return
+    }
+
+    setOwnerPhoneInput(event.target.value)
+    setFieldErrors((currentErrors) => ({
+      ...currentErrors,
+      owner_phone: null,
+    }))
   }
 
   function handleOwnerDropdownToggle() {
@@ -1512,16 +1590,6 @@ function LocationForm({
     } finally {
       setIsCreatingZone(false)
     }
-  }
-
-  function handleOpenOwnerModal() {
-    if (isReadOnly) {
-      return
-    }
-
-    setOwnerCreateError(null)
-    setOwnerCreateValues(defaultOwnerQuickCreateValues)
-    setIsOwnerModalOpen(true)
   }
 
   function handleCloseOwnerModal() {
@@ -1755,6 +1823,11 @@ function LocationForm({
       return
     }
 
+    if (ownerCreateValues.phone.trim().length > 0 && !toE164OwnerPhone(ownerCreateValues.phone)) {
+      setOwnerCreateError('Ingresá un teléfono válido con código de país.')
+      return
+    }
+
     try {
       setIsCreatingOwner(true)
       setOwnerCreateError(null)
@@ -1774,7 +1847,12 @@ function LocationForm({
       }))
       const createdOwner =
         nextOptions.owners.find((owner) => owner.id === createdOwnerId) ?? null
-      setOwnerSearchTerm(createdOwner?.full_name ?? trimmedName)
+      setOwnerSearchTerm(createdOwner?.full_name ?? normalizeInlineOwnerValue(trimmedName))
+      setOwnerPhoneInput(
+        formatOwnerPhoneForInput(
+          createdOwner?.phone ?? normalizeInlineOwnerValue(ownerCreateValues.phone),
+        ),
+      )
       setIsOwnerModalOpen(false)
       setOwnerCreateValues(defaultOwnerQuickCreateValues)
     } catch (error) {
@@ -2606,7 +2684,10 @@ function markSaveProgressSuccess() {
       return
     }
 
-    const nextFieldErrors = validateRequiredFields(values)
+    const nextFieldErrors = validateRequiredFields(values, {
+      ownerName: ownerInputValue,
+      ownerPhone: ownerPhoneValue,
+    })
 
     setFieldErrors(nextFieldErrors)
 
@@ -2615,11 +2696,16 @@ function markSaveProgressSuccess() {
         nextFieldErrors.title ??
         nextFieldErrors.category_id ??
         nextFieldErrors.address_private ??
+        nextFieldErrors.owner_name ??
+        nextFieldErrors.owner_phone ??
         'No pudimos guardar la locación.'
 
       setSubmitError(firstErrorMessage)
       return
     }
+
+    let resolvedOwnerId = values.owner_id || null
+    let createdOwnerName: string | null = null
 
     try {
       setIsSubmitting(true)
@@ -2628,10 +2714,40 @@ function markSaveProgressSuccess() {
       openSaveProgress()
       updateStageStatus('location', 'active')
 
-      const payload = buildPayload(values, {
-        mode,
-        initialValues,
-      })
+      if (!resolvedOwnerId) {
+        const normalizedOwnerName = normalizeInlineOwnerValue(ownerInputValue)
+        const normalizedOwnerPhone = normalizeInlineOwnerValue(ownerPhoneValue)
+
+        if (normalizedOwnerName.length > 0 && normalizedOwnerPhone.length > 0) {
+          resolvedOwnerId = await createOwner(
+            buildInlineOwnerCreatePayload({
+              full_name: normalizedOwnerName,
+              phone: normalizedOwnerPhone,
+            }),
+            {
+              actorProfileId: profile?.id ?? null,
+            },
+          )
+          createdOwnerName = normalizedOwnerName
+          setValues((currentValues) => ({
+            ...currentValues,
+            owner_id: resolvedOwnerId ?? '',
+          }))
+          setOwnerSearchTerm(normalizedOwnerName)
+          setOwnerPhoneInput(normalizedOwnerPhone)
+        }
+      }
+
+      const payload = buildPayload(
+        {
+          ...values,
+          owner_id: resolvedOwnerId ?? '',
+        },
+        {
+          mode,
+          initialValues,
+        },
+      )
 
       if (mode === 'edit') {
         if (!locationId) {
@@ -2701,12 +2817,18 @@ function markSaveProgressSuccess() {
         navigate(routePaths.locations)
       }
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
+      const defaultErrorMessage =
+        createdOwnerName
+          ? `El dueño "${createdOwnerName}" se creó correctamente, pero no pudimos guardar la locación.`
           : mode === 'edit'
             ? 'No pudimos guardar los cambios.'
             : 'No pudimos guardar la locación.'
+      const message =
+        error instanceof Error
+          ? createdOwnerName
+            ? `${defaultErrorMessage} ${error.message}`
+            : error.message
+          : defaultErrorMessage
 
       setSubmitError(message)
       updateSaveProgress((currentState) =>
@@ -2949,80 +3071,129 @@ function markSaveProgressSuccess() {
               </div>
 
               <div>
-                <FieldLabel htmlFor="owner_id">Dueño</FieldLabel>
+                <FieldLabel htmlFor="owner_id" required>
+                  Dueño
+                </FieldLabel>
                 {isReadOnly ? (
-                  <ReadOnlyFieldValue value={selectedOwnerName} />
+                  <div className="space-y-3">
+                    <ReadOnlyFieldValue value={selectedOwnerName} />
+                    <div>
+                      <FieldLabel htmlFor="owner_phone">Teléfono</FieldLabel>
+                      <ReadOnlyFieldValue value={ownerPhoneValue} />
+                    </div>
+                  </div>
                 ) : (
-                  <div className="flex items-start gap-3">
-                    <div className="relative flex-1" ref={ownerComboboxRef}>
-                      <input
-                        id="owner_id"
-                        name="owner_id"
-                        type="text"
-                        autoComplete="off"
-                        className={[inputClassName(), 'pr-10'].join(' ')}
-                        value={ownerInputValue}
-                        readOnly={isReadOnly}
-                        placeholder="Buscar dueño"
-                        onChange={handleOwnerSearchChange}
-                        onFocus={() => {
-                          if (isReadOnly) {
-                            return
-                          }
+                  <div className="space-y-3">
+                    <div className="relative" ref={ownerComboboxRef}>
+                        <input
+                          id="owner_id"
+                          name="owner_id"
+                          type="text"
+                          autoComplete="off"
+                          className={[
+                            inputClassName(),
+                            getFieldErrorInputClassName(fieldErrors.owner_name),
+                            'pr-10',
+                          ].join(' ')}
+                          value={ownerInputValue}
+                          readOnly={isReadOnly}
+                          placeholder="Buscar dueño o escribir uno nuevo"
+                          onChange={handleOwnerSearchChange}
+                          onFocus={() => {
+                            if (isReadOnly) {
+                              return
+                            }
 
-                          setIsOwnerComboboxOpen(true)
-                        }}
-                      />
-                      <button
-                        type="button"
-                        aria-label="Mostrar dueños"
-                        onClick={handleOwnerDropdownToggle}
-                        disabled={isReadOnly}
-                        className="absolute inset-y-0 right-0 inline-flex items-center justify-center px-3 text-slate-500 transition hover:text-slate-700"
-                      >
-                        <ChevronDownIcon />
-                      </button>
-                      {!isReadOnly && isOwnerComboboxOpen ? (
-                        <div className="absolute z-40 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
-                          {filteredOwners.length > 0 ? (
-                            <div className="category-combobox-scrollbar max-h-[260px] space-y-1 overflow-x-hidden overflow-y-auto pr-1">
-                              {filteredOwners.map((owner) => (
-                                <button
-                                  key={owner.id}
-                                  type="button"
-                                  onClick={() =>
-                                    handleOwnerSelect(owner.id, owner.full_name)
-                                  }
-                                  className={[
-                                    'flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition',
-                                    values.owner_id === owner.id
-                                      ? 'bg-slate-900 text-white'
-                                      : 'text-slate-700 hover:bg-slate-100',
-                                  ].join(' ')}
-                                >
-                                  {owner.full_name}
-                                </button>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="max-h-[260px] overflow-x-hidden overflow-y-auto px-3 py-2 text-sm text-slate-500">
-                              No se encontraron dueños.
-                            </p>
-                          )}
-                        </div>
+                            setIsOwnerComboboxOpen(true)
+                          }}
+                        />
+                        <button
+                          type="button"
+                          aria-label="Mostrar dueños"
+                          onClick={handleOwnerDropdownToggle}
+                          disabled={isReadOnly}
+                          className="absolute inset-y-0 right-0 inline-flex items-center justify-center px-3 text-slate-500 transition hover:text-slate-700"
+                        >
+                          <ChevronDownIcon />
+                        </button>
+                        {!isReadOnly && isOwnerComboboxOpen ? (
+                          <div className="absolute z-40 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+                            {filteredOwners.length > 0 ? (
+                              <div className="category-combobox-scrollbar max-h-[260px] space-y-1 overflow-x-hidden overflow-y-auto pr-1">
+                                {filteredOwners.map((owner) => (
+                                  <button
+                                    key={owner.id}
+                                    type="button"
+                                    onClick={() =>
+                                      handleOwnerSelect(owner.id, owner.full_name)
+                                    }
+                                    className={[
+                                      'flex w-full flex-col rounded-xl px-3 py-2 text-left text-sm transition',
+                                      values.owner_id === owner.id
+                                        ? 'bg-slate-900 text-white'
+                                        : 'text-slate-700 hover:bg-slate-100',
+                                    ].join(' ')}
+                                  >
+                                    <span className="font-medium">
+                                      {owner.full_name}
+                                    </span>
+                                    <span
+                                      className={[
+                                        'text-xs',
+                                        values.owner_id === owner.id
+                                          ? 'text-slate-200'
+                                          : 'text-slate-500',
+                                      ].join(' ')}
+                                    >
+                                      {owner.phone?.trim() || 'Sin teléfono'}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="max-h-[260px] overflow-x-hidden overflow-y-auto px-3 py-2 text-sm text-slate-500">
+                                No se encontraron dueños.
+                              </p>
+                            )}
+                          </div>
+                        ) : null}
+                    </div>
+                    {fieldErrors.owner_name ? (
+                      <p className="text-sm text-red-700">{fieldErrors.owner_name}</p>
+                    ) : null}
+                    <div>
+                      <FieldLabel htmlFor="owner_phone" required>
+                        Teléfono
+                      </FieldLabel>
+                      {isReadOnly ? (
+                        <ReadOnlyFieldValue value={ownerPhoneValue} />
+                      ) : (
+                        <PhoneInputField
+                          id="owner_phone"
+                          name="owner_phone"
+                          value={ownerPhoneValue}
+                          readOnly={Boolean(values.owner_id)}
+                          placeholder={
+                            values.owner_id
+                              ? 'Teléfono del dueño seleccionado'
+                              : 'Ingresar teléfono'
+                          }
+                          onChange={(nextValue) =>
+                            handleOwnerPhoneChange({
+                              target: {
+                                value: nextValue,
+                              },
+                            } as React.ChangeEvent<HTMLInputElement>)
+                          }
+                          errorMessage={fieldErrors.owner_phone}
+                        />
+                      )}
+                      {fieldErrors.owner_phone ? (
+                        <p className="mt-2 text-sm text-red-700">
+                          {fieldErrors.owner_phone}
+                        </p>
                       ) : null}
                     </div>
-                    {!isReadOnly ? (
-                      <button
-                        type="button"
-                        aria-label="Crear dueño"
-                        disabled={isSubmitting || isCreatingOwner}
-                        onClick={handleOpenOwnerModal}
-                        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#B8924A] bg-[#B8924A] text-xl font-semibold text-white shadow-sm transition hover:border-[#A37C2E] hover:bg-[#A37C2E] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[rgba(184,146,74,0.20)] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        +
-                      </button>
-                    ) : null}
                   </div>
                 )}
               </div>

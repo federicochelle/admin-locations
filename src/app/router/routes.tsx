@@ -11,6 +11,7 @@ import LoginPage from '../../features/auth/LoginPage'
 import OwnersPage from '../../features/owners/OwnersPage'
 import OwnerCreatePage from '../../features/owners/OwnerCreatePage'
 import OwnerEditPage from '../../features/owners/OwnerEditPage'
+import OwnerViewPage from '../../features/owners/OwnerViewPage'
 import CategoriesPage from '../../features/categories/CategoriesPage'
 import CategoryCreatePage from '../../features/categories/CategoryCreatePage'
 import CategoryEditPage from '../../features/categories/CategoryEditPage'
@@ -68,6 +69,10 @@ export const router = createBrowserRouter([
           {
             path: routePaths.ownerNew.slice(1),
             element: <OwnerCreatePage />,
+          },
+          {
+            path: routePaths.ownerDetailPattern.slice(1),
+            element: <OwnerViewPage />,
           },
           {
             path: routePaths.ownerEditPattern.slice(1),

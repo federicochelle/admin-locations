@@ -1,6 +1,7 @@
 import { getLocationDetailPath } from '../../app/router/route-paths'
 import Card from '../../components/ui/Card'
 import EmptyState from '../../components/ui/EmptyState'
+import { getOwnerWhatsappDigits } from '../../lib/phone'
 import type { AdminRequestLocation } from './admin-location-requests.types'
 
 type RequestIncludedLocationsTableProps = {
@@ -44,16 +45,6 @@ function formatDisplayDate(value: string | null) {
   }).format(parsedDate)
 }
 
-function normalizePhoneForWhatsapp(phone: string): string | null {
-  const normalized = phone.replace(/\D/g, '')
-
-  if (normalized.length === 0) {
-    return null
-  }
-
-  return normalized
-}
-
 function buildSelectionMessage(input: {
   ownerName: string | null
   locationTitle: string
@@ -91,9 +82,7 @@ function getWhatsappUrl(input: {
   tentativeEndDate: string | null
   companyName: string | null
 }) {
-  const normalizedPhone = input.ownerPhone
-    ? normalizePhoneForWhatsapp(input.ownerPhone)
-    : null
+  const normalizedPhone = getOwnerWhatsappDigits(input.ownerPhone)
 
   if (!normalizedPhone) {
     return null

@@ -469,7 +469,7 @@ export async function getLocationFormOptions(): Promise<LocationFormOptions> {
     tagsResult,
   ] =
     await Promise.all([
-      supabase.from('owners').select('id, full_name').order('full_name'),
+      supabase.from('owners').select('id, full_name, phone').order('full_name'),
       supabase.from('categories').select('id, name').order('name'),
       supabase.from('departments').select('id, name').order('name'),
       supabase.from('zones').select('id, name, department_id').order('name'),

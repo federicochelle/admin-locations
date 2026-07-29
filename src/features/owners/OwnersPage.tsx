@@ -4,56 +4,16 @@ import Card from '../../components/ui/Card'
 import EmptyState from '../../components/ui/EmptyState'
 import PageContainer from '../../components/ui/PageContainer'
 import Button from '../../components/ui/Button'
-import { createActivityLog } from '../activity/activity-logs.service'
-import useAuth from '../auth/useAuth'
 import OwnersTable from './OwnersTable'
 import { useOwners } from './useOwners'
 
 function OwnersPage() {
-  const { profile } = useAuth()
   const {
-    actionErrorMessage,
-    activeActionKey,
     errorMessage,
     isLoading,
     owners,
-    remove,
     retry,
   } = useOwners()
-
-  async function handleDelete(owner: {
-    id: string
-    full_name?: string | null
-    locations_count: number
-  }) {
-    if (owner.locations_count > 0) {
-      const shouldDelete = window.confirm(
-        `¿Estás seguro de querer borrar este dueño?\n\nVas a dejar ${owner.locations_count === 1 ? 'una locación sin dueño' : `${owner.locations_count} locaciones sin dueño`}.`,
-      )
-
-      if (!shouldDelete) {
-        return
-      }
-    }
-
-    if (profile?.id) {
-      try {
-        await createActivityLog({
-          actorProfileId: profile.id,
-          action: 'deleted',
-          entityType: 'owner',
-          entityId: owner.id,
-          entityName: owner.full_name?.trim() || 'Sin nombre',
-        })
-      } catch (error) {
-        console.warn('No pudimos registrar activity_log de eliminación para owner.', error)
-      }
-    } else {
-      console.warn('No se registró activity_log de eliminación para owner porque falta actorProfileId.')
-    }
-
-    await remove(owner.id)
-  }
 
   const headerConfig = useMemo(
     () => ({
@@ -99,19 +59,6 @@ function OwnersPage() {
         </Card>
       ) : null}
 
-      {!isLoading && !errorMessage && actionErrorMessage ? (
-        <Card>
-          <div>
-            <h2 className="text-lg font-semibold text-slate-950">
-              No pudimos actualizar el dueño
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {actionErrorMessage}
-            </p>
-          </div>
-        </Card>
-      ) : null}
-
       {!isLoading && !errorMessage && owners.length === 0 ? (
         <Card className="p-4 sm:p-6">
           <EmptyState
@@ -122,11 +69,7 @@ function OwnersPage() {
       ) : null}
 
       {!isLoading && !errorMessage && owners.length > 0 ? (
-        <OwnersTable
-          owners={owners}
-          activeActionKey={activeActionKey}
-          onDelete={handleDelete}
-        />
+        <OwnersTable owners={owners} />
       ) : null}
     </PageContainer>
   )

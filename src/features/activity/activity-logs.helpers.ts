@@ -1,7 +1,7 @@
 import {
   getCategoryEditPath,
+  getOwnerDetailPath,
   getLocationEditPath,
-  getOwnerEditPath,
 } from '../../app/router/route-paths'
 import type { ActivityLogAction, ActivityLogListItem } from './activity-logs.service'
 
@@ -65,7 +65,7 @@ export function getActivityEntityPath(log: Pick<ActivityLogListItem, 'action' | 
   }
 
   if (log.entity_type === 'owner') {
-    return getOwnerEditPath(log.entity_id)
+    return getOwnerDetailPath(log.entity_id)
   }
 
   if (log.entity_type === 'category') {

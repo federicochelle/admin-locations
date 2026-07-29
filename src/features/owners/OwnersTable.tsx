@@ -1,17 +1,15 @@
-import { useMemo, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import Card from '../../components/ui/Card'
 import {
   buttonBaseClassName,
   buttonVariantClasses,
 } from '../../components/ui/button.styles'
-import { getOwnerEditPath, routePaths } from '../../app/router/route-paths'
+import { getOwnerDetailPath, routePaths } from '../../app/router/route-paths'
 import type { OwnerListItem } from './owners.types'
 
 type OwnersTableProps = {
   owners: OwnerListItem[]
-  activeActionKey: string | null
-  onDelete: (owner: OwnerListItem) => Promise<void>
 }
 
 type OwnerSortKey = 'full_name' | 'locations_count'
@@ -29,38 +27,6 @@ function formatCellValue(value: string | null) {
 
 function formatLocationsCount(count: number) {
   return `${count} ${count === 1 ? 'locación' : 'locaciones'}`
-}
-
-function ActionIconButton({
-  actionLabel,
-  buttonClassName = '',
-  children,
-  disabled = false,
-  onClick,
-}: {
-  actionLabel: string
-  buttonClassName?: string
-  children: ReactNode
-  disabled?: boolean
-  onClick?: () => void
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={actionLabel}
-      disabled={disabled}
-      onClick={onClick}
-      className={[
-        'group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border bg-white transition disabled:cursor-not-allowed disabled:opacity-60',
-        buttonClassName,
-      ].join(' ')}
-    >
-      {children}
-      <span className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-950 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-sm transition group-hover:opacity-100">
-        {actionLabel}
-      </span>
-    </button>
-  )
 }
 
 function SearchIcon() {
@@ -143,41 +109,8 @@ function SortIcon({ isActive }: { isActive: boolean }) {
   )
 }
 
-function EditIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-4 w-4" aria-hidden="true">
-      <path d="M12 20h9" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      <path
-        d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function DeleteIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-4 w-4" aria-hidden="true">
-      <path d="M3 6h18" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M8 6V4h8v2" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      <path
-        d="M19 6l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M10 11v6M14 11v6" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function OwnersTable({
-  owners,
-  activeActionKey,
-  onDelete,
-}: OwnersTableProps) {
+function OwnersTable({ owners }: OwnersTableProps) {
+  const navigate = useNavigate()
   const [searchTerm, setSearchTerm] = useState('')
   const [sortKey, setSortKey] = useState<OwnerSortKey>('full_name')
   const [sortDirection, setSortDirection] = useState<OwnerSortDirection>('asc')
@@ -224,6 +157,10 @@ function OwnersTable({
 
     setSortKey(nextSortKey)
     setSortDirection('asc')
+  }
+
+  function handleRowOpen(ownerId: string) {
+    navigate(getOwnerDetailPath(ownerId))
   }
 
   return (
@@ -310,51 +247,34 @@ function OwnersTable({
                   </span>
                 </button>
               </th>
-              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-transparent">
             {filteredOwners.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-3 py-8 text-sm text-slate-500 sm:px-6">
+                <td colSpan={4} className="px-3 py-8 text-sm text-slate-500 sm:px-6">
                   No se encontraron dueños.
                 </td>
               </tr>
             ) : null}
 
             {filteredOwners.map((owner) => (
-              <tr key={owner.id} className="align-top">
+              <tr
+                key={owner.id}
+                tabIndex={0}
+                className="align-top transition hover:cursor-pointer hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
+                onClick={() => handleRowOpen(owner.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    handleRowOpen(owner.id)
+                  }
+                }}
+              >
                 <td className="px-3 py-4 text-sm font-medium text-slate-950 sm:px-6">{owner.full_name}</td>
                 <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">{formatCellValue(owner.email)}</td>
                 <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">{formatCellValue(owner.phone)}</td>
                 <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">{formatLocationsCount(owner.locations_count)}</td>
-                <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
-                  <div className="flex flex-wrap gap-2">
-                    <Link
-                      to={getOwnerEditPath(owner.id)}
-                      aria-label="Editar"
-                      className="group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700 transition hover:border-sky-300 hover:bg-sky-100"
-                    >
-                      <EditIcon />
-                      <span className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-950 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-sm transition group-hover:opacity-100">
-                        Editar
-                      </span>
-                    </Link>
-
-                    <ActionIconButton
-                      actionLabel={
-                        activeActionKey === `delete:${owner.id}`
-                          ? 'Eliminando...'
-                          : 'Eliminar'
-                      }
-                      buttonClassName="border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-50"
-                      disabled={activeActionKey !== null}
-                      onClick={() => void onDelete(owner)}
-                    >
-                      <DeleteIcon />
-                    </ActionIconButton>
-                  </div>
-                </td>
               </tr>
             ))}
           </tbody>

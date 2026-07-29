@@ -11,6 +11,10 @@ import {
   getLocationEditPath,
   routePaths,
 } from '../../app/router/route-paths'
+import {
+  formatOwnerPhoneForDisplay,
+  getOwnerWhatsappUrl,
+} from '../../lib/phone'
 import OwnerDetailsModal from '../owners/OwnerDetailsModal'
 import type { LocationListItem } from './locations.types'
 
@@ -72,32 +76,10 @@ function formatLocationCode(locationCode: string | null) {
   return normalizedCode.replaceAll('-', ' ')
 }
 
-function normalizePhoneForWhatsapp(phone: string): string | null {
-  const normalized = phone.replace(/[\s\-()]/g, '').replace(/\+/g, '')
-
-  if (normalized.length === 0) {
-    return null
-  }
-
-  let normalizedPhone = normalized
-
-  if (normalizedPhone.startsWith('0')) {
-    normalizedPhone = `598${normalizedPhone.slice(1)}`
-  } else if (!normalizedPhone.startsWith('598')) {
-    normalizedPhone = `598${normalizedPhone}`
-  }
-
-  return normalizedPhone.length >= 11 ? normalizedPhone : null
-}
-
-function getWhatsappUrl(phone: string | null) {
-  if (!phone || phone.trim().length === 0) {
-    return null
-  }
-
-  const normalizedPhone = normalizePhoneForWhatsapp(phone)
-
-  return normalizedPhone ? `https://wa.me/${normalizedPhone}` : null
+function normalizeSearchValue(value: string) {
+  return value
+    .toLocaleLowerCase()
+    .replace(/[\s-_]+/g, '')
 }
 
 function CoverPlaceholder() {
@@ -289,7 +271,7 @@ function LocationsTable({
   locations,
   activeActionKey,
   headerAction,
-  searchPlaceholder = 'Buscar locación, categoría o zona',
+  searchPlaceholder = 'Buscar por código o dueño',
   showToolbar = true,
   title = 'Listado de locaciones',
   visibleColumns,
@@ -298,7 +280,7 @@ function LocationsTable({
 }: LocationsTableProps) {
   const navigate = useNavigate()
   const [searchTerm, setSearchTerm] = useState('')
-  const [sortKey, setSortKey] = useState<LocationSortKey>('departmentName')
+  const [sortKey, setSortKey] = useState<LocationSortKey>('locationCode')
   const [sortDirection, setSortDirection] = useState<LocationSortDirection>('asc')
   const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(null)
   const hasTitle = Boolean(title)
@@ -312,7 +294,7 @@ function LocationsTable({
   }
   const normalizedSearchTerm = searchTerm.trim()
   const filteredLocations = useMemo(() => {
-    const normalizedSearch = normalizedSearchTerm.toLocaleLowerCase()
+    const normalizedSearch = normalizeSearchValue(normalizedSearchTerm)
 
     if (normalizedSearch.length === 0) {
       return locations
@@ -320,18 +302,12 @@ function LocationsTable({
 
     return locations.filter((location) => {
       const searchableFields = [
-        location.title,
         location.locationCode ?? '',
-        location.categoryName ?? '',
-        location.departmentName ?? '',
-        location.zoneName ?? '',
-        location.formattedAddress ?? '',
         location.ownerName ?? '',
-        location.ownerPhone ?? '',
       ]
 
       return searchableFields.some((field) =>
-        field.toLocaleLowerCase().includes(normalizedSearch),
+        normalizeSearchValue(field).includes(normalizedSearch),
       )
     })
   }, [locations, normalizedSearchTerm])
@@ -349,6 +325,7 @@ function LocationsTable({
 
       const comparison = leftValue.localeCompare(rightValue, 'es', {
         sensitivity: 'base',
+        numeric: true,
       })
 
       return sortDirection === 'asc' ? comparison : -comparison
@@ -596,14 +573,15 @@ function LocationsTable({
                 {resolvedVisibleColumns.phone ? (
                   <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                     {(() => {
-                      const whatsappUrl = getWhatsappUrl(location.ownerPhone)
+                      const whatsappUrl = getOwnerWhatsappUrl(location.ownerPhone)
+                      const formattedPhone = formatOwnerPhoneForDisplay(location.ownerPhone)
 
                       if (!location.ownerPhone || location.ownerPhone.trim().length === 0) {
                         return formatCellValue(location.ownerPhone)
                       }
 
                       if (!whatsappUrl) {
-                        return <span>{location.ownerPhone}</span>
+                        return <span>{formattedPhone}</span>
                       }
 
                       return (
@@ -614,7 +592,7 @@ function LocationsTable({
                           onClick={(event) => event.stopPropagation()}
                           className="font-medium text-slate-900 underline-offset-4 transition hover:cursor-pointer hover:underline"
                         >
-                          {location.ownerPhone}
+                          {formattedPhone}
                         </a>
                       )
                     })()}

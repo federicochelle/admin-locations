@@ -24,6 +24,7 @@ export type LocationListItem = {
 export type LocationOwnerOption = {
   id: string
   full_name: string
+  phone: string | null
 }
 
 export type LocationCategoryOption = {

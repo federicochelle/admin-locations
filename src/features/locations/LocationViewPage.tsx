@@ -4,7 +4,7 @@ import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import {
   getCategoryEditPath,
   getLocationEditPath,
-  getOwnerEditPath,
+  getOwnerDetailPath,
   routePaths,
 } from '../../app/router/route-paths'
 import useAuth from '../auth/useAuth'
@@ -253,7 +253,7 @@ function LocationViewPage() {
             { label: 'Listado de dueños', to: routePaths.owners },
             {
               label: ownerContext.ownerName,
-              to: getOwnerEditPath(ownerContext.ownerId),
+              to: getOwnerDetailPath(ownerContext.ownerId),
             },
             { label: breadcrumbCurrentLabel },
           ]
