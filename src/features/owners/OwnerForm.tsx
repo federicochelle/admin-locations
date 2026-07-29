@@ -1,7 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Button from '../../components/ui/Button'
+import PhoneInputField from '../../components/ui/PhoneInputField'
 import { routePaths } from '../../app/router/route-paths'
+import {
+  formatOwnerPhoneForInput,
+  toE164OwnerPhone,
+} from '../../lib/phone'
 import { createOwner, updateOwner } from './owners.service'
 import useAuth from '../auth/useAuth'
 import LocationsTable from '../locations/LocationsTable'
@@ -13,7 +18,7 @@ import type {
   OwnerUpdatePayload,
 } from './owners.types'
 
-export type OwnerFormMode = 'create' | 'edit'
+export type OwnerFormMode = 'create' | 'edit' | 'view'
 
 type OwnerFormProps = {
   mode?: OwnerFormMode
@@ -49,7 +54,7 @@ function buildPayload(
     full_name: values.full_name.trim(),
     company_name: toNullableString(values.company_name),
     email: toNullableString(values.email),
-    phone: toNullableString(values.phone),
+    phone: toE164OwnerPhone(values.phone),
     whatsapp: toNullableString(values.whatsapp),
     document_or_rut: toNullableString(values.document_or_rut),
     notes: toNullableString(values.notes),
@@ -89,7 +94,11 @@ function OwnerForm({
 }: OwnerFormProps) {
   const navigate = useNavigate()
   const { profile } = useAuth()
-  const [values, setValues] = useState<OwnerFormValues>(initialValues)
+  const isReadOnly = mode === 'view'
+  const [values, setValues] = useState<OwnerFormValues>(() => ({
+    ...initialValues,
+    phone: formatOwnerPhoneForInput(initialValues.phone),
+  }))
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const ownerLocationsAsLocationListItems = useMemo<LocationListItem[]>(
@@ -130,9 +139,17 @@ function OwnerForm({
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
+    if (isReadOnly) {
+      return
+    }
+
     try {
       setIsSubmitting(true)
       setSubmitError(null)
+
+      if (values.phone.trim().length > 0 && !toE164OwnerPhone(values.phone)) {
+        throw new Error('Ingresá un teléfono válido con código de país.')
+      }
 
       const payload = buildPayload(values)
 
@@ -185,6 +202,7 @@ function OwnerForm({
             value={values.full_name}
             onChange={handleTextChange}
             required
+            readOnly={isReadOnly}
           />
         </div>
 
@@ -196,6 +214,7 @@ function OwnerForm({
             className={inputClassName()}
             value={values.company_name}
             onChange={handleTextChange}
+            readOnly={isReadOnly}
           />
         </div>
 
@@ -208,17 +227,24 @@ function OwnerForm({
             className={inputClassName()}
             value={values.email}
             onChange={handleTextChange}
+            readOnly={isReadOnly}
           />
         </div>
 
         <div>
           <FieldLabel htmlFor="phone">Teléfono</FieldLabel>
-          <input
+          <PhoneInputField
             id="phone"
             name="phone"
-            className={inputClassName()}
             value={values.phone}
-            onChange={handleTextChange}
+            onChange={(nextValue) =>
+              setValues((currentValues) => ({
+                ...currentValues,
+                phone: nextValue,
+              }))
+            }
+            readOnly={isReadOnly}
+            placeholder="Ingresar teléfono"
           />
         </div>
         <div className="md:col-span-2">
@@ -230,10 +256,11 @@ function OwnerForm({
             value={values.notes}
             onChange={handleTextChange}
             rows={5}
+            readOnly={isReadOnly}
           />
         </div>
 
-        {mode === 'edit' ? (
+        {mode !== 'create' ? (
           <div className="md:col-span-2">
             <div className="px-6 py-5">
               <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
@@ -257,7 +284,7 @@ function OwnerForm({
                   department: true,
                   owner: false,
                   phone: false,
-                  actions: true,
+                  actions: mode === 'edit',
                 }}
                 getLocationEditState={() =>
                   ownerId && ownerName
@@ -275,24 +302,26 @@ function OwnerForm({
         ) : null}
       </div>
 
-      <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:justify-end">
-        <Button
-          variant="secondary"
-          onClick={() => navigate(routePaths.owners)}
-          disabled={isSubmitting}
-        >
-          Cancelar
-        </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting
-            ? mode === 'edit'
-              ? 'Guardando cambios...'
-              : 'Guardando...'
-            : mode === 'edit'
-              ? 'Guardar cambios'
-              : 'Guardar dueño'}
-        </Button>
-      </div>
+      {!isReadOnly ? (
+        <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:justify-end">
+          <Button
+            variant="secondary"
+            onClick={() => navigate(routePaths.owners)}
+            disabled={isSubmitting}
+          >
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting
+              ? mode === 'edit'
+                ? 'Guardando cambios...'
+                : 'Guardando...'
+              : mode === 'edit'
+                ? 'Guardar cambios'
+                : 'Guardar dueño'}
+          </Button>
+        </div>
+      ) : null}
     </form>
   )
 }

@@ -7,6 +7,7 @@ export const routePaths = {
   locationEditPattern: '/locations/:id/edit',
   owners: '/owners',
   ownerNew: '/owners/new',
+  ownerDetailPattern: '/owners/:id',
   ownerEditPattern: '/owners/:id/edit',
   categories: '/categories',
   categoryNew: '/categories/new',
@@ -33,6 +34,10 @@ export function getLocationEditPath(id: string) {
 
 export function getOwnerEditPath(id: string) {
   return `/owners/${id}/edit`
+}
+
+export function getOwnerDetailPath(id: string) {
+  return `/owners/${id}`
 }
 
 export function getCategoryEditPath(id: string) {

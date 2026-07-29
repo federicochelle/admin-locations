@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom'
 import Button from '../../components/ui/Button'
+import PhoneInputField from '../../components/ui/PhoneInputField'
 
 export type LocationOwnerQuickCreateValues = {
   full_name: string
@@ -119,12 +120,19 @@ function LocationOwnerQuickCreateModal({
 
             <div>
               <FieldLabel htmlFor="owner-phone">Teléfono</FieldLabel>
-              <input
+              <PhoneInputField
                 id="owner-phone"
                 name="phone"
-                className={inputClassName()}
                 value={values.phone}
-                onChange={onChange}
+                onChange={(nextValue) =>
+                  onChange({
+                    target: {
+                      name: 'phone',
+                      value: nextValue,
+                    },
+                  } as React.ChangeEvent<HTMLInputElement>)
+                }
+                placeholder="Ingresar teléfono"
               />
             </div>
 
