@@ -20,6 +20,9 @@ export type AdminLocationRequest = {
 
 export type AdminRequestLocation = {
   id: string
+  requestProjectLocationId: string
+  reservationId: string | null
+  reservationRecordStatus: string | null
   title: string
   locationCode: string | null
   coverImageUrl: string | null
@@ -30,23 +33,27 @@ export type AdminRequestLocation = {
   ownerName: string | null
   ownerPhone: string | null
   ownerEmail: string | null
+  reservationStatus?: 'pending' | null
 }
 
 export type AdminLocationRequestDetail = {
   id: string
   userId: string
   title: string
+  productionCompany: string | null
   message: string | null
   status: LocationRequestStatus
+  createdAt: string
   submittedAt: string
   updatedAt: string | null
-  requesterFullName: string | null
-  requesterEmail: string | null
-  requesterCompanyName: string | null
-  requesterPhone: string | null
-  locationManagerName: string | null
   tentativeStartDate: string | null
   tentativeEndDate: string | null
+  requester: {
+    userId: string
+    fullName: string | null
+    email: string | null
+    phone: string | null
+  }
   officialPdf: {
     bucket: string
     path: string
