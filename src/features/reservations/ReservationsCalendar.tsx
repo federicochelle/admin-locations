@@ -14,9 +14,9 @@ import type { ReservationListItem } from './reservations.types'
 
 type ReservationsCalendarProps = {
   currentMonth: Date
-  headerActions?: React.ReactNode
+  headerCenter?: React.ReactNode
+  headerEnd?: React.ReactNode
   onMonthChange: (date: Date) => void
-  onOpenReservation: (reservation: ReservationListItem) => void
   onSelectDay: (day: Date) => void
   reservations: ReservationListItem[]
 }
@@ -61,9 +61,9 @@ function ArrowRightIcon() {
 
 function ReservationsCalendar({
   currentMonth,
-  headerActions,
+  headerCenter,
+  headerEnd,
   onMonthChange,
-  onOpenReservation,
   onSelectDay,
   reservations,
 }: ReservationsCalendarProps) {
@@ -72,8 +72,8 @@ function ReservationsCalendar({
   return (
     <Card className="overflow-hidden p-0">
       <div className="border-b border-slate-200 px-6 py-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
+          <div className="flex items-center justify-start">
             <div className="flex flex-wrap items-center gap-3">
               <Button
                 variant="secondary"
@@ -93,17 +93,25 @@ function ReservationsCalendar({
             </div>
           </div>
 
-          {headerActions ? (
-            <div className="flex flex-wrap items-center gap-3">
-              {headerActions}
+          {headerCenter ? (
+            <div className="flex items-center justify-center">
+              {headerCenter}
+            </div>
+          ) : (
+            <div />
+          )}
+
+          {headerEnd ? (
+            <div className="flex items-center justify-start lg:justify-end">
+              {headerEnd}
             </div>
           ) : null}
         </div>
       </div>
 
       <div className="overflow-x-auto">
-        <div className="min-w-[980px] p-4">
-          <div className="grid grid-cols-7 gap-3">
+        <div className="min-w-[980px] p-3">
+          <div className="grid grid-cols-7 gap-2">
             {CALENDAR_WEEKDAY_LABELS.map((label) => (
               <div
                 key={label}
@@ -121,7 +129,6 @@ function ReservationsCalendar({
                 isCurrentMonth={isSameMonth(day, currentMonth)}
                 isToday={isToday(day)}
                 onDayClick={onSelectDay}
-                onReservationClick={onOpenReservation}
               />
             ))}
           </div>

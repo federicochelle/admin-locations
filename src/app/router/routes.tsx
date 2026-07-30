@@ -16,6 +16,8 @@ import CategoriesPage from '../../features/categories/CategoriesPage'
 import CategoryCreatePage from '../../features/categories/CategoryCreatePage'
 import CategoryEditPage from '../../features/categories/CategoryEditPage'
 import ActivityHistoryPage from '../../features/activity/ActivityHistoryPage'
+import ReservationDayPage from '../../features/reservations/ReservationDayPage'
+import ReservationDetailPage from '../../features/reservations/ReservationDetailPage'
 import ReservationsPage from '../../features/reservations/ReservationsPage'
 import FeaturesPage from '../../features/features-admin/FeaturesPage'
 import FeatureCreatePage from '../../features/features-admin/FeatureCreatePage'
@@ -93,6 +95,14 @@ export const router = createBrowserRouter([
           {
             path: routePaths.activity.slice(1),
             element: <ActivityHistoryPage />,
+          },
+          {
+            path: routePaths.reservationDayPattern.slice(1),
+            element: <ReservationDayPage />,
+          },
+          {
+            path: routePaths.reservationDetailPattern.slice(1),
+            element: <ReservationDetailPage />,
           },
           {
             path: routePaths.reservations.slice(1),

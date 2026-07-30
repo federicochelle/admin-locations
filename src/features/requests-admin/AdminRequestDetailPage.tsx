@@ -14,21 +14,12 @@ import {
   type LocationRequestStatus,
 } from './admin-location-requests.types'
 
-type ParsedRequestMessage = {
-  companyName: string | null
-  locationManagerName: string | null
-  email: string | null
-  tentativeStartDate: string | null
-  tentativeEndDate: string | null
-  message: string | null
-}
-
 function inputClassName() {
   return 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
 }
 
 function fieldLabelClassName() {
-  return 'mb-2 block text-sm font-medium text-slate-700'
+  return 'mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500'
 }
 
 function fieldValueClassName() {
@@ -57,113 +48,6 @@ function formatOptionalField(value: string | null | undefined) {
   const normalizedValue = value?.trim()
 
   return normalizedValue && normalizedValue.length > 0 ? normalizedValue : '-'
-}
-
-function normalizeLabeledFieldKey(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLocaleLowerCase('es-UY')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-}
-
-function parseRequestMessage(message: string | null | undefined): ParsedRequestMessage {
-  if (!message?.trim()) {
-    return {
-      companyName: null,
-      locationManagerName: null,
-      email: null,
-      tentativeStartDate: null,
-      tentativeEndDate: null,
-      message: null,
-    }
-  }
-
-  const labeledValues = new Map<string, string>()
-  const contentLines: string[] = []
-
-  for (const line of message.split(/\r?\n/)) {
-    const trimmedLine = line.trim()
-
-    if (!trimmedLine) {
-      contentLines.push('')
-      continue
-    }
-
-    const match = trimmedLine.match(/^([^:]+):\s*(.+)$/)
-
-    if (!match) {
-      contentLines.push(line)
-      continue
-    }
-
-    const normalizedKey = normalizeLabeledFieldKey(match[1] ?? '')
-    const normalizedValue = match[2]?.trim() ?? ''
-
-    if (normalizedValue.length === 0) {
-      contentLines.push(line)
-      continue
-    }
-
-    if (
-      normalizedKey.includes('empresa') ||
-      normalizedKey.includes('compania') ||
-      normalizedKey.includes('compan ia')
-    ) {
-      labeledValues.set('companyName', normalizedValue)
-      continue
-    }
-
-    if (
-      normalizedKey.includes('jefe de locaciones') ||
-      normalizedKey.includes('location manager') ||
-      normalizedKey.includes('responsable de locaciones')
-    ) {
-      labeledValues.set('locationManagerName', normalizedValue)
-      continue
-    }
-
-    if (normalizedKey.includes('email') || normalizedKey.includes('correo')) {
-      labeledValues.set('email', normalizedValue)
-      continue
-    }
-
-    if (normalizedKey.includes('telefono') || normalizedKey.includes('celular')) {
-      continue
-    }
-
-    if (
-      normalizedKey.includes('fecha tentativa desde') ||
-      normalizedKey.includes('fecha desde') ||
-      normalizedKey.includes('desde')
-    ) {
-      labeledValues.set('tentativeStartDate', normalizedValue)
-      continue
-    }
-
-    if (
-      normalizedKey.includes('fecha tentativa hasta') ||
-      normalizedKey.includes('fecha hasta') ||
-      normalizedKey.includes('hasta')
-    ) {
-      labeledValues.set('tentativeEndDate', normalizedValue)
-      continue
-    }
-
-    contentLines.push(line)
-  }
-
-  const normalizedMessage = contentLines.join('\n').trim()
-
-  return {
-    companyName: labeledValues.get('companyName') ?? null,
-    locationManagerName: labeledValues.get('locationManagerName') ?? null,
-    email: labeledValues.get('email') ?? null,
-    tentativeStartDate: labeledValues.get('tentativeStartDate') ?? null,
-    tentativeEndDate: labeledValues.get('tentativeEndDate') ?? null,
-    message: normalizedMessage.length > 0 ? normalizedMessage : null,
-  }
 }
 
 function formatDisplayDate(value: string | null | undefined) {
@@ -347,18 +231,10 @@ function AdminRequestDetailPage() {
   const isNotFound = errorMessage === 'REQUEST_NOT_FOUND'
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
   const [pdfErrorMessage, setPdfErrorMessage] = useState<string | null>(null)
-  const parsedMessage = useMemo(
-    () => parseRequestMessage(request?.message),
-    [request?.message],
-  )
-  const companyName = request?.requesterCompanyName ?? parsedMessage.companyName
-  const locationManagerName =
-    request?.locationManagerName ?? parsedMessage.locationManagerName
-  const requestEmail = request?.requesterEmail ?? parsedMessage.email
-  const tentativeStartDate =
-    request?.tentativeStartDate ?? parsedMessage.tentativeStartDate
-  const tentativeEndDate = request?.tentativeEndDate ?? parsedMessage.tentativeEndDate
-  const displayMessage = parsedMessage.message
+  const companyName = request?.productionCompany ?? null
+  const tentativeStartDate = request?.tentativeStartDate ?? null
+  const tentativeEndDate = request?.tentativeEndDate ?? null
+  const displayMessage = request?.message ?? null
 
   async function handleOpenPdf() {
     if (!request || isGeneratingPdf) {
@@ -505,25 +381,34 @@ function AdminRequestDetailPage() {
 
               <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
                 <div className="space-y-6">
-                  <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_18rem]">
-                    <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
-                      <RequestDetailField label="Título" value={request.title} />
+                  <div>
+                    <div className="grid gap-x-12 gap-y-5 md:grid-cols-2 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1.1fr)_minmax(0,0.7fr)_minmax(0,0.7fr)] lg:gap-x-16">
+                      <RequestDetailField label="producto" value={request.title} />
                       <RequestDetailField label="Productora" value={companyName} />
                       <RequestDetailField
-                        label="Jefe de locaciones"
-                        value={locationManagerName}
-                      />
-                      <RequestDetailField label="Email" value={requestEmail} />
-                    </div>
-
-                    <div className="space-y-5 border-t border-slate-200 pt-5 md:border-t-0 md:border-l md:pl-6 md:pt-0">
-                      <RequestDetailField
-                        label="Fecha tentativa desde"
+                        label="Inicio"
                         value={formatDisplayDate(tentativeStartDate)}
                       />
                       <RequestDetailField
-                        label="Fecha tentativa hasta"
+                        label="Fin"
                         value={formatDisplayDate(tentativeEndDate)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-200 pt-6">
+                    <div className="grid gap-x-6 gap-y-5 md:grid-cols-2 xl:grid-cols-3">
+                      <RequestDetailField
+                        label="Nombre"
+                        value={request.requester.fullName}
+                      />
+                      <RequestDetailField
+                        label="Email"
+                        value={request.requester.email}
+                      />
+                      <RequestDetailField
+                        label="Teléfono"
+                        value={request.requester.phone}
                       />
                     </div>
                   </div>
@@ -543,6 +428,7 @@ function AdminRequestDetailPage() {
             tentativeStartDate={tentativeStartDate}
             tentativeEndDate={tentativeEndDate}
             companyName={companyName}
+            onReservationCreated={reload}
           />
         </>
       ) : null}
