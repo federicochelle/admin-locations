@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../../../lib/supabase'
 import type {
+  LocationAnalysisFileImageInput,
   LocationAnalysisFunctionRequest,
   LocationAnalysisImageInput,
   LocationAnalysisInput,
@@ -21,6 +22,10 @@ function getUniqueSlugs(slugs: string[]) {
 }
 
 function getPublicImageUrl(image: LocationAnalysisImageInput) {
+  if (image.kind !== 'url') {
+    return null
+  }
+
   if (typeof image.url !== 'string') {
     return null
   }
@@ -44,11 +49,44 @@ function getPublicImageUrl(image: LocationAnalysisImageInput) {
   }
 }
 
+function getFileImagePayload(image: LocationAnalysisFileImageInput) {
+  const dataUrl = image.dataUrl.trim()
+
+  if (dataUrl.length === 0 || !dataUrl.startsWith('data:')) {
+    return null
+  }
+
+  return {
+    dataUrl,
+    filename: image.filename?.trim() || null,
+    isCover: image.isCover === true,
+    mimeType: image.mimeType?.trim() || null,
+    order: typeof image.order === 'number' ? image.order : 0,
+  }
+}
+
 function normalizeAnalysisImages(
   images: LocationAnalysisImageInput[],
 ): LocationAnalysisFunctionRequest['images'] {
   return images
     .map((image, index) => {
+      if (image.kind === 'file') {
+        const fileImage = getFileImagePayload(image)
+
+        if (!fileImage) {
+          return null
+        }
+
+        return {
+          kind: 'file' as const,
+          dataUrl: fileImage.dataUrl,
+          filename: fileImage.filename,
+          isCover: fileImage.isCover,
+          mimeType: fileImage.mimeType,
+          order: typeof image.order === 'number' ? image.order : index,
+        }
+      }
+
       const publicUrl = getPublicImageUrl(image)
 
       if (!publicUrl) {
@@ -56,6 +94,7 @@ function normalizeAnalysisImages(
       }
 
       return {
+        kind: 'url' as const,
         url: publicUrl,
         isCover: image.isCover === true,
         order: typeof image.order === 'number' ? image.order : index,

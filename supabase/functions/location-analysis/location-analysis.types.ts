@@ -12,11 +12,25 @@ export type LocationAnalysisTagCatalogItem = {
   aliases: string[]
 }
 
-export type LocationAnalysisImageInput = {
+export type LocationAnalysisUrlImageInput = {
+  kind: 'url'
   url: string
   isCover: boolean
   order: number
 }
+
+export type LocationAnalysisFileImageInput = {
+  kind: 'file'
+  dataUrl: string
+  mimeType: string | null
+  filename: string | null
+  isCover: boolean
+  order: number
+}
+
+export type LocationAnalysisImageInput =
+  | LocationAnalysisUrlImageInput
+  | LocationAnalysisFileImageInput
 
 export type LocationAnalysisRequestBody = {
   locationId?: unknown
