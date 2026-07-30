@@ -38,7 +38,14 @@ type OwnerRelation =
   | null
 
 type RequestProjectLocationItem = {
+  id: string
   location_id: string
+  reservations?:
+    | {
+        id: string
+        status: string | null
+      }[]
+    | null
   locations:
     | {
         id: string
@@ -71,6 +78,7 @@ type RequestProjectRow = {
   id: string
   user_id: string
   title: string | null
+  production_company?: string | null
   message: string | null
   status: LocationRequestStatus
   created_at: string
@@ -104,6 +112,48 @@ function getOptionalStringValue(row: RequestProjectRow, keys: string[]) {
       if (normalizedValue.length > 0) {
         return normalizedValue
       }
+    }
+  }
+
+  return null
+}
+
+function getLegacyCompanyNameFromMessage(message: string | null | undefined) {
+  if (!message?.trim()) {
+    return null
+  }
+
+  for (const line of message.split(/\r?\n/)) {
+    const trimmedLine = line.trim()
+
+    if (!trimmedLine) {
+      continue
+    }
+
+    const match = trimmedLine.match(/^([^:]+):\s*(.+)$/)
+
+    if (!match) {
+      continue
+    }
+
+    const normalizedKey = match[1]
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('es-UY')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+    const normalizedValue = match[2]?.trim() ?? ''
+
+    if (normalizedValue.length === 0) {
+      continue
+    }
+
+    if (
+      normalizedKey.includes('empresa') ||
+      normalizedKey.includes('compania') ||
+      normalizedKey.includes('compan ia')
+    ) {
+      return normalizedValue
     }
   }
 
@@ -211,6 +261,7 @@ function getLocationNames(relation: RequestProjectLocationRelation): string[] {
 
 function mapLocationItemToDetail(item: RequestProjectLocationItem): AdminRequestLocation | null {
   const location = getLocationRelation(item.locations)
+  const linkedReservation = item.reservations?.[0] ?? null
 
   if (!location) {
     return null
@@ -218,6 +269,9 @@ function mapLocationItemToDetail(item: RequestProjectLocationItem): AdminRequest
 
   return {
     id: location.id,
+    requestProjectLocationId: item.id,
+    reservationId: linkedReservation?.id ?? null,
+    reservationRecordStatus: linkedReservation?.status?.trim() || null,
     title: location.title?.trim() || 'Locacion sin titulo',
     locationCode: location.location_code?.trim() || null,
     coverImageUrl: getCoverImageUrl(location.location_images ?? null),
@@ -240,7 +294,12 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
       `
         *,
         request_project_locations(
+          id,
           location_id,
+          reservations(
+            id,
+            status
+          ),
           locations(
             id,
             title
@@ -348,6 +407,41 @@ export async function updateAdminLocationRequestStatus(
   return data.id
 }
 
+export async function createRequestProjectLocationReservation(input: {
+  requestProjectLocationId: string
+  startsAt: string
+  endsAt: string
+}): Promise<string> {
+  const supabase = getSupabaseClient()
+
+  const { data, error } = await supabase.rpc(
+    'create_request_project_location_reservation',
+    {
+      p_request_project_location_id: input.requestProjectLocationId,
+      p_starts_at: input.startsAt,
+      p_ends_at: input.endsAt,
+    },
+  )
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const reservation =
+    Array.isArray(data) ? data[0] : data
+
+  if (
+    !reservation ||
+    typeof reservation !== 'object' ||
+    !('id' in reservation) ||
+    typeof reservation.id !== 'string'
+  ) {
+    throw new Error('No recibimos la reserva creada.')
+  }
+
+  return reservation.id
+}
+
 export async function deleteAdminLocationRequest(
   requestId: string,
 ): Promise<string> {
@@ -376,7 +470,12 @@ export async function getAdminLocationRequestById(
       `
         *,
         request_project_locations(
+          id,
           location_id,
+          reservations(
+            id,
+            status
+          ),
           locations(
             id,
             title,
@@ -434,8 +533,13 @@ export async function getAdminLocationRequestById(
       title && title.length > 0
         ? title
         : locations[0]?.title ?? 'Solicitud sin titulo',
+    productionCompany:
+      row.production_company?.trim() ||
+      getLegacyCompanyNameFromMessage(row.message) ||
+      null,
     message: row.message?.trim() || null,
     status: row.status,
+    createdAt: row.created_at,
     submittedAt:
       getOptionalStringValue(row, [
         'submitted_at',
@@ -443,17 +547,12 @@ export async function getAdminLocationRequestById(
         'updated_at',
       ]) ?? row.created_at,
     updatedAt: row.updated_at,
-    requesterFullName: profile?.full_name?.trim() || null,
-    requesterEmail: getRequestEmail(row),
-    requesterCompanyName: profile?.company_name?.trim() || null,
-    requesterPhone: profile?.phone?.trim() || null,
-    locationManagerName: getOptionalStringValue(row, [
-      'location_manager_name',
-      'location_manager',
-      'location_contact_name',
-      'jefe_de_locaciones',
-      'jefe_locaciones',
-    ]),
+    requester: {
+      userId: row.user_id,
+      fullName: profile?.full_name?.trim() || null,
+      email: profile?.email?.trim() || null,
+      phone: profile?.phone?.trim() || null,
+    },
     tentativeStartDate: getOptionalStringValue(row, [
       'tentative_start_date',
       'tentative_from',

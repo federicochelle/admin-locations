@@ -11,14 +11,40 @@ import type {
   ReservationUpdatePayload,
 } from './reservations.types'
 
+type OwnerRelation =
+  | {
+      full_name: string | null
+      phone: string | null
+      email: string | null
+    }
+  | {
+      full_name: string | null
+      phone: string | null
+      email: string | null
+    }[]
+  | null
+
+type LocationImageRelation =
+  | {
+      url: string | null
+      is_cover: boolean | null
+    }[]
+  | null
+
 type LocationRelation =
   | {
       title: string | null
       location_code: string | null
+      formatted_address: string | null
+      location_images: LocationImageRelation
+      owners: OwnerRelation
     }
   | {
       title: string | null
       location_code: string | null
+      formatted_address: string | null
+      location_images: LocationImageRelation
+      owners: OwnerRelation
     }[]
   | null
 
@@ -64,14 +90,38 @@ function getLocationRelation(relation: LocationRelation) {
   return relation
 }
 
+function getOwnerRelation(relation: OwnerRelation) {
+  if (!relation) {
+    return null
+  }
+
+  if (Array.isArray(relation)) {
+    return relation[0] ?? null
+  }
+
+  return relation
+}
+
+function getCoverImageUrl(images: LocationImageRelation) {
+  const coverImage = (images ?? []).find((image) => image.is_cover === true)
+
+  return coverImage?.url ?? null
+}
+
 function mapReservation(row: ReservationRow): ReservationListItem {
   const location = getLocationRelation(row.locations)
+  const owner = location ? getOwnerRelation(location.owners) : null
 
   return {
     id: row.id,
     locationId: row.location_id,
     locationTitle: location?.title?.trim() || 'Locación sin título',
     locationCode: location?.location_code?.trim() || null,
+    formattedAddress: location?.formatted_address?.trim() || null,
+    coverImageUrl: getCoverImageUrl(location?.location_images ?? null),
+    ownerName: owner?.full_name?.trim() || null,
+    ownerPhone: owner?.phone?.trim() || null,
+    ownerEmail: owner?.email?.trim() || null,
     title: row.title.trim(),
     startsAt: row.starts_at,
     endsAt: row.ends_at,
@@ -182,7 +232,14 @@ export async function getReservations(): Promise<ReservationListItem[]> {
         updated_at,
         locations(
           title,
-          location_code
+          location_code,
+          formatted_address,
+          location_images(url, is_cover),
+          owners(
+            full_name,
+            phone,
+            email
+          )
         )
       `,
     )

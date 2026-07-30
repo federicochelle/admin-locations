@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import EmptyState from '../../components/ui/EmptyState'
 import PageContainer from '../../components/ui/PageContainer'
 import {
-  buildReservationPrefillValues,
   startOfMonth,
 } from './reservation-calendar.helpers'
 import ReservationDialog from './ReservationDialog'
@@ -14,6 +14,10 @@ import ReservationTable from './ReservationTable'
 import ReservationViewToggle from './ReservationViewToggle'
 import { useReservations } from './useReservations'
 import type { ReservationFormValues, ReservationListItem } from './reservations.types'
+import {
+  getReservationDayPath,
+  getReservationDetailPath,
+} from '../../app/router/route-paths'
 
 function PlusIcon() {
   return (
@@ -38,6 +42,14 @@ function toIsoDateTime(value: string) {
   return new Date(value).toISOString()
 }
 
+function toRouteDate(day: Date) {
+  const year = day.getFullYear()
+  const month = String(day.getMonth() + 1).padStart(2, '0')
+  const date = String(day.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${date}`
+}
+
 function getDateRangeValidationMessage(values: ReservationFormValues) {
   if (!values.startsAt || !values.endsAt) {
     return 'La fecha y hora de fin deben ser posteriores al inicio.'
@@ -58,6 +70,7 @@ function getDateRangeValidationMessage(values: ReservationFormValues) {
 }
 
 function ReservationsPage() {
+  const navigate = useNavigate()
   const {
     reservations,
     locationOptions,
@@ -102,12 +115,8 @@ function ReservationsPage() {
     setIsDialogOpen(true)
   }
 
-  function handleOpenCreateDialogForDay(day: Date) {
-    setDialogMode('create')
-    setSelectedReservation(null)
-    setSelectedDatePrefill(buildReservationPrefillValues(day))
-    setDialogValidationError(null)
-    setIsDialogOpen(true)
+  function handleOpenDayDetail(day: Date) {
+    navigate(getReservationDayPath(toRouteDate(day)))
   }
 
   function handleOpenEditDialog(reservation: ReservationListItem) {
@@ -116,6 +125,10 @@ function ReservationsPage() {
     setSelectedDatePrefill(null)
     setDialogValidationError(null)
     setIsDialogOpen(true)
+  }
+
+  function handleOpenReservationDetail(reservation: ReservationListItem) {
+    navigate(getReservationDetailPath(reservation.id))
   }
 
   function handleCloseDialog() {
@@ -171,16 +184,24 @@ function ReservationsPage() {
     return update(selectedReservation.id, payload)
   }
 
+  const reservationViewToggle = (
+    <ReservationViewToggle
+      value={activeView}
+      onChange={setActiveView}
+    />
+  )
+
+  const newReservationButton = (
+    <Button className="gap-2" onClick={handleOpenCreateDialog}>
+      <PlusIcon />
+      Nueva reserva
+    </Button>
+  )
+
   const reservationHeaderActions = (
-    <div className="flex flex-col items-stretch gap-3 sm:items-end">
-      <ReservationViewToggle
-        value={activeView}
-        onChange={setActiveView}
-      />
-      <Button className="gap-2" onClick={handleOpenCreateDialog}>
-        <PlusIcon />
-        Nueva reserva
-      </Button>
+    <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+      {reservationViewToggle}
+      {newReservationButton}
     </div>
   )
 
@@ -279,10 +300,10 @@ function ReservationsPage() {
           {activeView === 'calendar' ? (
             <ReservationsCalendar
               currentMonth={currentMonth}
-              headerActions={reservationHeaderActions}
+              headerCenter={reservationViewToggle}
+              headerEnd={newReservationButton}
               onMonthChange={(date) => setCurrentMonth(startOfMonth(date))}
-              onOpenReservation={handleOpenEditDialog}
-              onSelectDay={handleOpenCreateDialogForDay}
+              onSelectDay={handleOpenDayDetail}
               reservations={reservations}
             />
           ) : (
@@ -291,6 +312,7 @@ function ReservationsPage() {
               headerActions={reservationHeaderActions}
               onDelete={handleDelete}
               onEdit={handleOpenEditDialog}
+              onOpenReservation={handleOpenReservationDetail}
               reservations={reservations}
             />
           )}

@@ -12,6 +12,7 @@ type ReservationTableProps = {
   headerActions?: ReactNode
   onDelete: (reservation: ReservationListItem) => Promise<void>
   onEdit: (reservation: ReservationListItem) => void
+  onOpenReservation: (reservation: ReservationListItem) => void
   reservations: ReservationListItem[]
 }
 
@@ -33,7 +34,10 @@ function ActionIconButton({
       type="button"
       aria-label={actionLabel}
       disabled={disabled}
-      onClick={onClick}
+      onClick={(event) => {
+        event.stopPropagation()
+        onClick?.()
+      }}
       className={[
         'group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border bg-white transition disabled:cursor-not-allowed disabled:opacity-60',
         buttonClassName,
@@ -108,6 +112,7 @@ function ReservationTable({
   headerActions,
   onDelete,
   onEdit,
+  onOpenReservation,
   reservations,
 }: ReservationTableProps) {
   const [searchTerm, setSearchTerm] = useState('')
@@ -186,7 +191,11 @@ function ReservationTable({
             ) : null}
 
             {filteredReservations.map((reservation) => (
-              <tr key={reservation.id} className="align-top">
+              <tr
+                key={reservation.id}
+                className="align-top transition hover:bg-slate-50"
+                onClick={() => onOpenReservation(reservation)}
+              >
                 <td className="px-3 py-4 text-sm font-medium text-slate-950 sm:px-6">
                   <div className="min-w-[240px]">{formatLocation(reservation)}</div>
                 </td>

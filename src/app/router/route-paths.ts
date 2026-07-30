@@ -14,6 +14,8 @@ export const routePaths = {
   categoryEditPattern: '/categories/:id/edit',
   activity: '/activity',
   reservations: '/reservations',
+  reservationDayPattern: '/reservations/day/:date',
+  reservationDetailPattern: '/reservations/:reservationId',
   requests: '/requests',
   requestDetailPattern: '/requests/:id',
   proposals: '/proposals',
@@ -54,4 +56,12 @@ export function getProposalDetailPath(id: string) {
 
 export function getRequestDetailPath(id: string) {
   return `/requests/${id}`
+}
+
+export function getReservationDayPath(date: string) {
+  return `/reservations/day/${date}`
+}
+
+export function getReservationDetailPath(reservationId: string) {
+  return `/reservations/${reservationId}`
 }
