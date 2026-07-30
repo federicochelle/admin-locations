@@ -16,7 +16,7 @@ import {
   logInternalError,
 } from '../_shared/http.ts'
 
-type ReservationStatus = 'tentative' | 'confirmed' | 'cancelled'
+type ReservationStatus = 'pending' | 'confirmed' | 'cancelled'
 
 type LocationRelation =
   | {

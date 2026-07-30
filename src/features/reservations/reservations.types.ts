@@ -1,10 +1,15 @@
-export type ReservationStatus = 'tentative' | 'confirmed' | 'cancelled'
+export type ReservationStatus = 'pending' | 'confirmed' | 'cancelled'
 
 export type ReservationListItem = {
   id: string
   locationId: string
   locationTitle: string
   locationCode: string | null
+  formattedAddress: string | null
+  coverImageUrl: string | null
+  ownerName: string | null
+  ownerPhone: string | null
+  ownerEmail: string | null
   title: string
   startsAt: string
   endsAt: string
@@ -45,7 +50,7 @@ export const RESERVATION_STATUS_OPTIONS: Array<{
   label: string
   value: ReservationStatus
 }> = [
-  { value: 'tentative', label: 'Tentativa' },
+  { value: 'pending', label: 'Pendiente' },
   { value: 'confirmed', label: 'Confirmada' },
   { value: 'cancelled', label: 'Cancelada' },
 ]
@@ -59,7 +64,7 @@ export function getReservationStatusLabel(status: ReservationStatus) {
 
 export function getReservationStatusBadgeClassName(status: ReservationStatus) {
   switch (status) {
-    case 'tentative':
+    case 'pending':
       return 'border-amber-200 bg-amber-50 text-amber-700'
     case 'confirmed':
       return 'border-emerald-200 bg-emerald-50 text-emerald-700'
@@ -95,7 +100,7 @@ export function getReservationInitialValues(): ReservationFormValues {
     title: '',
     startsAt: '',
     endsAt: '',
-    status: 'tentative',
+    status: 'pending',
     notes: '',
   }
 }
