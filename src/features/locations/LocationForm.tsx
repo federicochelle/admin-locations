@@ -46,6 +46,7 @@ import LocationAnalysisPanel from './components/location-analysis/LocationAnalys
 import TagsEditor from './components/location-analysis/TagsEditor'
 import { locationAnalysisService } from '../location-analysis/location-analysis.service'
 import type {
+  LocationAnalysisImageInput,
   LocationAnalysisInput,
   LocationAnalysisResult,
 } from '../location-analysis/location-analysis.types'
@@ -182,6 +183,31 @@ function slugifyTitle(value: string) {
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = () => {
+      if (typeof reader.result !== 'string' || reader.result.trim().length === 0) {
+        reject(new Error(`${file.name}: no pudimos preparar la imagen para analizar.`))
+        return
+      }
+
+      resolve(reader.result)
+    }
+
+    reader.onerror = () => {
+      reject(new Error(`${file.name}: no pudimos leer la imagen para analizar.`))
+    }
+
+    reader.onabort = () => {
+      reject(new Error(`${file.name}: se canceló la lectura de la imagen para analizar.`))
+    }
+
+    reader.readAsDataURL(file)
+  })
 }
 
 function buildPayload(
@@ -1050,6 +1076,9 @@ function LocationForm({
   const hasAnalyzablePersistedImages =
     mode === 'edit' &&
     visiblePersistedImages.some((image) => image.url.trim().length > 0)
+  const hasAnalyzablePendingImages = pendingImages.some(
+    (image) => image.status === 'pending' && image.width > 0 && image.height > 0,
+  )
   const persistedCoverImage: LocationImageRecord | null =
     hasPersistedImagesMode
       ? visiblePersistedImages.find((image) => image.is_cover === true) ?? null
@@ -2065,6 +2094,42 @@ function markSaveProgressSuccess() {
       return
     }
 
+    const pendingImagesForAnalysis = pendingImages
+      .filter((image) => image.status === 'pending' && image.width > 0 && image.height > 0)
+      .sort((leftImage, rightImage) => leftImage.originalIndex - rightImage.originalIndex)
+
+    let transientPendingAnalysisImages: LocationAnalysisImageInput[] = []
+
+    try {
+      transientPendingAnalysisImages = await Promise.all(
+        pendingImagesForAnalysis.map(async (image) => ({
+          id: image.id,
+          kind: 'file' as const,
+          dataUrl: await readFileAsDataUrl(image.file),
+          mimeType: image.file.type.trim() || null,
+          filename: image.file.name.trim() || null,
+          isCover: image.isCover,
+          order: image.originalIndex,
+        })),
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No pudimos preparar las imagenes para el analisis.'
+
+      setAnalysisState((currentState) => ({
+        ...currentState,
+        analysisError: message,
+        analysisLoading: false,
+        analysisResult: null,
+        suggestedDescription: null,
+        suggestedFeatures: [],
+        suggestedTags: [],
+      }))
+      return
+    }
+
     const analysisInput: LocationAnalysisInput = {
       title: values.title.trim(),
       locationId,
@@ -2099,16 +2164,12 @@ function markSaveProgressSuccess() {
       images: [
         ...visiblePersistedImages.map((image) => ({
           id: image.id,
+          kind: 'url' as const,
           url: image.url,
           isCover: image.is_cover === true,
           order: image.sort_order,
         })),
-        ...pendingImages.map((image) => ({
-          id: image.id,
-          url: image.previewUrl,
-          isCover: image.isCover,
-          order: image.originalIndex,
-        })),
+        ...transientPendingAnalysisImages,
       ],
     }
 
@@ -2148,6 +2209,8 @@ function markSaveProgressSuccess() {
         suggestedFeatures: [],
         suggestedTags: [],
       }))
+    } finally {
+      transientPendingAnalysisImages = []
     }
   }
 
@@ -3463,7 +3526,7 @@ function markSaveProgressSuccess() {
         onToggle={() => setIsFeaturesSectionOpen((currentValue) => !currentValue)}
       >
         <div className="space-y-8">
-          {mode === 'edit' ? (
+          {mode === 'edit' || mode === 'create' ? (
             <LocationAnalysisPanel
               analysisError={analysisState.analysisError}
               analysisLoading={analysisState.analysisLoading}
@@ -3471,7 +3534,9 @@ function markSaveProgressSuccess() {
               isDisabled={
                 isSubmitting ||
                 isPreparingImages ||
-                !hasAnalyzablePersistedImages
+                (mode === 'edit'
+                  ? !hasAnalyzablePersistedImages
+                  : !hasAnalyzablePendingImages)
               }
               isReadOnly={isReadOnly}
               onAnalyze={() => void handleAnalyzeLocation()}

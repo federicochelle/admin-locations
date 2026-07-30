@@ -1,9 +1,24 @@
-export type LocationAnalysisImageInput = {
+export type LocationAnalysisUrlImageInput = {
   id: string
+  kind: 'url'
   url: string | null
   isCover?: boolean
   order?: number
 }
+
+export type LocationAnalysisFileImageInput = {
+  id: string
+  kind: 'file'
+  dataUrl: string
+  mimeType: string | null
+  filename: string | null
+  isCover?: boolean
+  order?: number
+}
+
+export type LocationAnalysisImageInput =
+  | LocationAnalysisUrlImageInput
+  | LocationAnalysisFileImageInput
 
 export type LocationAnalysisFeatureCatalogItem = {
   name: string
@@ -69,11 +84,22 @@ export type LocationAnalysisFunctionRequest = {
   currentTagSlugs: string[]
   availableFeatures: LocationAnalysisFeatureCatalogItem[]
   availableTags: LocationAnalysisTagCatalogItem[]
-  images: Array<{
-    url: string
-    isCover: boolean
-    order: number
-  }>
+  images: Array<
+    | {
+        kind: 'url'
+        url: string
+        isCover: boolean
+        order: number
+      }
+    | {
+        kind: 'file'
+        dataUrl: string
+        mimeType: string | null
+        filename: string | null
+        isCover: boolean
+        order: number
+      }
+  >
 }
 
 export interface LocationAnalysisProvider {

@@ -38,6 +38,7 @@ type AnalysisRunLogInput = {
 }
 
 type OpenAIResponseEnvelope = {
+  error?: unknown
   output?: Array<{
     content?: Array<{
       text?: string
@@ -46,11 +47,13 @@ type OpenAIResponseEnvelope = {
     type?: string
   }>
   output_text?: string
+  warnings?: unknown
   usage?: {
     input_tokens?: number
     output_tokens?: number
     total_tokens?: number
   }
+  model?: string
 }
 
 const MOCK_DESCRIPTION =
@@ -64,11 +67,100 @@ const OPENAI_API_URL = 'https://api.openai.com/v1/responses'
 const DEFAULT_OPENAI_MODEL = 'gpt-5'
 const MOCK_MODEL = 'mock-v1'
 const PROMPT_VERSION = 'v1'
+const DATA_URL_DEBUG_PREFIX_LENGTH = 40
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
     'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+function isDebugEnabled() {
+  const rawValue = Deno.env.get('LOCATION_ANALYSIS_DEBUG')?.trim().toLowerCase()
+  return rawValue === '1' || rawValue === 'true' || rawValue === 'yes' || rawValue === 'on'
+}
+
+function getUrlProtocol(value: string) {
+  try {
+    return new URL(value).protocol
+  } catch {
+    if (value.startsWith('data:')) {
+      return 'data:'
+    }
+
+    return 'invalid'
+  }
+}
+
+function debugLogParsedImages(input: LocationAnalysisRequest) {
+  console.info('[location-analysis][debug] Parsed request images summary', {
+    imageCount: input.images.length,
+    images: input.images.map((image) =>
+      image.kind === 'file'
+        ? {
+            kind: image.kind,
+            order: image.order,
+            isCover: image.isCover,
+            mimeType: image.mimeType,
+            filename: image.filename,
+            dataUrlLength: image.dataUrl.length,
+            dataUrlPrefix: image.dataUrl.slice(0, DATA_URL_DEBUG_PREFIX_LENGTH),
+          }
+        : {
+            kind: image.kind,
+            order: image.order,
+            isCover: image.isCover,
+            mimeType: null,
+            filename: null,
+            dataUrlLength: null,
+            dataUrlPrefix: null,
+            urlProtocol: getUrlProtocol(image.url),
+          }),
+  })
+}
+
+function debugLogOpenAIRequest(requestBody: ReturnType<typeof buildOpenAIRequestBody>) {
+  const userInput = requestBody.input.find((entry) => entry.role === 'user')
+  const userContent = userInput?.content ?? []
+  const textBlock = userContent.find((entry) => entry.type === 'input_text')
+  const imageBlocks = userContent.filter((entry) => entry.type === 'input_image')
+  const inputText = typeof textBlock?.text === 'string' ? textBlock.text : ''
+  const imageSummaries = imageBlocks.map((entry) => {
+    const imageUrl = typeof entry.image_url === 'string' ? entry.image_url : ''
+
+    return {
+      detail: entry.detail,
+      imageUrlLength: imageUrl.length,
+      protocol: getUrlProtocol(imageUrl),
+    }
+  })
+
+  console.info('[location-analysis][debug] OpenAI request summary', {
+    model: requestBody.model,
+    inputImageCount: imageBlocks.length,
+    dataImageCount: imageSummaries.filter((entry) => entry.protocol === 'data:').length,
+    httpsImageCount: imageSummaries.filter((entry) => entry.protocol === 'https:').length,
+    imageDetails: imageSummaries.map((entry) => entry.detail),
+    imageUrlLengths: imageSummaries.map((entry) => entry.imageUrlLength),
+    inputTextLength: inputText.length,
+    inputTextContainsDataImagePrefix: inputText.includes('data:image'),
+  })
+}
+
+function debugLogOpenAIResponse(response: OpenAIResponseEnvelope, outputText: string) {
+  console.info('[location-analysis][debug] OpenAI response summary', {
+    model: response.model ?? null,
+    usage: response.usage ?? null,
+    outputItemTypes: response.output?.map((item) => item.type ?? null) ?? [],
+    outputContentTypes:
+      response.output?.flatMap((item) =>
+        (item.content ?? []).map((contentItem) => contentItem.type ?? null)
+      ) ?? [],
+    outputTextLength: outputText.length,
+    outputText,
+    warnings: response.warnings ?? null,
+    error: response.error ?? null,
+  })
 }
 
 function createJsonResponse(data: unknown, init?: ResponseInit) {
@@ -186,19 +278,43 @@ function parseImages(value: unknown): LocationAnalysisImageInput[] | null {
   return value
     .filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null)
     .map((entry) => {
-      const url = toNullableString(entry.url)
+      const kind = entry.kind === 'file' ? 'file' : entry.kind === 'url' ? 'url' : null
       const isCover = entry.isCover === true
       const order =
         typeof entry.order === 'number' && Number.isFinite(entry.order)
           ? entry.order
           : null
 
-      if (!url || order === null) {
+      if (!kind || order === null) {
+        return null
+      }
+
+      if (kind === 'url') {
+        const url = toNullableString(entry.url)
+
+        if (!url) {
+          return null
+        }
+
+        return {
+          kind,
+          url,
+          isCover,
+          order,
+        }
+      }
+
+      const dataUrl = toNullableString(entry.dataUrl)
+
+      if (!dataUrl || !dataUrl.startsWith('data:')) {
         return null
       }
 
       return {
-        url,
+        kind,
+        dataUrl,
+        mimeType: toNullableString(entry.mimeType),
+        filename: toNullableString(entry.filename),
         isCover,
         order,
       }
@@ -397,7 +513,7 @@ function buildOpenAIRequestBody(input: LocationAnalysisRequest) {
     },
     ...input.images.map((image) => ({
       type: 'input_image',
-      image_url: image.url,
+      image_url: image.kind === 'url' ? image.url : image.dataUrl,
       detail: image.isCover ? 'high' : 'auto',
     })),
   ]
@@ -459,6 +575,12 @@ async function analyzeWithOpenAI(
 }> {
   const apiKey = getRequiredEnv('OPENAI_API_KEY')
   const requestBody = buildOpenAIRequestBody(input)
+
+  // Temporary runtime instrumentation for comparing URL vs Data URL image analysis.
+  if (isDebugEnabled()) {
+    debugLogOpenAIRequest(requestBody)
+  }
+
   const response = await fetch(OPENAI_API_URL, {
     method: 'POST',
     headers: {
@@ -475,6 +597,11 @@ async function analyzeWithOpenAI(
 
   const data = (await response.json()) as OpenAIResponseEnvelope
   const outputText = extractOpenAIOutputText(data)
+
+  // Temporary runtime instrumentation for inspecting the raw OpenAI analysis output.
+  if (isDebugEnabled()) {
+    debugLogOpenAIResponse(data, outputText)
+  }
 
   if (!outputText) {
     throw new Error('OpenAI returned an empty analysis response.')
@@ -590,6 +717,11 @@ Deno.serve(async (request) => {
         'The request body is invalid.',
         400,
       )
+    }
+
+    // Temporary runtime instrumentation for comparing parsed URL vs file images.
+    if (isDebugEnabled()) {
+      debugLogParsedImages(input)
     }
 
     try {
