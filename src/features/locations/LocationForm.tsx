@@ -28,6 +28,7 @@ import LocationImageUploader, {
 import LocationOwnerQuickCreateModal, {
   type LocationOwnerQuickCreateValues,
 } from './LocationOwnerQuickCreateModal'
+import LocationValidationModal from './LocationValidationModal'
 import {
   deleteLocationImage,
   uploadLocationImage,
@@ -514,6 +515,16 @@ function hasFieldErrors(fieldErrors: LocationFormFieldErrors) {
   return Object.values(fieldErrors).some((errorMessage) => errorMessage !== null)
 }
 
+function getValidationMessages(fieldErrors: LocationFormFieldErrors) {
+  return [
+    fieldErrors.title,
+    fieldErrors.category_id,
+    fieldErrors.address_private,
+    fieldErrors.owner_name,
+    fieldErrors.owner_phone,
+  ].filter((message): message is string => message !== null)
+}
+
 function getFormHeading(mode: LocationFormMode) {
   if (mode === 'edit') {
     return 'Editar locación'
@@ -873,6 +884,7 @@ function LocationForm({
   const [fieldErrors, setFieldErrors] = useState<LocationFormFieldErrors>(
     getDefaultFieldErrors(),
   )
+  const [validationModalMessages, setValidationModalMessages] = useState<string[]>([])
   const [isPreparingImages, setIsPreparingImages] = useState(false)
   const [processedImagesCount, setProcessedImagesCount] = useState(0)
   const [totalImagesToProcess, setTotalImagesToProcess] = useState(0)
@@ -2755,15 +2767,8 @@ function markSaveProgressSuccess() {
     setFieldErrors(nextFieldErrors)
 
     if (hasFieldErrors(nextFieldErrors)) {
-      const firstErrorMessage =
-        nextFieldErrors.title ??
-        nextFieldErrors.category_id ??
-        nextFieldErrors.address_private ??
-        nextFieldErrors.owner_name ??
-        nextFieldErrors.owner_phone ??
-        'No pudimos guardar la locación.'
-
-      setSubmitError(firstErrorMessage)
+      setSubmitError(null)
+      setValidationModalMessages(getValidationMessages(nextFieldErrors))
       return
     }
 
@@ -2773,6 +2778,7 @@ function markSaveProgressSuccess() {
     try {
       setIsSubmitting(true)
       setSubmitError(null)
+      setValidationModalMessages([])
       setEditDeleteErrorMessage(null)
       openSaveProgress()
       updateStageStatus('location', 'active')
@@ -2956,6 +2962,13 @@ function markSaveProgressSuccess() {
   return (
     <>
       {!isReadOnly ? <LocationSaveProgressModal progress={saveProgress} /> : null}
+      {!isReadOnly ? (
+        <LocationValidationModal
+          isOpen={validationModalMessages.length > 0}
+          messages={validationModalMessages}
+          onClose={() => setValidationModalMessages([])}
+        />
+      ) : null}
       {!isReadOnly ? (
         <LocationImageSourceModal
           isDropboxImporting={isDropboxImporting}

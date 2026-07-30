@@ -42,6 +42,34 @@ function formatTagCatalog(
     .join('\n')
 }
 
+function formatImageSummary(images: LocationAnalysisRequest['images']) {
+  if (images.length === 0) {
+    return JSON.stringify(
+      {
+        imageCount: 0,
+        images: [],
+      },
+      null,
+      2,
+    )
+  }
+
+  return JSON.stringify(
+    {
+      imageCount: images.length,
+      images: images.map((image) => ({
+        kind: image.kind,
+        order: image.order,
+        isCover: image.isCover,
+        filename: image.kind === 'file' ? image.filename : null,
+        mimeType: image.kind === 'file' ? image.mimeType : null,
+      })),
+    },
+    null,
+    2,
+  )
+}
+
 export function buildLocationAnalysisUserPrompt(
   input: LocationAnalysisRequest,
 ) {
@@ -90,7 +118,7 @@ export function buildLocationAnalysisUserPrompt(
     formatTagCatalog(input.availableTags),
     '',
     'Imágenes disponibles:',
-    JSON.stringify(input.images, null, 2),
+    formatImageSummary(input.images),
     '',
     'Respondé con este JSON estricto:',
     JSON.stringify(
