@@ -7,6 +7,7 @@ import {
 import Card from '../../components/ui/Card'
 import EmptyState from '../../components/ui/EmptyState'
 import { getOwnerWhatsappDigits } from '../../lib/phone'
+import { confirmReservation } from '../reservations/reservations.service'
 import {
   getReservationStatusBadgeClassName,
   getReservationStatusLabel,
@@ -178,87 +179,11 @@ function getWhatsappUrl(input: {
   return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`
 }
 
-function getMailtoUrl(input: {
-  ownerEmail: string | null
-  ownerName: string | null
-  locationTitle: string
-  tentativeStartDate: string | null
-  tentativeEndDate: string | null
-  companyName: string | null
-}) {
-  const ownerEmail = input.ownerEmail?.trim()
-
-  if (!ownerEmail) {
-    return null
-  }
-
-  const subject = `Preseleccion de locacion - ${input.locationTitle}`
-  const body = buildSelectionMessage({
-    ownerName: input.ownerName,
-    locationTitle: input.locationTitle,
-    tentativeStartDate: input.tentativeStartDate,
-    tentativeEndDate: input.tentativeEndDate,
-    companyName: input.companyName,
-  })
-
-  return `mailto:${ownerEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-}
-
 function CoverPlaceholder() {
   return (
     <div className="flex h-14 w-24 items-center justify-center border border-slate-300 bg-slate-50 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
       Sin foto
     </div>
-  )
-}
-
-function WhatsappIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      className="h-5 w-5"
-      aria-hidden="true"
-    >
-      <path
-        d="M20 11.5a8 8 0 0 1-11.8 7l-4.2 1 1.1-4A8 8 0 1 1 20 11.5Z"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9.3 8.7c.2-.4.4-.4.6-.4h.5c.1 0 .3 0 .4.4l.5 1.5c.1.2 0 .4-.1.6l-.3.4c-.1.1-.2.3 0 .6.3.6 1 1.5 2.2 2 .4.2.6.1.8 0l.4-.3c.2-.1.3-.2.6-.1l1.4.7c.2.1.3.2.3.4v.5c0 .2-.1.5-.4.6-.5.2-1.1.3-1.7.1-1-.2-2-.8-3-1.7-.8-.7-1.5-1.7-1.9-2.8-.3-.7-.2-1.4-.1-1.8Z"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function EmailIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      className="h-5 w-5"
-      aria-hidden="true"
-    >
-      <path
-        d="M4 6h16v12H4z"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="m4 8 8 6 8-6"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   )
 }
 
@@ -298,6 +223,25 @@ function PlusIcon() {
     >
       <path
         d="M12 5v14M5 12h14"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path
+        d="m5 12 4.2 4.2L19 6.5"
         strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -495,6 +439,7 @@ function RequestIncludedLocationsTable({
   const [selectedLocationToReserve, setSelectedLocationToReserve] =
     useState<AdminRequestLocation | null>(null)
   const [isCreatingReservation, setIsCreatingReservation] = useState(false)
+  const [activeConfirmReservationId, setActiveConfirmReservationId] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastState>(null)
 
   useEffect(() => {
@@ -541,6 +486,42 @@ function RequestIncludedLocationsTable({
       })
     } finally {
       setIsCreatingReservation(false)
+    }
+  }
+
+  async function handleConfirmReservation(location: AdminRequestLocation) {
+    if (!location.reservationId || location.reservationRecordStatus !== 'pending') {
+      return
+    }
+
+    const shouldConfirm = window.confirm(
+      `¿Querés confirmar la reserva vinculada a ${location.title}?`,
+    )
+
+    if (!shouldConfirm) {
+      return
+    }
+
+    try {
+      setActiveConfirmReservationId(location.reservationId)
+
+      const result = await confirmReservation(location.reservationId)
+
+      await onReservationCreated()
+      setToast({
+        message: result.syncWarning ?? 'Reserva confirmada correctamente.',
+        tone: result.syncWarning ? 'error' : 'success',
+      })
+    } catch (error) {
+      setToast({
+        message:
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : 'No pudimos confirmar la reserva.',
+        tone: 'error',
+      })
+    } finally {
+      setActiveConfirmReservationId(null)
     }
   }
 
@@ -600,10 +581,10 @@ function RequestIncludedLocationsTable({
                     Telefono
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
-                    Acciones
+                    Estado
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
-                    Estado
+                    Acciones
                   </th>
                 </tr>
               </thead>
@@ -613,6 +594,11 @@ function RequestIncludedLocationsTable({
                     location.locationCode,
                   )
                   const hasLinkedReservation = Boolean(location.reservationId)
+                  const canConfirmReservation =
+                    hasLinkedReservation && location.reservationRecordStatus === 'pending'
+                  const isConfirmingReservation =
+                    Boolean(location.reservationId) &&
+                    activeConfirmReservationId === location.reservationId
                   const whatsappUrl = getWhatsappUrl({
                     ownerPhone: location.ownerPhone,
                     ownerName: location.ownerName,
@@ -621,15 +607,6 @@ function RequestIncludedLocationsTable({
                     tentativeEndDate,
                     companyName,
                   })
-                  const mailtoUrl = getMailtoUrl({
-                    ownerEmail: location.ownerEmail,
-                    ownerName: location.ownerName,
-                    locationTitle: location.title,
-                    tentativeStartDate,
-                    tentativeEndDate,
-                    companyName,
-                  })
-
                   return (
                     <tr
                       key={location.requestProjectLocationId}
@@ -670,17 +647,18 @@ function RequestIncludedLocationsTable({
                       </td>
                       <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                         <div className="min-w-[140px] whitespace-nowrap">
-                          {formatCellValue(location.ownerPhone)}
-                        </div>
-                      </td>
-                      <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
-                        <div className="flex flex-nowrap items-center gap-2">
-                          <ActionLink actionLabel="WhatsApp" href={whatsappUrl}>
-                            <WhatsappIcon />
-                          </ActionLink>
-                          <ActionLink actionLabel="Email" href={mailtoUrl}>
-                            <EmailIcon />
-                          </ActionLink>
+                          {whatsappUrl ? (
+                            <a
+                              href={whatsappUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm font-medium text-slate-900 underline-offset-4 transition hover:text-slate-950 hover:underline"
+                            >
+                              {location.ownerPhone?.trim() || '-'}
+                            </a>
+                          ) : (
+                            formatCellValue(location.ownerPhone)
+                          )}
                         </div>
                       </td>
                       <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
@@ -693,9 +671,17 @@ function RequestIncludedLocationsTable({
                           >
                             {getLocationStatusLabel(location)}
                           </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
+                        <div className="flex min-w-[140px] items-center gap-2">
                           <button
                             type="button"
                             onClick={() => {
+                              if (isConfirmingReservation) {
+                                return
+                              }
+
                               if (!hasLinkedReservation) {
                                 setSelectedLocationToReserve(location)
                                 return
@@ -709,10 +695,23 @@ function RequestIncludedLocationsTable({
                             }}
                             aria-label={hasLinkedReservation ? 'Ver reserva' : 'Reservar'}
                             title={hasLinkedReservation ? 'Ver reserva' : 'Reservar'}
+                            disabled={isConfirmingReservation}
                             className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
                           >
                             {hasLinkedReservation ? <EyeIcon /> : <PlusIcon />}
                           </button>
+                          {canConfirmReservation ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleConfirmReservation(location)}
+                              disabled={isConfirmingReservation}
+                              aria-label={isConfirmingReservation ? 'Confirmando reserva' : 'Confirmar reserva'}
+                              title={isConfirmingReservation ? 'Confirmando reserva' : 'Confirmar reserva'}
+                              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <CheckIcon />
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>

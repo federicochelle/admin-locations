@@ -66,6 +66,16 @@ type ReservationIdRow = {
   id: string
 }
 
+type ReservationEditableRow = {
+  id: string
+  location_id: string
+  title: string
+  starts_at: string
+  ends_at: string
+  status: ReservationStatus
+  notes: string | null
+}
+
 type GoogleCalendarSyncInput = {
   reservationId: string
 }
@@ -300,6 +310,43 @@ export async function updateReservation(
     id: savedId,
     syncWarning,
   }
+}
+
+// Shared helper used outside the reservations module to confirm an existing
+// reservation while preserving the same update + Google Calendar sync flow.
+export async function confirmReservation(
+  id: string,
+): Promise<ReservationSaveResult> {
+  const supabase = getSupabaseClient()
+
+  const { data, error } = await supabase
+    .from('reservations')
+    .select('id, location_id, title, starts_at, ends_at, status, notes')
+    .eq('id', id)
+    .single()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const reservation = data as ReservationEditableRow | null
+
+  if (!reservation) {
+    throw new Error('No encontramos la reserva que querés confirmar.')
+  }
+
+  if (reservation.status !== 'pending') {
+    throw new Error('Solo se pueden confirmar reservas pendientes.')
+  }
+
+  return updateReservation(id, {
+    location_id: reservation.location_id,
+    title: reservation.title,
+    starts_at: reservation.starts_at,
+    ends_at: reservation.ends_at,
+    status: 'confirmed',
+    notes: reservation.notes,
+  })
 }
 
 export async function deleteReservation(id: string): Promise<string> {
