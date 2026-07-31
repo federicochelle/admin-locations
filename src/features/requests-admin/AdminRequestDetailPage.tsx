@@ -26,6 +26,15 @@ function fieldValueClassName() {
   return 'text-sm leading-6 text-slate-700'
 }
 
+function getRequestStatusSelectClassName(status: LocationRequestStatus) {
+  switch (status) {
+    case 'submitted':
+      return 'border-amber-200 bg-amber-50 text-amber-700 focus:border-amber-300 focus:ring-amber-100'
+    case 'closed':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700 focus:border-emerald-300 focus:ring-emerald-100'
+  }
+}
+
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat('es-UY', {
     day: '2-digit',
@@ -138,7 +147,11 @@ function RequestManagementCard({
             void onSave(event.target.value as LocationRequestStatus)
           }
           disabled={isSaving}
-          className={[inputClassName(), 'flex-1'].join(' ')}
+          className={[
+            inputClassName(),
+            getRequestStatusSelectClassName(request.status),
+            'flex-1 font-semibold',
+          ].join(' ')}
         >
           {LOCATION_REQUEST_STATUS_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
