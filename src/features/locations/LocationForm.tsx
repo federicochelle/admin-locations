@@ -42,9 +42,7 @@ import LocationAddressPicker from './LocationAddressPicker'
 import LocationMapPreview from './LocationMapPreview'
 import LocationZoneQuickCreateModal from './LocationZoneQuickCreateModal'
 import DescriptionEditor from './components/location-analysis/DescriptionEditor'
-import FeaturesEditor from './components/location-analysis/FeaturesEditor'
 import LocationAnalysisPanel from './components/location-analysis/LocationAnalysisPanel'
-import TagsEditor from './components/location-analysis/TagsEditor'
 import { locationAnalysisService } from '../location-analysis/location-analysis.service'
 import type {
   LocationAnalysisImageInput,
@@ -371,7 +369,7 @@ function renderGoogleLocationFallback(inputClassNameValue: string) {
         type="text"
         value=""
         disabled
-        placeholder="Buscar dirección..."
+        placeholder="Buscar dirección o pegar enlace de Google Maps"
         autoComplete="off"
         className={inputClassNameValue}
         readOnly
@@ -611,62 +609,6 @@ function SectionCard({
   )
 }
 
-function AccordionSectionCard({
-  actions,
-  children,
-  description,
-  isOpen,
-  onToggle,
-  title,
-}: {
-  actions?: React.ReactNode
-  children: React.ReactNode
-  description?: string
-  isOpen: boolean
-  onToggle: () => void
-  title: string
-}) {
-  return (
-    <section className="-mx-9 w-[calc(100%+4.5rem)] space-y-5 rounded-none border border-slate-200 bg-white/95 p-5 shadow-sm backdrop-blur-sm sm:-mx-6 sm:w-[calc(100%+3rem)] sm:rounded-[28px] sm:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <button
-          type="button"
-          onClick={onToggle}
-          className="flex min-w-0 flex-1 items-start justify-between gap-4 rounded-2xl px-1 py-1 text-left transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
-          aria-expanded={isOpen}
-        >
-          <div className="min-w-0 space-y-1">
-            <h3 className="text-2xl font-semibold text-slate-950">{title}</h3>
-            {description ? (
-              <p className="text-sm leading-6 text-slate-600">{description}</p>
-            ) : null}
-          </div>
-          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-slate-950 transition duration-300 ease-out">
-            {isOpen ? <ChevronUpIcon /> : <ChevronDownIcon />}
-          </span>
-        </button>
-        {actions ? <div className="shrink-0 sm:ml-auto">{actions}</div> : null}
-      </div>
-      <div
-        className={[
-          'grid overflow-hidden border-t border-slate-100 transition-[grid-template-rows,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]',
-          isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
-        ].join(' ')}
-        aria-hidden={!isOpen}
-      >
-        <div
-          className={[
-            'min-h-0 pt-1 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]',
-            isOpen ? 'translate-y-0' : '-translate-y-1',
-          ].join(' ')}
-        >
-          {children}
-        </div>
-      </div>
-    </section>
-  )
-}
-
 const IMAGE_UPLOAD_CONCURRENCY = 3
 const IMAGE_UPLOAD_TIMEOUT_MS = 90_000
 const IMAGE_UPLOAD_TIMEOUT_ERROR_MESSAGE =
@@ -839,8 +781,6 @@ function LocationForm({
   const [optionsError, setOptionsError] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isFeaturesSectionOpen, setIsFeaturesSectionOpen] = useState(false)
-  const [isGallerySectionOpen, setIsGallerySectionOpen] = useState(true)
   const [analysisState, setAnalysisState] =
     useState<LocationAnalysisState>(defaultAnalysisState)
   const [saveProgress, setSaveProgress] = useState<LocationSaveProgressState | null>(
@@ -3529,60 +3469,137 @@ function markSaveProgressSuccess() {
             </div>
           </div>
 
+          <div className="space-y-8 border-t border-slate-200 pt-6">
+            <h3 className="text-2xl font-semibold text-slate-950">Características</h3>
+            {mode === 'edit' || mode === 'create' ? (
+              <LocationAnalysisPanel
+                analysisError={analysisState.analysisError}
+                analysisLoading={analysisState.analysisLoading}
+                analysisResult={analysisState.analysisResult}
+                isDisabled={
+                  isSubmitting ||
+                  isPreparingImages ||
+                  (mode === 'edit'
+                    ? !hasAnalyzablePersistedImages
+                    : !hasAnalyzablePendingImages)
+                }
+                isReadOnly={isReadOnly}
+                onAnalyze={() => void handleAnalyzeLocation()}
+                onApplyChanges={handleApplyAnalysisChanges}
+                onDiscard={resetAnalysisState}
+                suggestedFeatureNames={suggestedFeatureNames}
+                suggestedTagNames={suggestedTagNames}
+              />
+            ) : null}
+            <DescriptionEditor
+              className={inputClassName()}
+              description={values.description}
+              isReadOnly={isReadOnly}
+              onChange={handleTextChange}
+            />
+          </div>
+
+          {showImagesSection && mode === 'create' ? (
+            <div className="space-y-4 border-t border-slate-200 pt-6">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-2xl font-semibold text-slate-950">
+                  Galería de imágenes
+                </h3>
+                <LocationImageUploader
+                  ref={galleryImageUploaderRef}
+                  disabled={isSubmitting || isPreparingImages || isDropboxImporting}
+                  label={getGalleryUploadLabel(
+                    isPreparingImages,
+                    processedImagesCount,
+                    totalImagesToProcess,
+                  )}
+                  onTrigger={() => handleOpenImageSourceModal('gallery')}
+                  onFilesSelected={handleGalleryImagesSelected}
+                />
+              </div>
+              {pendingGalleryImages.length > 0 ? (
+                <LocationImagesGrid
+                  images={pendingGalleryImages}
+                  isLocked={isSubmitting}
+                  onRemove={handleRemovePendingImage}
+                  showCount={false}
+                  showCover={false}
+                />
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
+                  Todavía no cargaste imágenes de galería.
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {showImagesSection && mode === 'edit' ? (
+            <div className="space-y-4 border-t border-slate-200 pt-6">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-2xl font-semibold text-slate-950">
+                  Galería de imágenes
+                </h3>
+                <LocationImageUploader
+                  ref={galleryImageUploaderRef}
+                  disabled={isSubmitting || isPreparingImages || isDropboxImporting}
+                  label={getGalleryUploadLabel(
+                    isPreparingImages,
+                    processedImagesCount,
+                    totalImagesToProcess,
+                  )}
+                  onTrigger={() => handleOpenImageSourceModal('gallery')}
+                  onFilesSelected={handleGalleryImagesSelected}
+                />
+              </div>
+              {combinedEditGalleryImages.length > 0 ? (
+                <LocationImagesGrid
+                  images={combinedEditGalleryImages}
+                  isLocked={isSubmitting}
+                  mode="mixed"
+                  onRemovePending={handleRemovePendingImage}
+                  onRemovePersisted={(imageId) => void handleDeletePersistedImage(imageId)}
+                  showCount={false}
+                  showCover={false}
+                />
+              ) : null}
+
+              {combinedEditGalleryImages.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
+                  Esta locación todavía no tiene imágenes de galería.
+                </div>
+              ) : null}
+              {editDeleteErrorMessage ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {editDeleteErrorMessage}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {showImagesSection && mode === 'view' ? (
+            <div className="space-y-4 border-t border-slate-200 pt-6">
+              <h3 className="text-2xl font-semibold text-slate-950">
+                Galería de imágenes
+              </h3>
+              {persistedGalleryImages.length > 0 ? (
+                <LocationImagesGrid
+                  images={persistedGalleryImages}
+                  isLocked
+                  mode="persisted"
+                  showCount={false}
+                  showCover={false}
+                />
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
+                  Esta locación todavía no tiene imágenes de galería.
+                </div>
+              )}
+            </div>
+          ) : null}
+
         </div>
         </LocationGoogleProvider>
       </SectionCard>
-
-      <AccordionSectionCard
-        title="Características"
-        isOpen={isFeaturesSectionOpen}
-        onToggle={() => setIsFeaturesSectionOpen((currentValue) => !currentValue)}
-      >
-        <div className="space-y-8">
-          {mode === 'edit' || mode === 'create' ? (
-            <LocationAnalysisPanel
-              analysisError={analysisState.analysisError}
-              analysisLoading={analysisState.analysisLoading}
-              analysisResult={analysisState.analysisResult}
-              isDisabled={
-                isSubmitting ||
-                isPreparingImages ||
-                (mode === 'edit'
-                  ? !hasAnalyzablePersistedImages
-                  : !hasAnalyzablePendingImages)
-              }
-              isReadOnly={isReadOnly}
-              onAnalyze={() => void handleAnalyzeLocation()}
-              onApplyChanges={handleApplyAnalysisChanges}
-              onDiscard={resetAnalysisState}
-              suggestedFeatureNames={suggestedFeatureNames}
-              suggestedTagNames={suggestedTagNames}
-            />
-          ) : null}
-          <DescriptionEditor
-            className={inputClassName()}
-            description={values.description}
-            isReadOnly={isReadOnly}
-            onChange={handleTextChange}
-          />
-          <TagsEditor
-            availableTags={availableTags}
-            isDisabled={isSubmitting || isPreparingImages}
-            isReadOnly={isReadOnly}
-            onToggle={handleTagToggle}
-            selectedTags={selectedTags}
-            selectedTagIds={values.selectedTagIds}
-          />
-          <FeaturesEditor
-            featureGroups={featureGroups}
-            formatGroupLabel={formatFeatureGroupLabel}
-            isDisabled={isSubmitting || isPreparingImages}
-            isReadOnly={isReadOnly}
-            onToggle={handleFeatureToggle}
-            selectedFeatureIds={values.selectedFeatureIds}
-          />
-        </div>
-      </AccordionSectionCard>
 
       <div className="hidden">
         {showAdvancedSection ? (
@@ -3652,113 +3669,6 @@ function markSaveProgressSuccess() {
           onChange={handleCheckboxChange}
         />
       </div>
-
-      {showImagesSection && mode === 'create' ? (
-        <AccordionSectionCard
-          title="Galería de imágenes"
-          isOpen={isGallerySectionOpen}
-          onToggle={() => setIsGallerySectionOpen((currentValue) => !currentValue)}
-        >
-          <div className="space-y-4">
-            <div className="flex justify-end">
-              <LocationImageUploader
-                ref={galleryImageUploaderRef}
-                disabled={isSubmitting || isPreparingImages || isDropboxImporting}
-                label={getGalleryUploadLabel(
-                  isPreparingImages,
-                  processedImagesCount,
-                  totalImagesToProcess,
-                )}
-                onTrigger={() => handleOpenImageSourceModal('gallery')}
-                onFilesSelected={handleGalleryImagesSelected}
-              />
-            </div>
-            {pendingGalleryImages.length > 0 ? (
-              <LocationImagesGrid
-                images={pendingGalleryImages}
-                isLocked={isSubmitting}
-                onRemove={handleRemovePendingImage}
-                showCount={false}
-                showCover={false}
-              />
-            ) : (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
-                Todavía no cargaste imágenes de galería.
-              </div>
-            )}
-          </div>
-        </AccordionSectionCard>
-      ) : null}
-
-      {showImagesSection && mode === 'edit' ? (
-        <AccordionSectionCard
-          title="Galería de imágenes"
-          isOpen={isGallerySectionOpen}
-          onToggle={() => setIsGallerySectionOpen((currentValue) => !currentValue)}
-        >
-          <div className="space-y-4">
-            <div className="flex justify-end">
-              <LocationImageUploader
-                ref={galleryImageUploaderRef}
-                disabled={isSubmitting || isPreparingImages || isDropboxImporting}
-                label={getGalleryUploadLabel(
-                  isPreparingImages,
-                  processedImagesCount,
-                  totalImagesToProcess,
-                )}
-                onTrigger={() => handleOpenImageSourceModal('gallery')}
-                onFilesSelected={handleGalleryImagesSelected}
-              />
-            </div>
-            {combinedEditGalleryImages.length > 0 ? (
-              <LocationImagesGrid
-                images={combinedEditGalleryImages}
-                isLocked={isSubmitting}
-                mode="mixed"
-                onRemovePending={handleRemovePendingImage}
-                onRemovePersisted={(imageId) => void handleDeletePersistedImage(imageId)}
-                showCount={false}
-                showCover={false}
-              />
-            ) : null}
-
-            {combinedEditGalleryImages.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
-                Esta locación todavía no tiene imágenes de galería.
-              </div>
-            ) : null}
-            {editDeleteErrorMessage ? (
-              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {editDeleteErrorMessage}
-              </div>
-            ) : null}
-          </div>
-        </AccordionSectionCard>
-      ) : null}
-
-      {showImagesSection && mode === 'view' ? (
-        <AccordionSectionCard
-          title="Galería de imágenes"
-          isOpen={isGallerySectionOpen}
-          onToggle={() => setIsGallerySectionOpen((currentValue) => !currentValue)}
-        >
-          <div className="space-y-4">
-            {persistedGalleryImages.length > 0 ? (
-              <LocationImagesGrid
-                images={persistedGalleryImages}
-                isLocked
-                mode="persisted"
-                showCount={false}
-                showCover={false}
-              />
-            ) : (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-600">
-                Esta locación todavía no tiene imágenes de galería.
-              </div>
-            )}
-          </div>
-        </AccordionSectionCard>
-      ) : null}
 
         {!isReadOnly ? (
           <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center sm:justify-end">
