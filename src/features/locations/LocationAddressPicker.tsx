@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   APILoadingStatus,
   useApiLoadingStatus,
   useMapsLibrary,
 } from '@vis.gl/react-google-maps'
 import {
+  isGoogleMapsUrl,
+  parseGoogleMapsUrlReference,
   parseGooglePlaceResult,
+  type GoogleMapsCoordinates,
   type ParsedGooglePlaceAddress,
 } from './location-address-parser'
+import { getSupabaseClient } from '../../lib/supabase'
 
 type GooglePlacesAutocompleteLike = {
   value: string
@@ -29,12 +33,34 @@ type GooglePlacesAutocompleteLike = {
 
 type GooglePlacesLibraryLike = {
   PlaceAutocompleteElement: new () => GooglePlacesAutocompleteLike
+  Place: GooglePlaceConstructorLike
 }
 
 type GooglePlacePredictionLike = {
   toPlace: () => {
     fetchFields: (options: { fields: string[] }) => Promise<unknown>
   }
+}
+
+type GooglePlaceFetchableLike = GooglePlaceWithAuditFields & {
+  fetchFields: (options: { fields: string[] }) => Promise<unknown>
+}
+
+type GooglePlaceConstructorLike = {
+  new (options: { id?: string | null }): GooglePlaceFetchableLike
+  searchByText?: (options: {
+    textQuery: string
+    fields: string[]
+    language?: string
+    locationBias?: {
+      center: {
+        lat: number
+        lng: number
+      }
+      radius: number
+    }
+    region?: string
+  }) => Promise<{ places?: GooglePlaceFetchableLike[] | null }>
 }
 
 type GooglePlacePredictionSelectEventLike = Event & {
@@ -99,6 +125,197 @@ export type LocationAddressPickerProps = {
   onPlaceSelected: (place: ParsedGooglePlaceAddress) => void
 }
 
+const GOOGLE_MAPS_URL_ERROR_MESSAGE =
+  'No pudimos obtener la ubicación desde ese enlace.'
+const GOOGLE_PLACE_FIELDS = [
+  'addressComponents',
+  'adrFormatAddress',
+  'businessStatus',
+  'displayName',
+  'formattedAddress',
+  'googleMapsLinks',
+  'googleMapsURI',
+  'id',
+  'internationalPhoneNumber',
+  'location',
+  'nationalPhoneNumber',
+  'plusCode',
+  'postalAddress',
+  'primaryType',
+  'primaryTypeDisplayName',
+  'regularOpeningHours',
+  'shortFormattedAddress',
+  'types',
+  'utcOffsetMinutes',
+  'viewport',
+  'websiteURI',
+] as const
+
+async function fetchGooglePlaceFields(place: GooglePlaceFetchableLike) {
+  await place.fetchFields({
+    fields: [...GOOGLE_PLACE_FIELDS],
+  })
+}
+
+function getPlaceCoordinates(place: GooglePlaceFetchableLike) {
+  const lat = getCoordinateValue(place.location?.lat)
+  const lng = getCoordinateValue(place.location?.lng)
+
+  if (lat == null || lng == null) {
+    return null
+  }
+
+  return { lat, lng }
+}
+
+function getCoordinateDistanceScore(
+  left: GoogleMapsCoordinates,
+  right: GoogleMapsCoordinates,
+) {
+  const latDistance = left.lat - right.lat
+  const lngDistance = left.lng - right.lng
+
+  return Math.sqrt(latDistance ** 2 + lngDistance ** 2)
+}
+
+function selectBestTextSearchResult(input: {
+  fallbackCoordinates: GoogleMapsCoordinates | null
+  places: GooglePlaceFetchableLike[]
+}) {
+  const { fallbackCoordinates, places } = input
+
+  if (places.length === 0) {
+    return null
+  }
+
+  if (!fallbackCoordinates) {
+    return places[0] ?? null
+  }
+
+  const rankedPlaces = places
+    .map((place) => ({
+      distance:
+        getPlaceCoordinates(place) == null
+          ? Number.POSITIVE_INFINITY
+          : getCoordinateDistanceScore(
+              getPlaceCoordinates(place) as GoogleMapsCoordinates,
+              fallbackCoordinates,
+            ),
+      place,
+    }))
+    .sort((left, right) => left.distance - right.distance)
+
+  return rankedPlaces[0]?.place ?? places[0] ?? null
+}
+
+function buildSearchByTextRequest(input: {
+  fallbackCoordinates: GoogleMapsCoordinates | null
+  textQuery: string
+}) {
+  const { fallbackCoordinates, textQuery } = input
+
+  return {
+    textQuery,
+    fields: [...GOOGLE_PLACE_FIELDS],
+    language: 'es',
+    region: 'uy',
+    locationBias: fallbackCoordinates
+      ? {
+          center: fallbackCoordinates,
+          radius: 5_000,
+        }
+      : undefined,
+  }
+}
+
+async function resolveGoogleMapsShortUrlViaBackend(url: string) {
+  const supabase = getSupabaseClient()
+  const { data, error } = await supabase.functions.invoke<{
+    resolvedUrl?: string | null
+    url?: string | null
+  }>('resolve-google-maps-url', {
+    body: {
+      url,
+    },
+  })
+
+  if (error) {
+    throw error
+  }
+
+  const resolvedUrl = data?.resolvedUrl?.trim() || data?.url?.trim() || null
+
+  return resolvedUrl
+}
+
+async function resolveGoogleMapsUrlToParsedPlace(
+  inputValue: string,
+  placesLibrary: GooglePlacesLibraryLike,
+) {
+  let reference = parseGoogleMapsUrlReference(inputValue)
+
+  if (!reference) {
+    throw new Error('INVALID_GOOGLE_MAPS_URL')
+  }
+
+  if (reference.kind === 'short-url') {
+    // Short links require following a redirect chain. We keep that resolution isolated
+    // behind a backend function instead of attempting a cross-origin client fetch.
+    const resolvedUrl = await resolveGoogleMapsShortUrlViaBackend(reference.url)
+
+    if (!resolvedUrl) {
+      throw new Error('UNRESOLVED_GOOGLE_MAPS_SHORT_URL')
+    }
+
+    reference = parseGoogleMapsUrlReference(resolvedUrl)
+
+    if (!reference || reference.kind === 'short-url') {
+      throw new Error('UNRESOLVED_GOOGLE_MAPS_SHORT_URL')
+    }
+  }
+
+  let place: GooglePlaceFetchableLike | null = null
+
+  if (reference.kind === 'place-id') {
+    place = new placesLibrary.Place({
+      id: reference.placeId,
+    })
+
+    await fetchGooglePlaceFields(place)
+  }
+
+  if (reference.kind === 'text-query') {
+    if (typeof placesLibrary.Place.searchByText !== 'function') {
+      throw new Error('GOOGLE_TEXT_SEARCH_UNAVAILABLE')
+    }
+
+    const searchArguments = buildSearchByTextRequest({
+      textQuery: reference.textQuery,
+      fallbackCoordinates: reference.fallbackCoordinates,
+    })
+
+    const result = await placesLibrary.Place.searchByText(searchArguments)
+    const places = result.places ?? []
+
+    place = selectBestTextSearchResult({
+      fallbackCoordinates: reference.fallbackCoordinates,
+      places,
+    })
+
+    if (!place) {
+      throw new Error('GOOGLE_TEXT_SEARCH_EMPTY')
+    }
+  }
+
+  if (!place) {
+    throw new Error('GOOGLE_MAPS_URL_UNSUPPORTED')
+  }
+
+  return parseGooglePlaceResult(
+    place as Parameters<typeof parseGooglePlaceResult>[0],
+  )
+}
+
 function inputClassName(error: string | null) {
   return [
     'w-full rounded-xl border bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200',
@@ -118,77 +335,6 @@ function getCoordinateValue(
   return typeof coordinate === 'number' ? coordinate : null
 }
 
-function getViewportCorner(
-  corner: GooglePlaceViewportBoundLike | undefined,
-) {
-  if (!corner) {
-    return null
-  }
-
-  return {
-    lat: getCoordinateValue(corner.lat),
-    lng: getCoordinateValue(corner.lng),
-  }
-}
-
-function getViewportSnapshot(viewport: GooglePlaceViewportLike) {
-  if (!viewport) {
-    return null
-  }
-
-  const northEast =
-    typeof viewport.getNorthEast === 'function'
-      ? viewport.getNorthEast()
-      : viewport.northeast
-  const southWest =
-    typeof viewport.getSouthWest === 'function'
-      ? viewport.getSouthWest()
-      : viewport.southwest
-
-  return {
-    northeast: getViewportCorner(northEast),
-    southwest: getViewportCorner(southWest),
-  }
-}
-
-function buildGooglePlaceAuditSnapshot(place: GooglePlaceWithAuditFields) {
-  return {
-    ...place,
-    formatted_address: place.formattedAddress ?? null,
-    address_components:
-      place.addressComponents?.map((component) => ({
-        long_name: component.long_name ?? component.longText ?? null,
-        short_name: component.short_name ?? component.shortText ?? null,
-        types: component.types ?? null,
-      })) ?? null,
-    geometry: {
-      lat: getCoordinateValue(place.location?.lat),
-      lng: getCoordinateValue(place.location?.lng),
-      viewport: getViewportSnapshot(place.viewport ?? null),
-    },
-    place_id: place.id ?? null,
-    plus_code: place.plusCode ?? null,
-  }
-}
-
-function logGooglePlaceAudit(place: GooglePlaceWithAuditFields) {
-  const snapshot = buildGooglePlaceAuditSnapshot(place)
-
-  console.groupCollapsed('[Google Maps] Respuesta completa de la locacion seleccionada')
-  console.log('Objeto Place crudo', place)
-  console.log('Objeto Place expandido', snapshot)
-  console.log('formatted_address', snapshot.formatted_address)
-  console.log('address_components', snapshot.address_components)
-  console.log('geometry', snapshot.geometry)
-  console.log('lat', snapshot.geometry.lat)
-  console.log('lng', snapshot.geometry.lng)
-  console.log('place_id', snapshot.place_id)
-  console.log('plus_code', snapshot.plus_code)
-  console.log('types', place.types ?? null)
-  console.log('viewport', snapshot.geometry.viewport)
-  console.groupEnd()
-}
-
 function LocationAddressPickerInput({
   children,
   formattedAddress = null,
@@ -201,6 +347,9 @@ function LocationAddressPickerInput({
   const apiLoadingStatus = useApiLoadingStatus()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const autocompleteElementRef = useRef<GooglePlacesAutocompleteLike | null>(null)
+  const resolutionRequestIdRef = useRef(0)
+  const [linkErrorMessage, setLinkErrorMessage] = useState<string | null>(null)
+  const [isProcessingLink, setIsProcessingLink] = useState(false)
 
   useEffect(() => {
     const container = containerRef.current
@@ -225,33 +374,9 @@ function LocationAddressPickerInput({
       }
 
       const place = placePrediction.toPlace()
-      await place.fetchFields({
-        fields: [
-          'addressComponents',
-          'adrFormatAddress',
-          'businessStatus',
-          'displayName',
-          'formattedAddress',
-          'googleMapsLinks',
-          'googleMapsURI',
-          'id',
-          'internationalPhoneNumber',
-          'location',
-          'nationalPhoneNumber',
-          'plusCode',
-          'postalAddress',
-          'primaryType',
-          'primaryTypeDisplayName',
-          'regularOpeningHours',
-          'shortFormattedAddress',
-          'types',
-          'utcOffsetMinutes',
-          'viewport',
-          'websiteURI',
-        ],
-      })
-
-      logGooglePlaceAudit(place as GooglePlaceWithAuditFields)
+      await fetchGooglePlaceFields(
+        place as Parameters<typeof fetchGooglePlaceFields>[0],
+      )
 
       const parsedPlace = parseGooglePlaceResult(
         place as Parameters<typeof parseGooglePlaceResult>[0],
@@ -259,16 +384,55 @@ function LocationAddressPickerInput({
 
       onPlaceSelected(parsedPlace)
     }
+    const handleInput = () => {
+      const nextValue = autocompleteElement.value
+      const currentRequestId = resolutionRequestIdRef.current + 1
+      resolutionRequestIdRef.current = currentRequestId
+      setLinkErrorMessage(null)
+
+      if (isGoogleMapsUrl(nextValue)) {
+        setIsProcessingLink(true)
+
+        void resolveGoogleMapsUrlToParsedPlace(
+          nextValue,
+          placesLibrary as GooglePlacesLibraryLike,
+        )
+          .then((parsedPlace) => {
+            if (resolutionRequestIdRef.current !== currentRequestId) {
+              return
+            }
+
+            setIsProcessingLink(false)
+            setLinkErrorMessage(null)
+            onPlaceSelected(parsedPlace)
+          })
+          .catch(() => {
+            if (resolutionRequestIdRef.current !== currentRequestId) {
+              return
+            }
+
+            setIsProcessingLink(false)
+            setLinkErrorMessage(GOOGLE_MAPS_URL_ERROR_MESSAGE)
+            autocompleteElement.value = value
+          })
+
+        return
+      }
+
+      setIsProcessingLink(false)
+    }
     autocompleteElement.addEventListener('gmp-select', handlePlaceSelect)
+    autocompleteElement.addEventListener('input', handleInput)
 
     return () => {
       autocompleteElement.removeEventListener('gmp-select', handlePlaceSelect)
+      autocompleteElement.removeEventListener('input', handleInput)
       autocompleteElementRef.current = null
       if (container.contains(autocompleteElement as unknown as Node)) {
         container.removeChild(autocompleteElement as unknown as Node)
       }
     }
-  }, [apiLoadingStatus, onPlaceSelected, placesLibrary])
+  }, [apiLoadingStatus, onPlaceSelected, placesLibrary, value])
 
   useEffect(() => {
     const autocompleteElement = autocompleteElementRef.current
@@ -278,13 +442,14 @@ function LocationAddressPickerInput({
     }
 
     autocompleteElement.value = value
-    autocompleteElement.disabled = disabled
-    autocompleteElement.placeholder = 'Buscar dirección...'
+    autocompleteElement.disabled = disabled || isProcessingLink
+    autocompleteElement.placeholder =
+      'Buscar dirección o pegar enlace de Google Maps'
     autocompleteElement.requestedLanguage = 'es'
     autocompleteElement.requestedRegion = 'uy'
     autocompleteElement.includedRegionCodes = ['uy']
     autocompleteElement.className = inputClassName(error)
-  }, [disabled, error, value])
+  }, [disabled, error, isProcessingLink, value])
 
   const helperMessage = useMemo(() => {
     if (
@@ -310,6 +475,12 @@ function LocationAddressPickerInput({
       />
       {helperMessage ? (
         <p className="text-sm text-slate-600">{helperMessage}</p>
+      ) : null}
+      {isProcessingLink ? (
+        <p className="text-sm text-slate-600">Procesando enlace...</p>
+      ) : null}
+      {linkErrorMessage ? (
+        <p className="text-sm text-red-700">{linkErrorMessage}</p>
       ) : null}
       {formattedAddress ? (
         <p className="text-sm text-slate-600">
