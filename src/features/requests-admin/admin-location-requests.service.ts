@@ -150,6 +150,19 @@ function getOptionalStringValue(row: RequestProjectRow, keys: string[]) {
   return null
 }
 
+function normalizeLocationRequestStatus(
+  value: string | null | undefined,
+): LocationRequestStatus {
+  switch (value) {
+    case 'pending':
+    case 'confirmed':
+    case 'discarded':
+      return value
+    default:
+      return 'pending'
+  }
+}
+
 function getLegacyCompanyNameFromMessage(message: string | null | undefined) {
   if (!message?.trim()) {
     return null
@@ -691,7 +704,7 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
             ? title
             : locationNames[0] ?? 'Solicitud sin titulo',
         message: requestContact.notes,
-        status: row.status,
+        status: normalizeLocationRequestStatus(row.status),
         submittedAt:
           getOptionalStringValue(row, [
             'submitted_at',
@@ -923,6 +936,10 @@ export async function createAdminManualLocationRequest(
 
     if (submitRequestProjectError) {
       throw new Error(submitRequestProjectError.message)
+    }
+
+    if (!createdRequestId) {
+      throw new Error('No recibimos el identificador de la solicitud creada.')
     }
 
     return createdRequestId
@@ -1217,7 +1234,7 @@ export async function getAdminLocationRequestById(
       getLegacyCompanyNameFromMessage(row.message) ||
       null,
     message: requestContact.notes,
-    status: row.status,
+    status: normalizeLocationRequestStatus(row.status),
     createdAt: row.created_at,
     submittedAt:
       getOptionalStringValue(row, [
