@@ -7,9 +7,9 @@ import {
 
 export type GoogleCalendarConnectionStatus = {
   connected: boolean
-  connectedAt: string
-  googleAccountEmail: string
-  updatedAt: string
+  connectedAt: string | null
+  googleAccountEmail: string | null
+  updatedAt: string | null
 }
 
 type GoogleCalendarStatusResult = {
@@ -72,15 +72,15 @@ export async function getGoogleCalendarConnectionStatus() {
     )
   }
 
-  if (!data?.connected || !data.connectedAt || !data.googleAccountEmail || !data.updatedAt) {
+  if (!data?.connected) {
     return null
   }
 
   return {
     connected: true,
-    connectedAt: data.connectedAt,
-    googleAccountEmail: data.googleAccountEmail,
-    updatedAt: data.updatedAt,
+    connectedAt: data.connectedAt ?? null,
+    googleAccountEmail: data.googleAccountEmail ?? null,
+    updatedAt: data.updatedAt ?? null,
   }
 }
 

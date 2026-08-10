@@ -215,6 +215,8 @@ function ReservationDayPage() {
     const payload = {
       location_id: values.locationId,
       title: values.title.trim(),
+      production_company:
+        values.productionCompany.trim().length > 0 ? values.productionCompany.trim() : null,
       starts_at: toIsoDateTime(values.startsAt),
       ends_at: toIsoDateTime(values.endsAt),
       status: values.status,

@@ -1,5 +1,9 @@
 export type LocationStatus = string | null
 
+export type LocationSortKey = 'departmentName' | 'locationCode'
+
+export type LocationSortDirection = 'asc' | 'desc'
+
 export type LocationListItem = {
   id: string
   title: string
@@ -19,6 +23,11 @@ export type LocationListItem = {
   ownerId: string | null
   ownerName: string | null
   ownerPhone: string | null
+}
+
+export type PaginatedLocationsResult = {
+  locations: LocationListItem[]
+  totalCount: number
 }
 
 export type LocationOwnerOption = {

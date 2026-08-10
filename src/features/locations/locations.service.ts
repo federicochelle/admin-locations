@@ -14,6 +14,9 @@ import type {
   LocationNameRelation,
   LocationOwnerOption,
   LocationOwnerRelation,
+  LocationSortDirection,
+  LocationSortKey,
+  PaginatedLocationsResult,
   SupabaseLocationEditableRow,
   LocationUpdatePayload,
   LocationZoneOption,
@@ -37,6 +40,33 @@ type SupabaseErrorLike = {
   code?: string
   message?: string
 }
+
+type PaginatedLocationsInput = {
+  page: number
+  pageSize: number
+  searchTerm: string
+  sortKey: LocationSortKey
+  sortDirection: LocationSortDirection
+}
+
+const LOCATION_LIST_SELECT = `
+  id,
+  title,
+  slug,
+  location_code,
+  google_department_name,
+  google_zone_name,
+  formatted_address,
+  location_images(url, is_cover),
+  status,
+  published,
+  featured,
+  premium,
+  categories(name),
+  departments(name),
+  zones(name),
+  owners(id, full_name, phone)
+`
 
 const LOCATION_CODE_PREFIX_MAP: Record<string, string> = {
   ALMACENES: 'ALMACEN',
@@ -63,6 +93,10 @@ const LOCATION_CODE_PREFIX_MAP: Record<string, string> = {
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function escapeLikePattern(value: string) {
+  return value.replace(/[%,()]/g, '')
 }
 
 function normalizeLocationSlug(baseSlug: string) {
@@ -387,26 +421,7 @@ export async function getLocations(): Promise<LocationListItem[]> {
 
   const { data, error } = await supabase
     .from('locations')
-    .select(
-      `
-        id,
-        title,
-        slug,
-        location_code,
-        google_department_name,
-        google_zone_name,
-        formatted_address,
-        location_images(url, is_cover),
-        status,
-        published,
-        featured,
-        premium,
-        categories(name),
-        departments(name),
-        zones(name),
-        owners(id, full_name, phone)
-      `,
-    )
+    .select(LOCATION_LIST_SELECT)
     .order('title', { ascending: true })
 
   if (error) {
@@ -418,6 +433,81 @@ export async function getLocations(): Promise<LocationListItem[]> {
   return rows.map(mapLocation)
 }
 
+export async function getLocationsPage(
+  input: PaginatedLocationsInput,
+): Promise<PaginatedLocationsResult> {
+  const supabase = getSupabaseClient()
+  const page = Math.max(1, input.page)
+  const pageSize = Math.max(1, input.pageSize)
+  const searchTerm = input.searchTerm.trim()
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+  const searchPattern = `%${escapeLikePattern(searchTerm)}%`
+
+  let ownerIds: string[] = []
+
+  if (searchTerm.length > 0) {
+    const { data: ownerData, error: ownerError } = await supabase
+      .from('owners')
+      .select('id')
+      .ilike('full_name', searchPattern)
+
+    if (ownerError) {
+      throw new Error(ownerError.message)
+    }
+
+    ownerIds = ((ownerData ?? []) as { id: string | null }[])
+      .map((row) => row.id)
+      .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+  }
+
+  let query = supabase
+    .from('locations')
+    .select(LOCATION_LIST_SELECT, { count: 'exact' })
+
+  if (searchTerm.length > 0) {
+    const filters = [`location_code.ilike.${searchPattern}`]
+
+    if (ownerIds.length > 0) {
+      filters.push(`owner_id.in.(${ownerIds.join(',')})`)
+    }
+
+    query = query.or(filters.join(','))
+  }
+
+  if (input.sortKey === 'departmentName') {
+    query = query
+      .order('google_department_name', {
+        ascending: input.sortDirection === 'asc',
+        nullsFirst: false,
+      })
+      .order('name', {
+        referencedTable: 'departments',
+        ascending: input.sortDirection === 'asc',
+        nullsFirst: false,
+      })
+      .order('location_code', { ascending: true, nullsFirst: false })
+  } else {
+    query = query
+      .order('location_code', {
+        ascending: input.sortDirection === 'asc',
+        nullsFirst: false,
+      })
+      .order('title', { ascending: true })
+  }
+
+  const { data, error, count } = await query.range(from, to)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return {
+    locations: ((data ?? []) as SupabaseLocationRow[]).map(mapLocation),
+    totalCount: typeof count === 'number' ? count : 0,
+  }
+}
+
 export async function getLocationsByCategory(
   categoryId: string,
 ): Promise<LocationListItem[]> {
@@ -425,26 +515,7 @@ export async function getLocationsByCategory(
 
   const { data, error } = await supabase
     .from('locations')
-    .select(
-      `
-        id,
-        title,
-        slug,
-        location_code,
-        google_department_name,
-        google_zone_name,
-        formatted_address,
-        location_images(url, is_cover),
-        status,
-        published,
-        featured,
-        premium,
-        categories(name),
-        departments(name),
-        zones(name),
-        owners(id, full_name, phone)
-      `,
-    )
+    .select(LOCATION_LIST_SELECT)
     .eq('category_id', categoryId)
     .order('title', { ascending: true })
 

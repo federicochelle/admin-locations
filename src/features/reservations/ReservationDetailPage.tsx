@@ -4,6 +4,7 @@ import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import {
   getLocationDetailPath,
   getReservationDayPath,
+  getRequestDetailPath,
   routePaths,
 } from '../../app/router/route-paths'
 import Button from '../../components/ui/Button'
@@ -69,6 +70,17 @@ function formatReservationDateLabel(value: string) {
   return label.charAt(0).toUpperCase() + label.slice(1)
 }
 
+function isSameCalendarDay(start: string, end: string) {
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+
+  return (
+    startDate.getFullYear() === endDate.getFullYear() &&
+    startDate.getMonth() === endDate.getMonth() &&
+    startDate.getDate() === endDate.getDate()
+  )
+}
+
 function InfoRow({
   href,
   icon,
@@ -97,7 +109,7 @@ function InfoRow({
         href={href}
         target={target}
         rel={rel}
-        className="flex items-center gap-3 text-sm font-medium leading-6 text-slate-700 underline-offset-4 transition hover:text-slate-950 hover:underline"
+        className="flex items-center gap-3 text-sm font-medium leading-6 text-slate-700 underline underline-offset-4 transition hover:text-slate-950"
       >
         {content}
       </a>
@@ -107,6 +119,62 @@ function InfoRow({
   return (
     <div className="flex items-center gap-3 text-sm font-medium leading-6 text-slate-700">
       {content}
+    </div>
+  )
+}
+
+function ReservationDetailField({
+  href,
+  label,
+  value,
+}: {
+  href?: string | null
+  label: string
+  value: string | null | undefined
+}) {
+  const formattedValue = formatOptionalField(value)
+
+  return (
+    <div className="min-w-0">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+        {label}
+      </p>
+      {href ? (
+        <a
+          href={href}
+          className="mt-2 inline-block text-sm font-medium leading-6 text-slate-900 underline underline-offset-4 transition hover:text-slate-950"
+        >
+          {formattedValue}
+        </a>
+      ) : (
+        <p className="mt-2 text-sm font-medium leading-6 text-slate-900">
+          {formattedValue}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function IconDetailRow({
+  icon,
+  value,
+  secondaryValue,
+}: {
+  icon: React.ReactNode
+  value: string | null | undefined
+  secondaryValue?: string | null | undefined
+}) {
+  return (
+    <div className="flex items-start gap-3 text-sm font-medium leading-6 text-slate-900">
+      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-slate-500">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <p>{formatOptionalField(value)}</p>
+        {secondaryValue ? (
+          <p className="text-slate-700">{formatOptionalField(secondaryValue)}</p>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -172,6 +240,25 @@ function PhoneIcon() {
   )
 }
 
+function MailIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-4 w-4" aria-hidden="true">
+      <path
+        d="M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m22 8-8.97 6.35a1.8 1.8 0 0 1-2.08 0L2 8"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 function TagIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-4 w-4" aria-hidden="true">
@@ -195,28 +282,7 @@ function CalendarIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <rect
-        x="3"
-        y="4"
-        width="18"
-        height="17"
-        rx="2"
-        strokeWidth="1.8"
-      />
-    </svg>
-  )
-}
-
-function ClockIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-4 w-4" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" strokeWidth="1.8" />
-      <path
-        d="M12 7v5l3 2"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <rect x="3" y="4" width="18" height="17" rx="2" strokeWidth="1.8" />
     </svg>
   )
 }
@@ -286,6 +352,9 @@ function ReservationDetailPage() {
   useLayoutHeader(headerConfig)
 
   const locationDetailHref = reservation ? getLocationDetailPath(reservation.locationId) : null
+  const requestDetailHref = reservation?.requestProjectId
+    ? getRequestDetailPath(reservation.requestProjectId)
+    : null
   const googleMapsHref = reservation?.formattedAddress?.trim()
     ? `https://www.google.com/maps?q=${encodeURIComponent(reservation.formattedAddress)}`
     : null
@@ -328,6 +397,8 @@ function ReservationDetailPage() {
     return update(reservation.id, {
       location_id: values.locationId,
       title: values.title.trim(),
+      production_company:
+        values.productionCompany.trim().length > 0 ? values.productionCompany.trim() : null,
       starts_at: toIsoDateTime(values.startsAt),
       ends_at: toIsoDateTime(values.endsAt),
       status: values.status,
@@ -468,7 +539,7 @@ function ReservationDetailPage() {
                       </div>
                     )}
 
-                    <div className="grid gap-8 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+                    <div className="grid gap-8 p-5 sm:p-6 lg:grid-cols-[minmax(0,1.75fr)_minmax(0,0.9fr)]">
                       <div className="space-y-3">
                         <InfoRow
                           icon={<TagIcon />}
@@ -495,33 +566,68 @@ function ReservationDetailPage() {
                         />
                       </div>
 
-                      <div className="space-y-4 border-t border-slate-200 pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                          Fecha de la reserva
-                        </p>
-                        <InfoRow
-                          icon={<CalendarIcon />}
-                          value={formatReservationDateLabel(reservation.startsAt)}
-                        />
-                        <InfoRow
-                          icon={<ClockIcon />}
-                          value={`${formatTime(reservation.startsAt)} → ${formatTime(reservation.endsAt)}`}
-                        />
+                      <div className="border-t border-slate-200 pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            <span className="flex h-5 w-5 items-center justify-center">
+                              <NoteIcon />
+                            </span>
+                            <span>Notas</span>
+                          </div>
+                          <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                            {reservation.notes?.trim() || 'Sin notas'}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    <span className="flex h-5 w-5 items-center justify-center">
-                      <NoteIcon />
-                    </span>
-                    <span>Notas</span>
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+                  <div className="grid gap-8 lg:grid-cols-3 lg:gap-12">
+                    <div className="space-y-5">
+                      <ReservationDetailField
+                        href={requestDetailHref}
+                        label="Producto"
+                        value={reservation.requestProjectTitle || 'Sin producto asociado'}
+                      />
+                      <ReservationDetailField
+                        label="Productora"
+                        value={reservation.requestProductionCompany}
+                      />
+                    </div>
+
+                    <div className="border-t border-slate-200 pt-6 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+                      <div className="grid gap-y-5">
+                        <IconDetailRow icon={<UserIcon />} value={reservation.requestRequesterFullName} />
+                        <IconDetailRow icon={<MailIcon />} value={reservation.requestRequesterEmail} />
+                        <IconDetailRow icon={<PhoneIcon />} value={reservation.requestRequesterPhone} />
+                      </div>
+                    </div>
+
+                    <div className="border-t border-slate-200 pt-6 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+                      {isSameCalendarDay(reservation.startsAt, reservation.endsAt) ? (
+                        <IconDetailRow
+                          icon={<CalendarIcon />}
+                          value={formatReservationDateLabel(reservation.startsAt)}
+                          secondaryValue={`${formatTime(reservation.startsAt)} → ${formatTime(reservation.endsAt)}`}
+                        />
+                      ) : (
+                        <div className="space-y-4">
+                          <IconDetailRow
+                            icon={<CalendarIcon />}
+                            value={formatReservationDateLabel(reservation.startsAt)}
+                            secondaryValue={formatTime(reservation.startsAt)}
+                          />
+                          <IconDetailRow
+                            icon={<CalendarIcon />}
+                            value={formatReservationDateLabel(reservation.endsAt)}
+                            secondaryValue={formatTime(reservation.endsAt)}
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
-                    {reservation.notes?.trim() || 'Sin notas'}
-                  </p>
                 </div>
               </div>
             </div>

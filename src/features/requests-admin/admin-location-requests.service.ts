@@ -3,8 +3,15 @@ import type {
   AdminLocationRequest,
   AdminLocationRequestDetail,
   AdminRequestLocation,
+  AdminLocationRequestVersion,
+  CreateAdminManualRequestInput,
   LocationRequestStatus,
+  RequestProjectLocationStatus,
 } from './admin-location-requests.types'
+import {
+  buildRequestProjectMessageWithContactMetadata,
+  parseRequestProjectMessageWithContactMetadata,
+} from './request-project-contact'
 
 type NameRelation =
   | {
@@ -37,42 +44,61 @@ type OwnerRelation =
     }[]
   | null
 
-type RequestProjectLocationItem = {
+type CurrentLocationRow = {
   id: string
+  title: string | null
+  location_code?: string | null
+  location_images?: LocationImageRelation
+  categories?: NameRelation
+  departments?: NameRelation
+  zones?: NameRelation
+  owners?: OwnerRelation
+}
+
+type RequestProjectLocationLegacyRow = {
+  id: string
+  request_project_id: string
   location_id: string
+  status: string | null
+  location_code_snapshot: string | null
+  location_title_snapshot: string | null
   reservations?:
     | {
         id: string
+        starts_at: string | null
+        ends_at: string | null
         status: string | null
-      }[]
-    | null
-  locations:
-    | {
-        id: string
-        title: string | null
-        location_code?: string | null
-        location_images?: LocationImageRelation
-        categories?: NameRelation
-        departments?: NameRelation
-        zones?: NameRelation
-        owners?: OwnerRelation
-      }
-    | {
-        id: string
-        title: string | null
-        location_code?: string | null
-        location_images?: LocationImageRelation
-        categories?: NameRelation
-        departments?: NameRelation
-        zones?: NameRelation
-        owners?: OwnerRelation
       }[]
     | null
 }
 
-type RequestProjectLocationRelation =
-  | RequestProjectLocationItem[]
-  | null
+type ReservationByRequestProjectLocationRow = {
+  id: string
+  request_project_location_id: string | null
+  starts_at: string | null
+  ends_at: string | null
+  status: string | null
+}
+
+type RequestProjectVersionRow = {
+  id: string
+  request_project_id: string
+  version_number: number | null
+  created_at?: string | null
+  snapshot_payload: unknown
+  official_pdf_bucket?: string | null
+  official_pdf_path?: string | null
+  official_pdf_file_name?: string | null
+  official_pdf_generated_at?: string | null
+  official_pdf_uploaded_at?: string | null
+  official_pdf_size_bytes?: number | null
+}
+
+type RequestProjectVersionLocationStatusRow = {
+  request_project_version_id: string
+  location_id: string
+  status: string | null
+}
 
 type RequestProjectRow = {
   id: string
@@ -80,7 +106,7 @@ type RequestProjectRow = {
   title: string | null
   production_company?: string | null
   message: string | null
-  status: LocationRequestStatus
+  status: LocationRequestStatus | 'draft'
   created_at: string
   submitted_at?: string | null
   updated_at: string | null
@@ -90,7 +116,7 @@ type RequestProjectRow = {
   official_pdf_generated_at?: string | null
   official_pdf_uploaded_at?: string | null
   official_pdf_size_bytes?: number | null
-  request_project_locations: RequestProjectLocationRelation
+  admin_active_version_id?: string | null
   [key: string]: unknown
 }
 
@@ -100,6 +126,12 @@ type ProfileRow = {
   email: string | null
   company_name: string | null
   phone: string | null
+}
+
+type ManualRequestLocationRow = {
+  id: string
+  title: string | null
+  location_code?: string | null
 }
 
 function getOptionalStringValue(row: RequestProjectRow, keys: string[]) {
@@ -161,25 +193,63 @@ function getLegacyCompanyNameFromMessage(message: string | null | undefined) {
 }
 
 function getRequestEmail(row: RequestProjectRow) {
-  return getOptionalStringValue(row, [
+  const explicitValue = getOptionalStringValue(row, [
     'email',
     'requester_email',
     'contact_email',
     'applicant_email',
     'user_email',
   ])
-}
 
-function getOptionalNumberValue(row: RequestProjectRow, keys: string[]) {
-  for (const key of keys) {
-    const value = row[key]
-
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value
-    }
+  if (explicitValue) {
+    return explicitValue
   }
 
-  return null
+  return parseRequestProjectMessageWithContactMetadata(row.message).contactEmail
+}
+
+function getRequestPhone(row: RequestProjectRow) {
+  const explicitValue = getOptionalStringValue(row, [
+    'phone',
+    'contact_phone',
+    'requester_phone',
+    'applicant_phone',
+    'user_phone',
+  ])
+
+  if (explicitValue) {
+    return explicitValue
+  }
+
+  return parseRequestProjectMessageWithContactMetadata(row.message).contactPhone
+}
+
+function getRequestFullName(row: RequestProjectRow) {
+  const explicitValue = getOptionalStringValue(row, [
+    'full_name',
+    'contact_name',
+    'requester_name',
+    'applicant_name',
+    'user_name',
+  ])
+
+  if (explicitValue) {
+    return explicitValue
+  }
+
+  return parseRequestProjectMessageWithContactMetadata(row.message).contactName
+}
+
+function normalizeNullableString(value: string | null | undefined) {
+  const normalizedValue = value?.trim()
+
+  return normalizedValue && normalizedValue.length > 0 ? normalizedValue : null
+}
+
+function normalizeNullableDate(value: string | null | undefined) {
+  const normalizedValue = value?.trim()
+
+  return normalizedValue && normalizedValue.length > 0 ? normalizedValue : null
 }
 
 function getRelationName(relation: NameRelation) {
@@ -192,41 +262,6 @@ function getRelationName(relation: NameRelation) {
   }
 
   return relation.name
-}
-
-function getLocationRelation(
-  relation:
-    | {
-        id: string
-        title: string | null
-        location_code?: string | null
-        location_images?: LocationImageRelation
-        categories?: NameRelation
-        departments?: NameRelation
-        zones?: NameRelation
-        owners?: OwnerRelation
-      }
-    | {
-        id: string
-        title: string | null
-        location_code?: string | null
-        location_images?: LocationImageRelation
-        categories?: NameRelation
-        departments?: NameRelation
-        zones?: NameRelation
-        owners?: OwnerRelation
-      }[]
-    | null,
-) {
-  if (!relation) {
-    return null
-  }
-
-  if (Array.isArray(relation)) {
-    return relation[0] ?? null
-  }
-
-  return relation
 }
 
 function getOwnerRelation(relation: OwnerRelation) {
@@ -247,41 +282,357 @@ function getCoverImageUrl(images: LocationImageRelation) {
   return coverImage?.url ?? null
 }
 
-function getLocationNames(relation: RequestProjectLocationRelation): string[] {
-  if (!relation || relation.length === 0) {
+function normalizeRequestProjectLocationStatus(
+  value: string | null | undefined,
+): RequestProjectLocationStatus {
+  return value === 'confirmed' || value === 'cancelled' ? value : 'pending'
+}
+
+function getLocationNamesFromRequestProjectLocations(
+  locations: Array<Pick<RequestProjectLocationLegacyRow, 'location_title_snapshot'>>,
+): string[] {
+  if (locations.length === 0) {
     return []
   }
 
-  const names = relation
-    .map((item) => getLocationRelation(item.locations)?.title?.trim() || null)
+  const names = locations
+    .map((location) => location.location_title_snapshot?.trim() || null)
     .filter((value): value is string => Boolean(value))
 
   return Array.from(new Set(names))
 }
 
-function mapLocationItemToDetail(item: RequestProjectLocationItem): AdminRequestLocation | null {
-  const location = getLocationRelation(item.locations)
-  const linkedReservation = item.reservations?.[0] ?? null
+function getUniqueValues(values: Array<string | null | undefined>) {
+  return Array.from(
+    new Set(
+      values.filter((value): value is string => typeof value === 'string' && value.trim().length > 0),
+    ),
+  )
+}
 
-  if (!location) {
+async function getVersionsByRequestId(
+  requestId: string,
+): Promise<RequestProjectVersionRow[]> {
+  if (!requestId) {
+    return []
+  }
+
+  const supabase = getSupabaseClient()
+  const { data, error } = await supabase
+    .from('request_project_versions')
+    .select('*')
+    .eq('request_project_id', requestId)
+    .order('version_number', { ascending: false })
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return (data ?? []) as RequestProjectVersionRow[]
+}
+
+async function getLocationsById(locationIds: string[]) {
+  const normalizedLocationIds = getUniqueValues(locationIds)
+
+  if (normalizedLocationIds.length === 0) {
+    return new Map<string, CurrentLocationRow>()
+  }
+
+  const supabase = getSupabaseClient()
+  const { data, error } = await supabase
+    .from('locations')
+    .select(
+      `
+        id,
+        title,
+        location_code,
+        location_images(url, is_cover),
+        categories(name),
+        departments(name),
+        zones(name),
+        owners(id, full_name, phone, email)
+      `,
+    )
+    .in('id', normalizedLocationIds)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return new Map(
+    ((data ?? []) as CurrentLocationRow[]).map((location) => [location.id, location]),
+  )
+}
+
+async function getRequestProjectLocationsByRequestIds(requestIds: string[]) {
+  const normalizedRequestIds = getUniqueValues(requestIds)
+
+  if (normalizedRequestIds.length === 0) {
+    return new Map<string, RequestProjectLocationLegacyRow[]>()
+  }
+
+  const supabase = getSupabaseClient()
+  const { data, error } = await supabase
+    .from('request_project_locations')
+    .select(
+      `
+        id,
+        request_project_id,
+        location_id,
+        status,
+        location_code_snapshot,
+        location_title_snapshot
+      `,
+    )
+    .in('request_project_id', normalizedRequestIds)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const locationsByRequestId = new Map<string, RequestProjectLocationLegacyRow[]>()
+
+  for (const row of (data ?? []) as RequestProjectLocationLegacyRow[]) {
+    const currentRows = locationsByRequestId.get(row.request_project_id) ?? []
+    currentRows.push(row)
+    locationsByRequestId.set(row.request_project_id, currentRows)
+  }
+
+  return locationsByRequestId
+}
+
+async function getRequestProjectLocationsByRequestId(requestId: string) {
+  if (!requestId) {
+    return []
+  }
+
+  const supabase = getSupabaseClient()
+  const { data, error } = await supabase
+    .from('request_project_locations')
+    .select(
+      `
+        id,
+        request_project_id,
+        location_id,
+        status,
+        location_code_snapshot,
+        location_title_snapshot,
+        reservations(
+          id,
+          starts_at,
+          ends_at,
+          status
+        )
+      `,
+    )
+    .eq('request_project_id', requestId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return (data ?? []) as RequestProjectLocationLegacyRow[]
+}
+
+async function getReservationsByRequestProjectLocationId(
+  requestProjectLocationIds: string[],
+) {
+  const normalizedRequestProjectLocationIds = getUniqueValues(requestProjectLocationIds)
+
+  if (normalizedRequestProjectLocationIds.length === 0) {
+    return new Map<string, ReservationByRequestProjectLocationRow>()
+  }
+
+  const supabase = getSupabaseClient()
+  const { data, error } = await supabase
+    .from('reservations')
+    .select('id, request_project_location_id, starts_at, ends_at, status')
+    .in('request_project_location_id', normalizedRequestProjectLocationIds)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const reservationsByRequestProjectLocationId = new Map<
+    string,
+    ReservationByRequestProjectLocationRow
+  >()
+
+  for (const row of (data ?? []) as ReservationByRequestProjectLocationRow[]) {
+    const requestProjectLocationId = row.request_project_location_id?.trim() || ''
+
+    if (!requestProjectLocationId || reservationsByRequestProjectLocationId.has(requestProjectLocationId)) {
+      continue
+    }
+
+    reservationsByRequestProjectLocationId.set(requestProjectLocationId, row)
+  }
+
+  return reservationsByRequestProjectLocationId
+}
+
+async function getVersionLocationStatusesByLocationId(
+  requestProjectVersionId: string,
+  locationIds: string[],
+) {
+  const normalizedLocationIds = getUniqueValues(locationIds)
+
+  if (!requestProjectVersionId || normalizedLocationIds.length === 0) {
+    return new Map<string, RequestProjectLocationStatus>()
+  }
+
+  const supabase = getSupabaseClient()
+  const { data, error } = await supabase
+    .from('request_project_version_location_statuses')
+    .select('request_project_version_id, location_id, status')
+    .eq('request_project_version_id', requestProjectVersionId)
+    .in('location_id', normalizedLocationIds)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return new Map(
+    ((data ?? []) as RequestProjectVersionLocationStatusRow[]).map((row) => [
+      row.location_id,
+      normalizeRequestProjectLocationStatus(row.status),
+    ]),
+  )
+}
+
+function getRequestProjectOfficialPdf(
+  row:
+    | RequestProjectRow
+    | RequestProjectVersionRow
+    | null,
+) {
+  if (!row) {
+    return null
+  }
+
+  const bucket =
+    typeof row.official_pdf_bucket === 'string' && row.official_pdf_bucket.trim()
+      ? row.official_pdf_bucket.trim()
+      : null
+  const path =
+    typeof row.official_pdf_path === 'string' && row.official_pdf_path.trim()
+      ? row.official_pdf_path.trim()
+      : null
+
+  if (!bucket || !path) {
     return null
   }
 
   return {
-    id: location.id,
-    requestProjectLocationId: item.id,
-    reservationId: linkedReservation?.id ?? null,
-    reservationRecordStatus: linkedReservation?.status?.trim() || null,
-    title: location.title?.trim() || 'Locacion sin titulo',
-    locationCode: location.location_code?.trim() || null,
-    coverImageUrl: getCoverImageUrl(location.location_images ?? null),
-    categoryName: getRelationName(location.categories ?? null)?.trim() || null,
-    departmentName: getRelationName(location.departments ?? null)?.trim() || null,
-    zoneName: getRelationName(location.zones ?? null)?.trim() || null,
-    ownerId: getOwnerRelation(location.owners ?? null)?.id?.trim() || null,
-    ownerName: getOwnerRelation(location.owners ?? null)?.full_name?.trim() || null,
-    ownerPhone: getOwnerRelation(location.owners ?? null)?.phone?.trim() || null,
-    ownerEmail: getOwnerRelation(location.owners ?? null)?.email?.trim() || null,
+    bucket,
+    path,
+    fileName:
+      typeof row.official_pdf_file_name === 'string' && row.official_pdf_file_name.trim()
+        ? row.official_pdf_file_name.trim()
+        : null,
+    generatedAt:
+      typeof row.official_pdf_generated_at === 'string' && row.official_pdf_generated_at.trim()
+        ? row.official_pdf_generated_at.trim()
+        : null,
+    uploadedAt:
+      typeof row.official_pdf_uploaded_at === 'string' && row.official_pdf_uploaded_at.trim()
+        ? row.official_pdf_uploaded_at.trim()
+        : null,
+    sizeBytes:
+      typeof row.official_pdf_size_bytes === 'number' && Number.isFinite(row.official_pdf_size_bytes)
+        ? row.official_pdf_size_bytes
+        : null,
+  }
+}
+
+function hasAdminActiveVersionColumn(row: RequestProjectRow) {
+  return Object.prototype.hasOwnProperty.call(row, 'admin_active_version_id')
+}
+
+async function persistAdminActiveVersionId(input: {
+  requestId: string
+  requestProjectVersionId: string
+}) {
+  const supabase = getSupabaseClient()
+
+  const { error } = await supabase
+    .from('request_projects')
+    .update({
+      admin_active_version_id: input.requestProjectVersionId,
+    })
+    .eq('id', input.requestId)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+}
+
+function mapRequestProjectVersions(input: {
+  activeVersionId: string | null
+  latestVersionId: string | null
+  versions: RequestProjectVersionRow[]
+}): AdminLocationRequestVersion[] {
+  return input.versions.map((version) => ({
+    id: version.id,
+    versionNumber:
+      typeof version.version_number === 'number' && Number.isFinite(version.version_number)
+        ? version.version_number
+        : null,
+    createdAt:
+      typeof version.created_at === 'string' && version.created_at.trim()
+        ? version.created_at.trim()
+        : null,
+    isActive: version.id === input.activeVersionId,
+    isLatest: version.id === input.latestVersionId,
+  }))
+}
+
+function mapRequestProjectLocationToDetail(input: {
+  currentLocation: CurrentLocationRow | null
+  legacyLocation: RequestProjectLocationLegacyRow
+  linkedReservation: ReservationByRequestProjectLocationRow | null
+  requestProjectVersionId: string
+  statusByLocationId: Map<string, RequestProjectLocationStatus>
+}): AdminRequestLocation {
+  const {
+    currentLocation,
+    legacyLocation,
+    linkedReservation,
+    requestProjectVersionId,
+    statusByLocationId,
+  } = input
+  const fallbackLegacyReservation = legacyLocation.reservations?.[0] ?? null
+  const resolvedReservation = linkedReservation ?? fallbackLegacyReservation
+  const owner = getOwnerRelation(currentLocation?.owners ?? null)
+
+  return {
+    id: legacyLocation.location_id,
+    rowKey: legacyLocation.id,
+    requestProjectVersionId,
+    requestProjectLocationId: legacyLocation.id,
+    requestProjectLocationStatus:
+      statusByLocationId.get(legacyLocation.location_id) ??
+      normalizeRequestProjectLocationStatus(legacyLocation.status),
+    reservationId: resolvedReservation?.id ?? null,
+    reservationRecordStatus: resolvedReservation?.status?.trim() || null,
+    reservationStartsAt: resolvedReservation?.starts_at?.trim() || null,
+    reservationEndsAt: resolvedReservation?.ends_at?.trim() || null,
+    title:
+      currentLocation?.title?.trim() ||
+      legacyLocation.location_title_snapshot?.trim() ||
+      'Locacion sin titulo',
+    locationCode:
+      currentLocation?.location_code?.trim() ||
+      legacyLocation.location_code_snapshot?.trim() ||
+      null,
+    coverImageUrl: getCoverImageUrl(currentLocation?.location_images ?? null),
+    categoryName: getRelationName(currentLocation?.categories ?? null)?.trim() || null,
+    departmentName: getRelationName(currentLocation?.departments ?? null)?.trim() || null,
+    zoneName: getRelationName(currentLocation?.zones ?? null)?.trim() || null,
+    ownerId: owner?.id?.trim() || null,
+    ownerName: owner?.full_name?.trim() || null,
+    ownerPhone: owner?.phone?.trim() || null,
+    ownerEmail: owner?.email?.trim() || null,
   }
 }
 
@@ -290,23 +641,7 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
 
   const { data: requestsData, error: requestsError } = await supabase
     .from('request_projects')
-    .select(
-      `
-        *,
-        request_project_locations(
-          id,
-          location_id,
-          reservations(
-            id,
-            status
-          ),
-          locations(
-            id,
-            title
-          )
-        )
-      `,
-    )
+    .select('*')
     .neq('status', 'draft')
     .order('submitted_at', { ascending: false, nullsFirst: false })
 
@@ -316,6 +651,9 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
 
   const requestRows = (requestsData ?? []) as RequestProjectRow[]
   const uniqueUserIds = Array.from(new Set(requestRows.map((row) => row.user_id)))
+  const requestProjectLocationsByRequestId = await getRequestProjectLocationsByRequestIds(
+    requestRows.map((row) => row.id),
+  )
 
   let profilesByUserId = new Map<string, ProfileRow>()
 
@@ -337,35 +675,51 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
     )
   }
 
-  return requestRows.map((row) => {
-    const profile = profilesByUserId.get(row.user_id) ?? null
-    const locationNames = getLocationNames(row.request_project_locations)
-    const title = row.title?.trim()
+  return requestRows
+    .map((row) => {
+      const profile = profilesByUserId.get(row.user_id) ?? null
+      const requestProjectLocations = requestProjectLocationsByRequestId.get(row.id) ?? []
+      const locationNames = getLocationNamesFromRequestProjectLocations(requestProjectLocations)
+      const title = row.title?.trim()
+      const requestContact = parseRequestProjectMessageWithContactMetadata(row.message)
 
-    return {
-      id: row.id,
-      userId: row.user_id,
-      title:
-        title && title.length > 0
-          ? title
-          : locationNames[0] ?? 'Solicitud sin titulo',
-      message: row.message?.trim() || null,
-      status: row.status,
-      submittedAt:
-        getOptionalStringValue(row, [
-          'submitted_at',
-          'official_pdf_uploaded_at',
-          'updated_at',
-        ]) ?? row.created_at,
-      updatedAt: row.updated_at,
-      requesterFullName: profile?.full_name?.trim() || null,
-      requesterEmail: getRequestEmail(row),
-      requesterCompanyName: profile?.company_name?.trim() || null,
-      requesterPhone: profile?.phone?.trim() || null,
-      locationCount: locationNames.length,
-      locationNames,
-    }
-  })
+      return {
+        id: row.id,
+        userId: row.user_id,
+        title:
+          title && title.length > 0
+            ? title
+            : locationNames[0] ?? 'Solicitud sin titulo',
+        message: requestContact.notes,
+        status: row.status,
+        submittedAt:
+          getOptionalStringValue(row, [
+            'submitted_at',
+            'official_pdf_uploaded_at',
+            'updated_at',
+          ]) ?? row.created_at,
+        updatedAt: row.updated_at,
+        requesterFullName:
+          requestContact.contactName ||
+          getRequestFullName(row) ||
+          profile?.full_name?.trim() ||
+          null,
+        requesterEmail: getRequestEmail(row),
+        requesterCompanyName: profile?.company_name?.trim() || null,
+        requesterPhone:
+          requestContact.contactPhone ||
+          getRequestPhone(row) ||
+          profile?.phone?.trim() ||
+          null,
+        locationCount: requestProjectLocations.length,
+        locationNames,
+      }
+    })
+    .sort(
+      (leftRequest, rightRequest) =>
+        new Date(rightRequest.submittedAt).getTime() -
+        new Date(leftRequest.submittedAt).getTime(),
+    )
 }
 
 export async function getPendingRequestsCount(): Promise<number> {
@@ -374,7 +728,7 @@ export async function getPendingRequestsCount(): Promise<number> {
   const { count, error } = await supabase
     .from('request_projects')
     .select('id', { count: 'exact', head: true })
-    .eq('status', 'submitted')
+    .eq('status', 'pending')
 
   if (error) {
     throw new Error(error.message)
@@ -405,6 +759,184 @@ export async function updateAdminLocationRequestStatus(
   }
 
   return data.id
+}
+
+export async function createAdminManualLocationRequest(
+  input: CreateAdminManualRequestInput,
+): Promise<string> {
+  const title = input.title.trim()
+  const contactName = input.contactName.trim()
+  const contactEmail = input.contactEmail.trim()
+  const contactPhone = input.contactPhone.trim()
+  const locationIds = Array.from(
+    new Set(input.locationIds.map((locationId) => locationId.trim()).filter(Boolean)),
+  )
+
+  if (!input.userId.trim()) {
+    throw new Error('No encontramos el usuario autenticado para crear la solicitud.')
+  }
+
+  if (!title) {
+    throw new Error('Ingresá un producto para crear la solicitud.')
+  }
+
+  if (!contactName || !contactEmail || !contactPhone) {
+    throw new Error('Completá nombre, email y teléfono del contacto.')
+  }
+
+  if (locationIds.length === 0) {
+    throw new Error('Seleccioná al menos una locación.')
+  }
+
+  if (
+    input.tentativeStartDate &&
+    input.tentativeEndDate &&
+    input.tentativeEndDate < input.tentativeStartDate
+  ) {
+    throw new Error('La fecha tentativa de fin no puede ser anterior al inicio.')
+  }
+
+  const supabase = getSupabaseClient()
+  const message = buildRequestProjectMessageWithContactMetadata({
+    contactName,
+    contactEmail,
+    contactPhone,
+    notes: input.message,
+  })
+  const productionCompany = normalizeNullableString(input.productionCompany)
+  const tentativeStartDate = normalizeNullableDate(input.tentativeStartDate)
+  const tentativeEndDate = normalizeNullableDate(input.tentativeEndDate)
+  const now = new Date().toISOString()
+
+  const { data: locationRowsData, error: locationsError } = await supabase
+    .from('locations')
+    .select('id, title, location_code')
+    .in('id', locationIds)
+
+  if (locationsError) {
+    throw new Error(locationsError.message)
+  }
+
+  const locationRows = (locationRowsData ?? []) as ManualRequestLocationRow[]
+  const locationsById = new Map(locationRows.map((row) => [row.id, row]))
+
+  if (locationsById.size !== locationIds.length) {
+    throw new Error('No pudimos resolver una o más locaciones seleccionadas.')
+  }
+
+  const snapshotLocations = locationIds.map((locationId) => {
+    const location = locationsById.get(locationId)
+
+    return {
+      locationId,
+      title: location?.title?.trim() || null,
+    }
+  })
+
+  let createdRequestId: string | null = null
+
+  try {
+    const { data: requestProjectData, error: requestProjectError } = await supabase
+      .from('request_projects')
+      .insert({
+        user_id: input.userId.trim(),
+        title,
+        production_company: productionCompany,
+        message,
+        status: 'draft',
+        tentative_start_date: tentativeStartDate,
+        tentative_end_date: tentativeEndDate,
+        has_unsubmitted_changes: false,
+        latest_version_number: 1,
+      })
+      .select('id')
+      .single()
+
+    if (requestProjectError) {
+      throw new Error(requestProjectError.message)
+    }
+
+    if (!requestProjectData?.id) {
+      throw new Error('No recibimos la solicitud creada.')
+    }
+
+    createdRequestId = requestProjectData.id
+
+    const requestProjectLocationRows = locationIds.map((locationId, index) => {
+      const location = locationsById.get(locationId)
+
+      return {
+        request_project_id: createdRequestId,
+        location_id: locationId,
+        sort_order: index,
+        status: 'pending',
+        location_code_snapshot: location?.location_code?.trim() || null,
+        location_title_snapshot: location?.title?.trim() || null,
+      }
+    })
+
+    const { error: requestProjectLocationsError } = await supabase
+      .from('request_project_locations')
+      .insert(requestProjectLocationRows)
+
+    if (requestProjectLocationsError) {
+      throw new Error(requestProjectLocationsError.message)
+    }
+
+    const { data: requestProjectVersionData, error: requestProjectVersionError } = await supabase
+      .from('request_project_versions')
+      .insert({
+        request_project_id: createdRequestId,
+        version_number: 1,
+        status: 'submitted',
+        title,
+        production_company: productionCompany,
+        message,
+        tentative_start_date: tentativeStartDate,
+        tentative_end_date: tentativeEndDate,
+        snapshot_payload: {
+          locations: snapshotLocations,
+        },
+        created_by: input.userId.trim(),
+      })
+      .select('id')
+      .single()
+
+    if (requestProjectVersionError) {
+      throw new Error(requestProjectVersionError.message)
+    }
+
+    if (!requestProjectVersionData?.id) {
+      throw new Error('No recibimos la versión inicial de la solicitud.')
+    }
+
+    const { error: submitRequestProjectError } = await supabase
+      .from('request_projects')
+      .update({
+        status: 'pending',
+        submitted_at: now,
+        updated_at: now,
+        latest_version_number: 1,
+        admin_active_version_id: requestProjectVersionData.id,
+      })
+      .eq('id', createdRequestId)
+
+    if (submitRequestProjectError) {
+      throw new Error(submitRequestProjectError.message)
+    }
+
+    return createdRequestId
+  } catch (error) {
+    if (createdRequestId) {
+      await supabase
+        .from('request_projects')
+        .delete()
+        .eq('id', createdRequestId)
+        .eq('status', 'draft')
+    }
+
+    throw error
+  }
 }
 
 export async function createRequestProjectLocationReservation(input: {
@@ -442,6 +974,77 @@ export async function createRequestProjectLocationReservation(input: {
   return reservation.id
 }
 
+export async function updateRequestProjectLocationStatus(input: {
+  requestProjectVersionId: string
+  locationId: string
+  status: RequestProjectLocationStatus
+}): Promise<{
+  requestProjectVersionId: string
+  locationId: string
+  status: RequestProjectLocationStatus
+}> {
+  const supabase = getSupabaseClient()
+
+  const { data, error } = await supabase
+    .from('request_project_version_location_statuses')
+    .upsert(
+      {
+        request_project_version_id: input.requestProjectVersionId,
+        location_id: input.locationId,
+        status: input.status,
+      },
+      {
+        onConflict: 'request_project_version_id,location_id',
+      },
+    )
+    .select('request_project_version_id, location_id, status')
+    .single()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  if (
+    !data?.request_project_version_id ||
+    !data.location_id ||
+    typeof data.status !== 'string'
+  ) {
+    throw new Error('No recibimos confirmación al actualizar el estado de la locación.')
+  }
+
+  return {
+    requestProjectVersionId: data.request_project_version_id,
+    locationId: data.location_id,
+    status: normalizeRequestProjectLocationStatus(data.status),
+  }
+}
+
+export async function setAdminLocationRequestActiveVersion(input: {
+  requestId: string
+  requestProjectVersionId: string
+}): Promise<string> {
+  const supabase = getSupabaseClient()
+
+  const { data: versionData, error: versionError } = await supabase
+    .from('request_project_versions')
+    .select('id')
+    .eq('id', input.requestProjectVersionId)
+    .eq('request_project_id', input.requestId)
+    .maybeSingle()
+
+  if (versionError) {
+    throw new Error(versionError.message)
+  }
+
+  if (!versionData?.id) {
+    throw new Error('La versión seleccionada no pertenece a esta solicitud.')
+  }
+
+  await persistAdminActiveVersionId(input)
+
+  return versionData.id
+}
+
 export async function deleteAdminLocationRequest(
   requestId: string,
 ): Promise<string> {
@@ -459,6 +1062,60 @@ export async function deleteAdminLocationRequest(
   return requestId
 }
 
+export async function getActiveAdminLocationRequestReservations(
+  requestId: string,
+): Promise<{
+  count: number
+  reservationIds: string[]
+}> {
+  const supabase = getSupabaseClient()
+
+  const { data: requestProjectLocationsData, error: requestProjectLocationsError } = await supabase
+    .from('request_project_locations')
+    .select('id')
+    .eq('request_project_id', requestId)
+
+  if (requestProjectLocationsError) {
+    throw new Error(requestProjectLocationsError.message)
+  }
+
+  const requestProjectLocationIds = getUniqueValues(
+    ((requestProjectLocationsData ?? []) as Array<{ id: string | null }>).map((row) => row.id),
+  )
+
+  if (requestProjectLocationIds.length === 0) {
+    return {
+      count: 0,
+      reservationIds: [],
+    }
+  }
+
+  const { data: reservationsData, error: reservationsError } = await supabase
+    .from('reservations')
+    .select('id, status')
+    .in('request_project_location_id', requestProjectLocationIds)
+
+  if (reservationsError) {
+    throw new Error(reservationsError.message)
+  }
+
+  const reservationRows = (reservationsData ?? []) as Array<{
+    id: string | null
+    status: string | null
+  }>
+  const reservationIds = getUniqueValues(
+    reservationRows.map((row) => row.id),
+  )
+  const count = reservationRows.filter(
+    (row) => row.status === 'pending' || row.status === 'confirmed',
+  ).length
+
+  return {
+    count,
+    reservationIds,
+  }
+}
+
 export async function getAdminLocationRequestById(
   requestId: string,
 ): Promise<AdminLocationRequestDetail> {
@@ -466,29 +1123,7 @@ export async function getAdminLocationRequestById(
 
   const { data, error } = await supabase
     .from('request_projects')
-    .select(
-      `
-        *,
-        request_project_locations(
-          id,
-          location_id,
-          reservations(
-            id,
-            status
-          ),
-          locations(
-            id,
-            title,
-            location_code,
-            location_images(url, is_cover),
-            categories(name),
-            departments(name),
-            zones(name),
-            owners(id, full_name, phone, email)
-          )
-        )
-      `,
-    )
+    .select('*')
     .eq('id', requestId)
     .neq('status', 'draft')
     .maybeSingle()
@@ -519,12 +1154,56 @@ export async function getAdminLocationRequestById(
     profile = (profileData ?? null) as ProfileRow | null
   }
 
-  const locations =
-    row.request_project_locations
-      ?.map(mapLocationItemToDetail)
-      .filter((location): location is AdminRequestLocation => location !== null) ?? []
+  const versions = await getVersionsByRequestId(requestId)
+  const latestVersion = versions[0] ?? null
+  const persistedActiveVersionId =
+    typeof row.admin_active_version_id === 'string' && row.admin_active_version_id.trim()
+      ? row.admin_active_version_id.trim()
+      : null
+  const activeVersionFromPersistence =
+    persistedActiveVersionId
+      ? versions.find((version) => version.id === persistedActiveVersionId) ?? null
+      : null
+  const activeVersion = activeVersionFromPersistence ?? latestVersion
+
+  if (
+    latestVersion &&
+    hasAdminActiveVersionColumn(row) &&
+    (!persistedActiveVersionId || !activeVersionFromPersistence)
+  ) {
+    await persistAdminActiveVersionId({
+      requestId,
+      requestProjectVersionId: latestVersion.id,
+    })
+    row.admin_active_version_id = latestVersion.id
+  }
+
+  const requestProjectLocations = await getRequestProjectLocationsByRequestId(requestId)
+  const locationIds = requestProjectLocations.map((location) => location.location_id)
+  const [locationsById, statusesByLocationId] = await Promise.all([
+    getLocationsById(locationIds),
+    activeVersion
+      ? getVersionLocationStatusesByLocationId(activeVersion.id, locationIds)
+      : Promise.resolve(new Map<string, RequestProjectLocationStatus>()),
+  ])
+  const reservationsByRequestProjectLocationId =
+    await getReservationsByRequestProjectLocationId(
+      requestProjectLocations.map((location) => location.id),
+    )
+
+  const locations = requestProjectLocations.map((requestProjectLocation) =>
+    mapRequestProjectLocationToDetail({
+      currentLocation: locationsById.get(requestProjectLocation.location_id) ?? null,
+      legacyLocation: requestProjectLocation,
+      linkedReservation:
+        reservationsByRequestProjectLocationId.get(requestProjectLocation.id) ?? null,
+      requestProjectVersionId: activeVersion?.id ?? '',
+      statusByLocationId: statusesByLocationId,
+    }),
+  )
 
   const title = row.title?.trim()
+  const requestContact = parseRequestProjectMessageWithContactMetadata(row.message)
 
   return {
     id: row.id,
@@ -537,7 +1216,7 @@ export async function getAdminLocationRequestById(
       row.production_company?.trim() ||
       getLegacyCompanyNameFromMessage(row.message) ||
       null,
-    message: row.message?.trim() || null,
+    message: requestContact.notes,
     status: row.status,
     createdAt: row.created_at,
     submittedAt:
@@ -549,10 +1228,38 @@ export async function getAdminLocationRequestById(
     updatedAt: row.updated_at,
     requester: {
       userId: row.user_id,
-      fullName: profile?.full_name?.trim() || null,
-      email: profile?.email?.trim() || null,
-      phone: profile?.phone?.trim() || null,
+      fullName:
+        requestContact.contactName ||
+        getRequestFullName(row) ||
+        profile?.full_name?.trim() ||
+        null,
+      email:
+        requestContact.contactEmail ||
+        getRequestEmail(row) ||
+        profile?.email?.trim() ||
+        null,
+      phone:
+        requestContact.contactPhone ||
+        getRequestPhone(row) ||
+        profile?.phone?.trim() ||
+        null,
     },
+    activeVersionId: activeVersion?.id ?? null,
+    activeVersionNumber:
+      typeof activeVersion?.version_number === 'number' && Number.isFinite(activeVersion.version_number)
+        ? activeVersion.version_number
+        : null,
+    latestVersionId: latestVersion?.id ?? null,
+    latestVersionNumber:
+      typeof latestVersion?.version_number === 'number' && Number.isFinite(latestVersion.version_number)
+        ? latestVersion.version_number
+        : null,
+    hasNewerVersion:
+      typeof latestVersion?.version_number === 'number' &&
+      Number.isFinite(latestVersion.version_number) &&
+      typeof activeVersion?.version_number === 'number' &&
+      Number.isFinite(activeVersion.version_number) &&
+      latestVersion.version_number > activeVersion.version_number,
     tentativeStartDate: getOptionalStringValue(row, [
       'tentative_start_date',
       'tentative_from',
@@ -569,23 +1276,16 @@ export async function getAdminLocationRequestById(
       'fecha_tentativa_hasta',
       'fecha_hasta',
     ]),
-    officialPdf: (() => {
-      const bucket = getOptionalStringValue(row, ['official_pdf_bucket'])
-      const path = getOptionalStringValue(row, ['official_pdf_path'])
-
-      if (!bucket || !path) {
-        return null
-      }
-
-      return {
-        bucket,
-        path,
-        fileName: getOptionalStringValue(row, ['official_pdf_file_name']),
-        generatedAt: getOptionalStringValue(row, ['official_pdf_generated_at']),
-        uploadedAt: getOptionalStringValue(row, ['official_pdf_uploaded_at']),
-        sizeBytes: getOptionalNumberValue(row, ['official_pdf_size_bytes']),
-      }
-    })(),
+    officialPdf:
+      getRequestProjectOfficialPdf(activeVersion) ??
+      (activeVersion?.id && latestVersion?.id && activeVersion.id === latestVersion.id
+        ? getRequestProjectOfficialPdf(row)
+        : null),
+    versions: mapRequestProjectVersions({
+      activeVersionId: activeVersion?.id ?? null,
+      latestVersionId: latestVersion?.id ?? null,
+      versions,
+    }),
     locations,
   }
 }

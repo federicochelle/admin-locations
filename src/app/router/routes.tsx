@@ -23,10 +23,14 @@ import FeaturesPage from '../../features/features-admin/FeaturesPage'
 import FeatureCreatePage from '../../features/features-admin/FeatureCreatePage'
 import FeatureEditPage from '../../features/features-admin/FeatureEditPage'
 import SettingsPage from '../../features/settings/SettingsPage'
+import GoogleCalendarDetailPage from '../../features/settings/GoogleCalendarDetailPage'
+import SettingsConnectionDetailPage from '../../features/settings/SettingsConnectionDetailPage'
 import AdminLocationRequestsPage from '../../features/requests-admin/AdminLocationRequestsPage'
 import AdminRequestDetailPage from '../../features/requests-admin/AdminRequestDetailPage'
 import ProposalDetailPage from '../../features/proposals/ProposalDetailPage'
 import ProposalsPage from '../../features/proposals/ProposalsPage'
+import UsersPage from '../../features/users/UsersPage'
+import UserDetailPage from '../../features/users/UserDetailPage'
 
 export const router = createBrowserRouter([
   {
@@ -117,6 +121,14 @@ export const router = createBrowserRouter([
             element: <AdminRequestDetailPage />,
           },
           {
+            path: routePaths.users.slice(1),
+            element: <UsersPage />,
+          },
+          {
+            path: routePaths.userDetailPattern.slice(1),
+            element: <UserDetailPage />,
+          },
+          {
             path: routePaths.proposals.slice(1),
             element: <ProposalsPage />,
           },
@@ -139,6 +151,14 @@ export const router = createBrowserRouter([
           {
             path: routePaths.settings.slice(1),
             element: <SettingsPage />,
+          },
+          {
+            path: routePaths.settingsConnectionDetailPattern.slice(1),
+            element: <SettingsConnectionDetailPage />,
+          },
+          {
+            path: routePaths.googleCalendarSettingsDetail.slice(1),
+            element: <GoogleCalendarDetailPage />,
           },
         ],
       },

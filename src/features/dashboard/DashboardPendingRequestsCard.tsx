@@ -25,7 +25,7 @@ function getRequesterName(request: AdminLocationRequest) {
 
 function getPendingRequests(requests: AdminLocationRequest[]) {
   return requests
-    .filter((request) => request.status === 'submitted')
+    .filter((request) => request.status === 'pending')
     .sort(
       (leftRequest, rightRequest) =>
         new Date(rightRequest.submittedAt).getTime() -

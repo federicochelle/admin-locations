@@ -23,13 +23,84 @@ type LocationRelation =
       address_public: string | null
       location_code: string | null
       title: string | null
+      owners: OwnerRelation
     }
   | Array<{
       address_public: string | null
       location_code: string | null
       title: string | null
+      owners: OwnerRelation
     }>
   | null
+
+type OwnerRelation =
+  | {
+      full_name: string | null
+      phone: string | null
+    }
+  | Array<{
+      full_name: string | null
+      phone: string | null
+    }>
+  | null
+
+type RequestProjectRelation =
+  | {
+      production_company: string | null
+      title: string | null
+      user_id: string | null
+    }
+  | Array<{
+      production_company: string | null
+      title: string | null
+      user_id: string | null
+    }>
+  | null
+
+type RequestProjectLocationRelation =
+  | {
+      request_project_id: string | null
+      request_projects: RequestProjectRelation
+    }
+  | Array<{
+      request_project_id: string | null
+      request_projects: RequestProjectRelation
+    }>
+  | null
+
+type RequesterProfileRow = {
+  email: string | null
+  full_name: string | null
+  phone: string | null
+}
+
+type ReservationBaseRow = {
+  ends_at: string
+  google_event_id: string | null
+  id: string
+  location_id: string
+  request_project_location_id: string | null
+  starts_at: string
+  status: ReservationStatus
+  title: string
+}
+
+type LocationRow = {
+  address_public: string | null
+  location_code: string | null
+  owners: OwnerRelation
+  title: string | null
+}
+
+type RequestProjectLocationRow = {
+  request_project_id: string | null
+}
+
+type RequestProjectRow = {
+  production_company: string | null
+  title: string | null
+  user_id: string | null
+}
 
 type ReservationRow = {
   ends_at: string
@@ -37,6 +108,8 @@ type ReservationRow = {
   id: string
   location_id: string
   locations: LocationRelation
+  request_project_location_id: string | null
+  request_project_locations: RequestProjectLocationRelation
   starts_at: string
   status: ReservationStatus
   title: string
@@ -53,6 +126,71 @@ function getLocationRelation(relation: LocationRelation) {
   }
 
   return Array.isArray(relation) ? (relation[0] ?? null) : relation
+}
+
+function getOwnerRelation(relation: OwnerRelation) {
+  if (!relation) {
+    return null
+  }
+
+  return Array.isArray(relation) ? (relation[0] ?? null) : relation
+}
+
+function getRequestProjectLocationRelation(relation: RequestProjectLocationRelation) {
+  if (!relation) {
+    return null
+  }
+
+  return Array.isArray(relation) ? (relation[0] ?? null) : relation
+}
+
+function getRequestProjectRelation(relation: RequestProjectRelation) {
+  if (!relation) {
+    return null
+  }
+
+  return Array.isArray(relation) ? (relation[0] ?? null) : relation
+}
+
+function getLineValue(value: string | null | undefined) {
+  return value?.trim() || ''
+}
+
+function buildGoogleCalendarEventDescription(
+  reservation: ReservationRow,
+  requesterProfile: RequesterProfileRow | null,
+) {
+  const location = getLocationRelation(reservation.locations)
+  const owner = getOwnerRelation(location?.owners ?? null)
+  const requestProjectLocation = getRequestProjectLocationRelation(
+    reservation.request_project_locations,
+  )
+  const requestProject = getRequestProjectRelation(
+    requestProjectLocation?.request_projects ?? null,
+  )
+
+  return [
+    'LOCACIÓN',
+    '',
+    `Código: ${getLineValue(location?.location_code)}`,
+    `Nombre: ${getLineValue(location?.title)}`,
+    '',
+    'PROPIETARIO',
+    '',
+    getLineValue(owner?.full_name),
+    getLineValue(owner?.phone),
+    '',
+    'SOLICITUD',
+    '',
+    `Producto: ${getLineValue(requestProject?.title)}`,
+    `Productora: ${getLineValue(requestProject?.production_company)}`,
+    '',
+    'SOLICITANTE',
+    '',
+    getLineValue(requesterProfile?.full_name),
+    getLineValue(requesterProfile?.phone),
+    getLineValue(requesterProfile?.email),
+  ].join('\n')
 }
 
 function isUuid(value: string) {
@@ -76,34 +214,56 @@ function isRecoverableSyncError(error: unknown) {
   )
 }
 
-function buildGoogleCalendarEventDescription(
-  reservationId: string,
-  locationCode: string | null,
+async function loadRequesterProfile(
+  adminClient: ReturnType<typeof assertAdmin> extends Promise<infer T> ? T['adminClient'] : never,
+  requesterUserId: string | null,
 ) {
-  const lines = [
-    'Reserva interna',
-    `Reservation ID: ${reservationId}`,
-  ]
+  const normalizedUserId = requesterUserId?.trim() || ''
 
-  if (locationCode?.trim()) {
-    lines.push(`Location code: ${locationCode.trim()}`)
+  if (!normalizedUserId) {
+    return null
   }
 
-  return lines.join('\n')
+  const { data, error } = await adminClient
+    .from('profiles')
+    .select('full_name, phone, email')
+    .eq('user_id', normalizedUserId)
+    .maybeSingle()
+
+  if (error) {
+    logInternalError(
+      '[google-calendar-sync-reservation] requester_profile_select_failed',
+      'profiles.select_requester',
+      error,
+    )
+    throw new HttpError(500, 'Could not load the requester profile for Google Calendar sync.')
+  }
+
+  return (data ?? null) as RequesterProfileRow | null
 }
 
-function buildGoogleCalendarEventInput(reservation: ReservationRow) {
+async function buildGoogleCalendarEventInput(
+  adminClient: ReturnType<typeof assertAdmin> extends Promise<infer T> ? T['adminClient'] : never,
+  reservation: ReservationRow,
+) {
   const location = getLocationRelation(reservation.locations)
+  const requestProjectLocation = getRequestProjectLocationRelation(
+    reservation.request_project_locations,
+  )
+  const requestProject = getRequestProjectRelation(
+    requestProjectLocation?.request_projects ?? null,
+  )
+  const requesterProfile = await loadRequesterProfile(
+    adminClient,
+    requestProject?.user_id?.trim() || null,
+  )
 
   if (!location?.title?.trim()) {
     throw new HttpError(500, 'The reservation location is missing a public title.')
   }
 
   return {
-    description: buildGoogleCalendarEventDescription(
-      reservation.id,
-      location.location_code?.trim() || null,
-    ),
+    description: buildGoogleCalendarEventDescription(reservation, requesterProfile),
     endsAt: reservation.ends_at,
     location: location.address_public?.trim() || null,
     reservationId: reservation.id,
@@ -143,41 +303,145 @@ async function parseBody(request: Request) {
 }
 
 async function loadReservation(adminClient: ReturnType<typeof assertAdmin> extends Promise<infer T> ? T['adminClient'] : never, reservationId: string) {
-  const { data, error } = await adminClient
+  const { data: reservationData, error: reservationError } = await adminClient
     .from('reservations')
     .select(
       `
         id,
         location_id,
+        request_project_location_id,
         title,
         starts_at,
         ends_at,
         status,
-        google_event_id,
-        locations!inner(
-          title,
-          location_code,
-          address_public
-        )
+        google_event_id
       `,
     )
     .eq('id', reservationId)
     .maybeSingle()
 
-  if (error) {
+  if (reservationError) {
     logInternalError(
       '[google-calendar-sync-reservation] reservation_select_failed',
-      'reservations.select_for_sync',
-      error,
+      'reservations.select_base_for_sync',
+      reservationError,
     )
+    console.error('[google-calendar-sync-reservation] reservation_select_failed_raw', {
+      code: reservationError.code,
+      details: reservationError.details,
+      hint: reservationError.hint,
+      message: reservationError.message,
+    })
     throw new HttpError(500, 'Could not load the reservation for Google Calendar sync.')
   }
 
-  if (!data) {
+  if (!reservationData) {
     throw new HttpError(404, 'Reservation not found.')
   }
 
-  return data as ReservationRow
+  const reservation = reservationData as ReservationBaseRow
+  const { data: locationData, error: locationError } = await adminClient
+    .from('locations')
+    .select(
+      `
+        title,
+        location_code,
+        address_public,
+        owners(
+          full_name,
+          phone
+        )
+      `,
+    )
+    .eq('id', reservation.location_id)
+    .maybeSingle()
+
+  if (locationError) {
+    logInternalError(
+      '[google-calendar-sync-reservation] reservation_select_failed',
+      'locations.select_for_reservation_sync',
+      locationError,
+    )
+    console.error('[google-calendar-sync-reservation] location_select_failed_raw', {
+      code: locationError.code,
+      details: locationError.details,
+      hint: locationError.hint,
+      message: locationError.message,
+    })
+    throw new HttpError(500, 'Could not load the reservation for Google Calendar sync.')
+  }
+
+  const location = (locationData ?? null) as LocationRow | null
+
+  if (!location) {
+    throw new HttpError(500, 'Could not load the reservation location for Google Calendar sync.')
+  }
+
+  let requestProjectLocation: RequestProjectLocationRelation = null
+
+  if (reservation.request_project_location_id?.trim()) {
+    const { data: requestProjectLocationData, error: requestProjectLocationError } = await adminClient
+      .from('request_project_locations')
+      .select('request_project_id')
+      .eq('id', reservation.request_project_location_id.trim())
+      .maybeSingle()
+
+    if (requestProjectLocationError) {
+      logInternalError(
+        '[google-calendar-sync-reservation] reservation_select_failed',
+        'request_project_locations.select_for_reservation_sync',
+        requestProjectLocationError,
+      )
+      console.error('[google-calendar-sync-reservation] request_project_location_select_failed_raw', {
+        code: requestProjectLocationError.code,
+        details: requestProjectLocationError.details,
+        hint: requestProjectLocationError.hint,
+        message: requestProjectLocationError.message,
+      })
+      throw new HttpError(500, 'Could not load the reservation for Google Calendar sync.')
+    }
+
+    const requestProjectLocationRow =
+      (requestProjectLocationData ?? null) as RequestProjectLocationRow | null
+
+    let requestProject: RequestProjectRelation = null
+
+    if (requestProjectLocationRow?.request_project_id?.trim()) {
+      const { data: requestProjectData, error: requestProjectError } = await adminClient
+        .from('request_projects')
+        .select('title, production_company, user_id')
+        .eq('id', requestProjectLocationRow.request_project_id.trim())
+        .maybeSingle()
+
+      if (requestProjectError) {
+        logInternalError(
+          '[google-calendar-sync-reservation] reservation_select_failed',
+          'request_projects.select_for_reservation_sync',
+          requestProjectError,
+        )
+        console.error('[google-calendar-sync-reservation] request_project_select_failed_raw', {
+          code: requestProjectError.code,
+          details: requestProjectError.details,
+          hint: requestProjectError.hint,
+          message: requestProjectError.message,
+        })
+        throw new HttpError(500, 'Could not load the reservation for Google Calendar sync.')
+      }
+
+      requestProject = (requestProjectData ?? null) as RequestProjectRow | null
+    }
+
+    requestProjectLocation = {
+      request_project_id: requestProjectLocationRow?.request_project_id ?? null,
+      request_projects: requestProject,
+    }
+  }
+
+  return {
+    ...reservation,
+    locations: location,
+    request_project_locations: requestProjectLocation,
+  }
 }
 
 async function updateReservationSyncState(
@@ -246,7 +510,7 @@ async function syncConfirmedReservation(
 ) {
   const connection = await getActiveGoogleCalendarConnection(adminClient)
   const { accessToken } = await refreshGoogleCalendarAccessToken(connection.refreshToken)
-  const eventInput = buildGoogleCalendarEventInput(reservation)
+  const eventInput = await buildGoogleCalendarEventInput(adminClient, reservation)
   let resolvedEventId = reservation.google_event_id?.trim() || null
 
   if (resolvedEventId) {
@@ -290,31 +554,39 @@ async function syncInactiveReservation(
   reservation: ReservationRow,
 ) {
   const currentEventId = reservation.google_event_id?.trim() || null
-
-  if (!currentEventId) {
-    await updateReservationSyncState(adminClient, reservation.id, {
-      google_event_id: null,
-      google_sync_error: null,
-      google_sync_status: 'not_applicable',
-    })
-
-    return jsonResponse({
-      googleEventId: null,
-      googleSyncStatus: 'not_applicable',
-      reservationId: reservation.id,
-      status: 'not_applicable',
-    }, { status: 200 })
-  }
-
   const connection = await getActiveGoogleCalendarConnection(adminClient)
   const { accessToken } = await refreshGoogleCalendarAccessToken(connection.refreshToken)
-  const deletedCurrentEvent = await deleteGoogleCalendarEvent(accessToken, currentEventId)
+  let deletedCurrentEvent = false
+
+  if (currentEventId) {
+    deletedCurrentEvent = await deleteGoogleCalendarEvent(accessToken, currentEventId)
+  }
 
   if (!deletedCurrentEvent) {
-    const matchedEvent = await findSingleGoogleCalendarEvent(accessToken, reservation.id)
+    let matchedEvent: Awaited<ReturnType<typeof findSingleGoogleCalendarEvent>> | null = null
+
+    try {
+      matchedEvent = await findSingleGoogleCalendarEvent(accessToken, reservation.id)
+    } catch (error) {
+      logInternalError(
+        '[google-calendar-sync-reservation] inactive_event_lookup_failed',
+        'google_calendar.find_event_by_reservation_id',
+        error,
+      )
+      throw error
+    }
 
     if (matchedEvent) {
-      await deleteGoogleCalendarEvent(accessToken, matchedEvent.id)
+      try {
+        await deleteGoogleCalendarEvent(accessToken, matchedEvent.id)
+      } catch (error) {
+        logInternalError(
+          '[google-calendar-sync-reservation] inactive_event_delete_failed',
+          'google_calendar.delete_event_by_reservation_id',
+          error,
+        )
+        throw error
+      }
     }
   }
 

@@ -10,6 +10,7 @@ import { openOfficialRequestProjectPdf } from './pdf/request-selection-pdf.servi
 import { useAdminRequestDetail } from './useAdminRequestDetail'
 import {
   LOCATION_REQUEST_STATUS_OPTIONS,
+  type AdminLocationRequestVersion,
   type AdminLocationRequestDetail,
   type LocationRequestStatus,
 } from './admin-location-requests.types'
@@ -28,10 +29,12 @@ function fieldValueClassName() {
 
 function getRequestStatusSelectClassName(status: LocationRequestStatus) {
   switch (status) {
-    case 'submitted':
-      return 'border-amber-200 bg-amber-50 text-amber-700 focus:border-amber-300 focus:ring-amber-100'
-    case 'closed':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700 focus:border-emerald-300 focus:ring-emerald-100'
+    case 'pending':
+      return '!border-amber-300 !bg-amber-100 !text-amber-800 focus:!border-amber-400 focus:!ring-amber-200'
+    case 'confirmed':
+      return '!border-emerald-300 !bg-emerald-100 !text-emerald-800 focus:!border-emerald-400 focus:!ring-emerald-200'
+    case 'discarded':
+      return '!border-slate-300 !bg-slate-100 !text-slate-800 focus:!border-slate-400 focus:!ring-slate-200'
   }
 }
 
@@ -53,6 +56,36 @@ function formatDate(value: string) {
   }).format(new Date(value))
 }
 
+function buildDeleteConfirmationMessage(request: AdminLocationRequestDetail, activeReservationsCount: number) {
+  if (activeReservationsCount === 0) {
+    return '¿Estás seguro que querés eliminar?'
+  }
+
+  const activeReservationLines = request.locations
+    .filter(
+      (location) =>
+        location.reservationId &&
+        (location.reservationRecordStatus === 'pending' ||
+          location.reservationRecordStatus === 'confirmed'),
+    )
+    .map((location) => {
+      const reservationDate = location.reservationStartsAt
+        ? formatDisplayDate(location.reservationStartsAt)
+        : '-'
+
+      return `- ${location.title} · ${reservationDate}`
+    })
+
+  return [
+    `Esta solicitud tiene ${activeReservationsCount} reserva${activeReservationsCount === 1 ? '' : 's'} activa${activeReservationsCount === 1 ? '' : 's'}:`,
+    activeReservationLines.join('\n'),
+    '',
+    'Si continuás, se eliminarán del calendario.',
+  ]
+    .filter((line) => line.length > 0)
+    .join('\n')
+}
+
 function formatOptionalField(value: string | null | undefined) {
   const normalizedValue = value?.trim()
 
@@ -71,6 +104,171 @@ function formatDisplayDate(value: string | null | undefined) {
   }
 
   return value
+}
+
+function formatVersionNumber(value: number | null) {
+  return value === null ? '-' : String(value)
+}
+
+function formatVersionCreatedAt(value: string | null) {
+  if (!value) {
+    return '-'
+  }
+
+  const parsedDate = new Date(value)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('es-UY', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsedDate)
+}
+
+function HistoryIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-5 w-5"
+      aria-hidden="true"
+    >
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+      <path d="M12 7.5v5l3 1.8" />
+    </svg>
+  )
+}
+
+function VersionSelectorModal({
+  activeVersionId,
+  isSubmitting,
+  onClose,
+  onConfirm,
+  versions,
+}: {
+  activeVersionId: string | null
+  isSubmitting: boolean
+  onClose: () => void
+  onConfirm: (versionId: string) => Promise<void>
+  versions: AdminLocationRequestVersion[]
+}) {
+  const [selectedVersionId, setSelectedVersionId] = useState(activeVersionId ?? '')
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-sm">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="request-version-selector-title"
+        className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2
+              id="request-version-selector-title"
+              className="text-2xl font-semibold tracking-tight text-slate-950"
+            >
+              Historial de versiones
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            aria-label="Cerrar historial de versiones"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition hover:border-slate-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              className="h-5 w-5"
+              aria-hidden="true"
+            >
+              <path d="M6 6l12 12M18 6 6 18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="mt-6 max-h-[28rem] overflow-y-auto rounded-2xl border border-slate-200">
+          <ul className="divide-y divide-slate-200">
+            {versions.map((version) => {
+              const isSelected = selectedVersionId === version.id
+
+              return (
+                <li key={version.id}>
+                  <label
+                    className={[
+                      'flex cursor-pointer items-start gap-4 px-5 py-4 transition',
+                      isSelected ? 'bg-slate-50' : 'bg-white hover:bg-slate-50',
+                    ].join(' ')}
+                  >
+                    <input
+                      type="radio"
+                      name="request-version"
+                      value={version.id}
+                      checked={isSelected}
+                      onChange={(event) => setSelectedVersionId(event.target.value)}
+                      disabled={isSubmitting}
+                      className="mt-1 h-4 w-4 border-slate-300 text-slate-950 focus:ring-slate-300"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-slate-950">
+                          {`Versión ${formatVersionNumber(version.versionNumber)}`}
+                        </p>
+                        {version.isActive ? (
+                          <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">
+                            Actual
+                          </span>
+                        ) : null}
+                        {version.isLatest ? (
+                          <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+                            Más reciente
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 text-sm text-slate-600">
+                        {formatVersionCreatedAt(version.createdAt)}
+                      </p>
+                    </div>
+                  </label>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => void onConfirm(selectedVersionId)}
+            disabled={isSubmitting || !selectedVersionId || selectedVersionId === activeVersionId}
+            className="inline-flex items-center justify-center rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSubmitting ? 'Actualizando...' : 'Ver esta versión'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function RequestDetailField({
@@ -124,16 +322,22 @@ function RequestManagementCard({
   isDeleting,
   isGeneratingPdf,
   isSaving,
+  isSwitchingVersion,
   onDelete,
   onOpenPdf,
+  onOpenVersions,
+  pendingVersionCount,
   request,
   onSave,
 }: {
   isDeleting: boolean
   isGeneratingPdf: boolean
   isSaving: boolean
+  isSwitchingVersion: boolean
   onDelete: () => void
   onOpenPdf: () => void
+  onOpenVersions: () => void
+  pendingVersionCount: number
   request: AdminLocationRequestDetail
   onSave: (status: LocationRequestStatus) => Promise<void>
 }) {
@@ -159,10 +363,27 @@ function RequestManagementCard({
             </option>
           ))}
         </select>
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={onOpenVersions}
+            disabled={isSwitchingVersion || request.versions.length === 0}
+            aria-label="Abrir historial de versiones"
+            title="Abrir historial de versiones"
+            className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:border-slate-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <HistoryIcon />
+          </button>
+          {pendingVersionCount > 0 ? (
+            <span className="absolute -right-1.5 -top-1.5 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white shadow-sm">
+              {pendingVersionCount}
+            </span>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={onOpenPdf}
-          disabled={isGeneratingPdf || isDeleting}
+          disabled={isGeneratingPdf || isDeleting || !request.officialPdf}
           aria-label="Ver PDF"
           title="Ver PDF"
           className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:border-slate-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
@@ -217,12 +438,16 @@ function AdminRequestDetailPage() {
     request,
     isLoading,
     isSaving,
+    isSwitchingVersion,
     isDeleting,
     errorMessage,
     saveErrorMessage,
+    versionErrorMessage,
     deleteErrorMessage,
     reload,
     save,
+    selectVersion,
+    getDeleteImpact,
     remove,
   } = useAdminRequestDetail(id)
 
@@ -243,11 +468,19 @@ function AdminRequestDetailPage() {
 
   const isNotFound = errorMessage === 'REQUEST_NOT_FOUND'
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
+  const [isVersionModalOpen, setIsVersionModalOpen] = useState(false)
   const [pdfErrorMessage, setPdfErrorMessage] = useState<string | null>(null)
   const companyName = request?.productionCompany ?? null
   const tentativeStartDate = request?.tentativeStartDate ?? null
   const tentativeEndDate = request?.tentativeEndDate ?? null
   const displayMessage = request?.message ?? null
+  const pendingVersionCount =
+    request &&
+    request.latestVersionNumber !== null &&
+    request.activeVersionNumber !== null &&
+    request.latestVersionNumber > request.activeVersionNumber
+      ? request.latestVersionNumber - request.activeVersionNumber
+      : 0
 
   async function handleOpenPdf() {
     if (!request || isGeneratingPdf) {
@@ -274,7 +507,12 @@ function AdminRequestDetailPage() {
       return
     }
 
-    const confirmed = window.confirm('¿Estás seguro que querés eliminar?')
+    const activeReservationsCount = await getDeleteImpact()
+    const confirmationMessage = buildDeleteConfirmationMessage(
+      request,
+      activeReservationsCount,
+    )
+    const confirmed = window.confirm(confirmationMessage)
 
     if (!confirmed) {
       return
@@ -285,6 +523,15 @@ function AdminRequestDetailPage() {
     if (deleted) {
       navigate(routePaths.requests)
     }
+  }
+
+  async function handleSelectVersion(versionId: string) {
+    if (!versionId || isSwitchingVersion) {
+      return
+    }
+
+    await selectVersion(versionId)
+    setIsVersionModalOpen(false)
   }
 
   return (
@@ -327,6 +574,22 @@ function AdminRequestDetailPage() {
 
       {!isLoading && !errorMessage && request ? (
         <>
+          {isVersionModalOpen ? (
+            <VersionSelectorModal
+              activeVersionId={request.activeVersionId}
+              isSubmitting={isSwitchingVersion}
+              versions={request.versions}
+              onClose={() => {
+                if (isSwitchingVersion) {
+                  return
+                }
+
+                setIsVersionModalOpen(false)
+              }}
+              onConfirm={handleSelectVersion}
+            />
+          ) : null}
+
           {saveErrorMessage ? (
             <Card>
               <div>
@@ -335,6 +598,19 @@ function AdminRequestDetailPage() {
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
                   {saveErrorMessage}
+                </p>
+              </div>
+            </Card>
+          ) : null}
+
+          {versionErrorMessage ? (
+            <Card>
+              <div>
+                <h2 className="text-lg font-semibold text-slate-950">
+                  No pudimos cambiar la versión
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  {versionErrorMessage}
                 </p>
               </div>
             </Card>
@@ -385,8 +661,11 @@ function AdminRequestDetailPage() {
                     isDeleting={isDeleting}
                     isGeneratingPdf={isGeneratingPdf}
                     isSaving={isSaving}
+                    isSwitchingVersion={isSwitchingVersion}
+                    pendingVersionCount={pendingVersionCount}
                     onDelete={() => void handleDelete()}
                     onOpenPdf={() => void handleOpenPdf()}
+                    onOpenVersions={() => setIsVersionModalOpen(true)}
                     onSave={save}
                   />
                 </div>
@@ -438,9 +717,10 @@ function AdminRequestDetailPage() {
 
           <RequestIncludedLocationsTable
             locations={request.locations}
+            product={request.title}
+            productionCompany={request.productionCompany}
             tentativeStartDate={tentativeStartDate}
             tentativeEndDate={tentativeEndDate}
-            companyName={companyName}
             onReservationCreated={reload}
           />
         </>

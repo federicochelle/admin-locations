@@ -16,7 +16,11 @@ import {
   getOwnerWhatsappUrl,
 } from '../../lib/phone'
 import OwnerDetailsModal from '../owners/OwnerDetailsModal'
-import type { LocationListItem } from './locations.types'
+import type {
+  LocationListItem,
+  LocationSortDirection,
+  LocationSortKey,
+} from './locations.types'
 
 type LocationEditState = {
   source: 'category'
@@ -50,11 +54,17 @@ type LocationsTableProps = {
   getLocationEditState?: (
     location: LocationListItem,
   ) => LocationEditState | OwnerLocationEditState | undefined
+  currentPage?: number
+  pageSize?: number
+  searchTerm?: string
+  sortKey?: LocationSortKey
+  sortDirection?: LocationSortDirection
+  totalCount?: number
+  onPageChange?: (page: number) => void
+  onSearchTermChange?: (value: string) => void
+  onSortChange?: (key: LocationSortKey) => void
   onDelete: (location: LocationListItem) => Promise<void>
 }
-
-type LocationSortKey = 'departmentName' | 'locationCode'
-type LocationSortDirection = 'asc' | 'desc'
 
 function formatCellValue(value: string | null) {
   const hasValue = value && value.trim().length > 0
@@ -121,6 +131,25 @@ function PlusIcon() {
     >
       <path
         d="M12 5v14M5 12h14"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path
+        d={direction === 'left' ? 'm15 18-6-6 6-6' : 'm9 18 6-6-6-6'}
         strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -276,14 +305,35 @@ function LocationsTable({
   title = 'Listado de locaciones',
   visibleColumns,
   getLocationEditState,
+  currentPage,
+  pageSize,
+  searchTerm,
+  sortKey,
+  sortDirection,
+  totalCount,
+  onPageChange,
+  onSearchTermChange,
+  onSortChange,
   onDelete,
 }: LocationsTableProps) {
   const navigate = useNavigate()
-  const [searchTerm, setSearchTerm] = useState('')
-  const [sortKey, setSortKey] = useState<LocationSortKey>('locationCode')
-  const [sortDirection, setSortDirection] = useState<LocationSortDirection>('asc')
+  const [internalSearchTerm, setInternalSearchTerm] = useState('')
+  const [internalSortKey, setInternalSortKey] = useState<LocationSortKey>('locationCode')
+  const [internalSortDirection, setInternalSortDirection] = useState<LocationSortDirection>('asc')
   const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(null)
   const hasTitle = Boolean(title)
+  const resolvedSearchTerm = searchTerm ?? internalSearchTerm
+  const resolvedSortKey = sortKey ?? internalSortKey
+  const resolvedSortDirection = sortDirection ?? internalSortDirection
+  const resolvedCurrentPage = currentPage ?? 1
+  const resolvedPageSize = pageSize ?? Math.max(locations.length, 1)
+  const resolvedTotalCount = totalCount ?? locations.length
+  const isServerPaginated = typeof onPageChange === 'function'
+  const totalPages = Math.max(1, Math.ceil(resolvedTotalCount / resolvedPageSize))
+  const showingFrom = resolvedTotalCount === 0 ? 0 : (resolvedCurrentPage - 1) * resolvedPageSize + 1
+  const showingTo = resolvedTotalCount === 0
+    ? 0
+    : Math.min((resolvedCurrentPage - 1) * resolvedPageSize + locations.length, resolvedTotalCount)
   const resolvedVisibleColumns: Required<VisibleColumns> = {
     cover: visibleColumns?.cover ?? true,
     code: visibleColumns?.code ?? true,
@@ -292,8 +342,12 @@ function LocationsTable({
     phone: visibleColumns?.phone ?? true,
     actions: visibleColumns?.actions ?? true,
   }
-  const normalizedSearchTerm = searchTerm.trim()
+  const normalizedSearchTerm = resolvedSearchTerm.trim()
   const filteredLocations = useMemo(() => {
+    if (isServerPaginated) {
+      return locations
+    }
+
     const normalizedSearch = normalizeSearchValue(normalizedSearchTerm)
 
     if (normalizedSearch.length === 0) {
@@ -310,16 +364,20 @@ function LocationsTable({
         normalizeSearchValue(field).includes(normalizedSearch),
       )
     })
-  }, [locations, normalizedSearchTerm])
+  }, [isServerPaginated, locations, normalizedSearchTerm])
 
   const sortedLocations = useMemo(() => {
+    if (isServerPaginated) {
+      return locations
+    }
+
     return [...filteredLocations].sort((left, right) => {
       const leftValue =
-        sortKey === 'departmentName'
+        resolvedSortKey === 'departmentName'
           ? left.departmentName ?? ''
           : left.locationCode ?? ''
       const rightValue =
-        sortKey === 'departmentName'
+        resolvedSortKey === 'departmentName'
           ? right.departmentName ?? ''
           : right.locationCode ?? ''
 
@@ -328,20 +386,46 @@ function LocationsTable({
         numeric: true,
       })
 
-      return sortDirection === 'asc' ? comparison : -comparison
+      return resolvedSortDirection === 'asc' ? comparison : -comparison
     })
-  }, [filteredLocations, sortDirection, sortKey])
+  }, [filteredLocations, isServerPaginated, locations, resolvedSortDirection, resolvedSortKey])
+
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 5) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1)
+    }
+
+    const pages = new Set<number>([1, totalPages, resolvedCurrentPage - 1, resolvedCurrentPage, resolvedCurrentPage + 1])
+
+    return Array.from(pages)
+      .filter((pageNumber) => pageNumber >= 1 && pageNumber <= totalPages)
+      .sort((left, right) => left - right)
+  }, [resolvedCurrentPage, totalPages])
 
   function handleSort(nextSortKey: LocationSortKey) {
-    if (sortKey === nextSortKey) {
-      setSortDirection((currentDirection) =>
+    if (onSortChange) {
+      onSortChange(nextSortKey)
+      return
+    }
+
+    if (resolvedSortKey === nextSortKey) {
+      setInternalSortDirection((currentDirection) =>
         currentDirection === 'asc' ? 'desc' : 'asc',
       )
       return
     }
 
-    setSortKey(nextSortKey)
-    setSortDirection('asc')
+    setInternalSortKey(nextSortKey)
+    setInternalSortDirection('asc')
+  }
+
+  function handleSearchTermChange(value: string) {
+    if (onSearchTermChange) {
+      onSearchTermChange(value)
+      return
+    }
+
+    setInternalSearchTerm(value)
   }
 
   function isInteractiveEventTarget(target: EventTarget | null) {
@@ -369,7 +453,7 @@ function LocationsTable({
 
   const isEmptyState = sortedLocations.length === 0
   const emptyStateContent =
-    locations.length === 0
+    normalizedSearchTerm.length === 0 && resolvedTotalCount === 0
       ? {
           title: 'Todavia no hay locaciones cargadas.',
           description: 'Crea tu primera locacion para comenzar.',
@@ -405,7 +489,7 @@ function LocationsTable({
                   {title}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  {locations.length} {locations.length === 1 ? 'locación registrada' : 'locaciones registradas'}
+                  {resolvedTotalCount} {resolvedTotalCount === 1 ? 'locación registrada' : 'locaciones registradas'}
                 </p>
               </div>
             ) : null}
@@ -416,8 +500,8 @@ function LocationsTable({
               </span>
               <input
                 type="search"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
+                value={resolvedSearchTerm}
+                onChange={(event) => handleSearchTermChange(event.target.value)}
                 placeholder={searchPlaceholder}
                 className="w-full rounded-xl border border-slate-300 bg-white/95 py-2.5 pl-10 pr-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-500 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               />
@@ -463,12 +547,12 @@ function LocationsTable({
                     <span
                       className={[
                         'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
-                        sortKey === 'locationCode'
+                        resolvedSortKey === 'locationCode'
                           ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
                           : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
                       ].join(' ')}
                     >
-                      <SortIcon isActive={sortKey === 'locationCode'} />
+                      <SortIcon isActive={resolvedSortKey === 'locationCode'} />
                     </span>
                   </button>
                 </th>
@@ -484,12 +568,12 @@ function LocationsTable({
                     <span
                       className={[
                         'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
-                        sortKey === 'departmentName'
+                        resolvedSortKey === 'departmentName'
                           ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
                           : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
                       ].join(' ')}
                     >
-                      <SortIcon isActive={sortKey === 'departmentName'} />
+                      <SortIcon isActive={resolvedSortKey === 'departmentName'} />
                     </span>
                   </button>
                 </th>
@@ -635,6 +719,52 @@ function LocationsTable({
         </table>
         </div>
         )}
+
+        {!isEmptyState && isServerPaginated ? (
+          <div className="flex flex-col gap-4 border-t border-slate-200 px-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <p className="text-sm text-slate-600">
+              Mostrando {showingFrom}–{showingTo} de {resolvedTotalCount}
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={resolvedCurrentPage <= 1}
+                onClick={() => onPageChange?.(resolvedCurrentPage - 1)}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ChevronIcon direction="left" />
+                Anterior
+              </button>
+
+              {pageNumbers.map((pageNumber) => (
+                <button
+                  key={pageNumber}
+                  type="button"
+                  onClick={() => onPageChange?.(pageNumber)}
+                  className={[
+                    'inline-flex h-10 min-w-10 items-center justify-center rounded-lg border px-3 text-sm font-medium transition',
+                    pageNumber === resolvedCurrentPage
+                      ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#8a6c16]'
+                      : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50',
+                  ].join(' ')}
+                >
+                  {pageNumber}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                disabled={resolvedCurrentPage >= totalPages}
+                onClick={() => onPageChange?.(resolvedCurrentPage + 1)}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Siguiente
+                <ChevronIcon direction="right" />
+              </button>
+            </div>
+          </div>
+        ) : null}
       </Card>
     </>
   )

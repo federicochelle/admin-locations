@@ -46,6 +46,23 @@ function formatLocationOption(option: ReservationLocationOption) {
     : option.title
 }
 
+function findLocationOptionBySearchValue(
+  locationOptions: ReservationLocationOption[],
+  searchValue: string,
+) {
+  const normalizedSearchValue = searchValue.trim().toLocaleLowerCase()
+
+  if (!normalizedSearchValue) {
+    return null
+  }
+
+  return (
+    locationOptions.find(
+      (option) => formatLocationOption(option).trim().toLocaleLowerCase() === normalizedSearchValue,
+    ) ?? null
+  )
+}
+
 function ReservationForm({
   errorMessage,
   isSubmitting,
@@ -65,91 +82,116 @@ function ReservationForm({
       ) : null}
 
       <div className="grid gap-5 md:grid-cols-2">
-        <div className="md:col-span-2">
-          <FieldLabel htmlFor="reservation-location" required>
-            Locación
-          </FieldLabel>
-          <select
-            id="reservation-location"
-            value={values.locationId}
-            onChange={(event) => onChange('locationId', event.target.value)}
-            disabled={isSubmitting}
-            required
-            className={inputClassName()}
-          >
-            <option value="">Seleccioná una locación</option>
-            {locationOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {formatLocationOption(option)}
-              </option>
-            ))}
-          </select>
+        <div className="space-y-5">
+          <div>
+            <FieldLabel htmlFor="reservation-location" required>
+              Locación
+            </FieldLabel>
+            <input
+              id="reservation-location"
+              type="search"
+              list="reservation-location-options"
+              value={values.locationSearch}
+              onChange={(event) => {
+                const nextValue = event.target.value
+                const matchedOption = findLocationOptionBySearchValue(locationOptions, nextValue)
+
+                onChange('locationSearch', nextValue)
+                onChange('locationId', matchedOption?.id ?? '')
+              }}
+              disabled={isSubmitting}
+              required
+              className={inputClassName()}
+              placeholder="Buscá una locación"
+            />
+            <datalist id="reservation-location-options">
+              {locationOptions.map((option) => (
+                <option key={option.id} value={formatLocationOption(option)} />
+              ))}
+            </datalist>
+          </div>
+
+          <div>
+            <FieldLabel htmlFor="reservation-title" required>
+              Producto
+            </FieldLabel>
+            <input
+              id="reservation-title"
+              value={values.title}
+              onChange={(event) => onChange('title', event.target.value)}
+              disabled={isSubmitting}
+              required
+              className={inputClassName()}
+              placeholder="Ej. Campaña verano"
+            />
+          </div>
+
+          <div>
+            <FieldLabel htmlFor="reservation-production-company">
+              Productora
+            </FieldLabel>
+            <input
+              id="reservation-production-company"
+              value={values.productionCompany}
+              onChange={(event) => onChange('productionCompany', event.target.value)}
+              disabled={isSubmitting}
+              className={inputClassName()}
+              placeholder="Ej. Productora Sur"
+            />
+          </div>
         </div>
 
-        <div className="md:col-span-2">
-          <FieldLabel htmlFor="reservation-title" required>
-            Título
-          </FieldLabel>
-          <input
-            id="reservation-title"
-            value={values.title}
-            onChange={(event) => onChange('title', event.target.value)}
-            disabled={isSubmitting}
-            required
-            className={inputClassName()}
-            placeholder="Ej. Producción de campaña verano"
-          />
-        </div>
+        <div className="space-y-5">
+          <div>
+            <FieldLabel htmlFor="reservation-status" required>
+              Estado
+            </FieldLabel>
+            <select
+              id="reservation-status"
+              value={values.status}
+              onChange={(event) => onChange('status', event.target.value)}
+              disabled={isSubmitting}
+              required
+              className={inputClassName()}
+            >
+              {RESERVATION_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <div>
-          <FieldLabel htmlFor="reservation-starts-at" required>
-            Inicio
-          </FieldLabel>
-          <input
-            id="reservation-starts-at"
-            type="datetime-local"
-            value={values.startsAt}
-            onChange={(event) => onChange('startsAt', event.target.value)}
-            disabled={isSubmitting}
-            required
-            className={inputClassName()}
-          />
-        </div>
+          <div>
+            <FieldLabel htmlFor="reservation-starts-at" required>
+              Inicio
+            </FieldLabel>
+            <input
+              id="reservation-starts-at"
+              type="datetime-local"
+              value={values.startsAt}
+              onChange={(event) => onChange('startsAt', event.target.value)}
+              disabled={isSubmitting}
+              required
+              className={inputClassName()}
+            />
+          </div>
 
-        <div>
-          <FieldLabel htmlFor="reservation-ends-at" required>
-            Fin
-          </FieldLabel>
-          <input
-            id="reservation-ends-at"
-            type="datetime-local"
-            value={values.endsAt}
-            onChange={(event) => onChange('endsAt', event.target.value)}
-            min={values.startsAt || undefined}
-            disabled={isSubmitting}
-            required
-            className={inputClassName()}
-          />
-        </div>
-
-        <div className="md:col-span-2">
-          <FieldLabel htmlFor="reservation-status" required>
-            Estado
-          </FieldLabel>
-          <select
-            id="reservation-status"
-            value={values.status}
-            onChange={(event) => onChange('status', event.target.value)}
-            disabled={isSubmitting}
-            required
-            className={inputClassName()}
-          >
-            {RESERVATION_STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          <div>
+            <FieldLabel htmlFor="reservation-ends-at" required>
+              Fin
+            </FieldLabel>
+            <input
+              id="reservation-ends-at"
+              type="datetime-local"
+              value={values.endsAt}
+              onChange={(event) => onChange('endsAt', event.target.value)}
+              min={values.startsAt || undefined}
+              disabled={isSubmitting}
+              required
+              className={inputClassName()}
+            />
+          </div>
         </div>
 
         <div className="md:col-span-2">
