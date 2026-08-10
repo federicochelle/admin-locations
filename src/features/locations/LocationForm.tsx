@@ -52,7 +52,6 @@ import type {
 import { resolvePublicLocationCoordinates } from './location-public-coordinates'
 import type {
   LocationCreatePayload,
-  LocationFeatureOption,
   LocationFormOptions,
   LocationFormValues,
   LocationUpdatePayload,
@@ -74,7 +73,6 @@ import {
 } from './location-image-selection'
 import { LOCATION_TOP_STACK_PLACEHOLDER_CLASS } from './location-top-stack.styles'
 import { useLocationImages } from './useLocationImages'
-import type { GroupedSelectableOptions } from './components/location-analysis/SelectableOptionsSection'
 import { SUPPORTED_IMAGE_EXTENSIONS } from '../images/image-upload.constants'
 
 export type LocationFormMode = 'create' | 'edit' | 'view'
@@ -273,95 +271,6 @@ function getLocationAddressPickerValue(values: LocationFormValues) {
   return values.formatted_address ?? values.address_private
 }
 
-function formatFeatureGroupLabel(group: string | null) {
-  const normalizedGroup = group?.trim()
-
-  if (!normalizedGroup) {
-    return 'Otras características'
-  }
-
-  const featureGroupLabels: Record<string, string> = {
-    visual_style: 'Estilo visual',
-    environment: 'Entorno',
-    usage: 'Uso',
-    amenities: 'Comodidades',
-    lighting: 'Iluminación',
-    production_use: 'Uso para producción',
-    logistics: 'Logística',
-    interior_spaces: 'Espacios interiores',
-    special_spaces: 'Espacios especiales',
-  }
-
-  if (featureGroupLabels[normalizedGroup]) {
-    return featureGroupLabels[normalizedGroup]
-  }
-
-  return normalizedGroup
-    .split('_')
-    .map((segment) =>
-      segment.length > 0
-        ? `${segment.charAt(0).toUpperCase()}${segment.slice(1)}`
-        : segment,
-    )
-    .join(' ')
-}
-
-function getFeatureGroupSortOrder(group: string | null) {
-  const normalizedGroup = group?.trim()
-
-  const priorityByGroup: Record<string, number> = {
-    visual_style: 0,
-    environment: 1,
-    usage: 2,
-  }
-
-  if (!normalizedGroup) {
-    return Number.MAX_SAFE_INTEGER
-  }
-
-  return priorityByGroup[normalizedGroup] ?? Number.MAX_SAFE_INTEGER
-}
-
-function buildGroupedSelectableOptions<T extends { group: string | null }>(items: T[]) {
-  const groups = new Map<
-    string,
-    {
-      group: string | null
-      items: T[]
-    }
-  >()
-
-  for (const item of items) {
-    const key = item.group?.trim() || 'ungrouped'
-    const existingGroup = groups.get(key)
-
-    if (existingGroup) {
-      existingGroup.items.push(item)
-      continue
-    }
-
-    groups.set(key, {
-      group: item.group,
-      items: [item],
-    })
-  }
-
-  return Array.from(groups.values()).sort((leftGroup, rightGroup) => {
-    const orderDifference =
-      getFeatureGroupSortOrder(leftGroup.group) -
-      getFeatureGroupSortOrder(rightGroup.group)
-
-    if (orderDifference !== 0) {
-      return orderDifference
-    }
-
-    return formatFeatureGroupLabel(leftGroup.group).localeCompare(
-      formatFeatureGroupLabel(rightGroup.group),
-      'es',
-    )
-  })
-}
-
 function renderGoogleLocationFallback(inputClassNameValue: string) {
   return (
     <div className="space-y-2">
@@ -430,25 +339,6 @@ function ChevronDownIcon() {
     >
       <path
         d="m5 7.5 5 5 5-5"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function ChevronUpIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      className="h-6 w-6"
-    >
-      <path
-        d="m5 12.5 5-5 5 5"
         strokeWidth="2.4"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -1147,10 +1037,6 @@ function LocationForm({
       ),
     [options, values.selectedFeatureIds],
   )
-  const availableTags = useMemo(
-    () => (options?.tags ?? []).filter((tag) => tag.active === true),
-    [options],
-  )
   const suggestedFeatureNames = useMemo(
     () =>
       (options?.features ?? [])
@@ -1165,30 +1051,6 @@ function LocationForm({
         .map((tag) => tag.name),
     [analysisState.suggestedTags, options],
   )
-  const featureGroups = useMemo<GroupedSelectableOptions<LocationFeatureOption>[]>(() => {
-    if (!options) {
-      return []
-    }
-
-    const filteredFeatures = options.features.filter((feature) => {
-      if (feature.active !== true) {
-        return false
-      }
-
-      if (feature.type && feature.type !== 'boolean') {
-        return false
-      }
-
-      if (isReadOnly && !values.selectedFeatureIds.includes(feature.id)) {
-        return false
-      }
-
-      return true
-    })
-
-    return buildGroupedSelectableOptions<LocationFeatureOption>(filteredFeatures)
-  }, [isReadOnly, options, values.selectedFeatureIds])
-
   function handleOwnerCreateChange(
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
@@ -1993,48 +1855,6 @@ function markSaveProgressSuccess() {
       ...currentValues,
       [name]: checked,
     }))
-  }
-
-  function handleFeatureToggle(featureId: string) {
-    if (isReadOnly) {
-      return
-    }
-
-    setValues((currentValues) => {
-      const nextSelectedFeatureIds = new Set(currentValues.selectedFeatureIds)
-
-      if (nextSelectedFeatureIds.has(featureId)) {
-        nextSelectedFeatureIds.delete(featureId)
-      } else {
-        nextSelectedFeatureIds.add(featureId)
-      }
-
-      return {
-        ...currentValues,
-        selectedFeatureIds: Array.from(nextSelectedFeatureIds),
-      }
-    })
-  }
-
-  function handleTagToggle(tagId: string) {
-    if (isReadOnly) {
-      return
-    }
-
-    setValues((currentValues) => {
-      const nextTagIds = new Set(currentValues.selectedTagIds)
-
-      if (nextTagIds.has(tagId)) {
-        nextTagIds.delete(tagId)
-      } else {
-        nextTagIds.add(tagId)
-      }
-
-      return {
-        ...currentValues,
-        selectedTagIds: Array.from(nextTagIds),
-      }
-    })
   }
 
   function resetAnalysisState() {
