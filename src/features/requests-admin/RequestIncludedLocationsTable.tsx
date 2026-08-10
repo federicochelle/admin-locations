@@ -1,26 +1,28 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
   getLocationDetailPath,
-  getReservationDetailPath,
 } from '../../app/router/route-paths'
 import Card from '../../components/ui/Card'
 import EmptyState from '../../components/ui/EmptyState'
 import { getOwnerWhatsappDigits } from '../../lib/phone'
-import { confirmReservation } from '../reservations/reservations.service'
 import {
-  getReservationStatusBadgeClassName,
-  getReservationStatusLabel,
-  type ReservationStatus,
-} from '../reservations/reservations.types'
-import { createRequestProjectLocationReservation } from './admin-location-requests.service'
-import type { AdminRequestLocation } from './admin-location-requests.types'
+  deleteReservation,
+  saveConfirmedReservation,
+} from '../reservations/reservations.service'
+import {
+  updateRequestProjectLocationStatus,
+} from './admin-location-requests.service'
+import type {
+  AdminRequestLocation,
+  RequestProjectLocationStatus,
+} from './admin-location-requests.types'
 
 type RequestIncludedLocationsTableProps = {
   locations: AdminRequestLocation[]
+  product: string
+  productionCompany: string | null
   tentativeStartDate: string | null
   tentativeEndDate: string | null
-  companyName: string | null
   onReservationCreated?: () => Promise<void>
   title?: string
   description?: string
@@ -33,10 +35,23 @@ type ReserveFormValues = {
   startsAt: string
 }
 
+type PendingReservationSelection = {
+  location: AdminRequestLocation
+}
+
 type ToastState = {
   message: string
   tone: 'error' | 'success'
 } | null
+
+const REQUEST_PROJECT_LOCATION_STATUS_OPTIONS: Array<{
+  label: string
+  value: RequestProjectLocationStatus
+}> = [
+  { value: 'pending', label: 'Pendiente' },
+  { value: 'confirmed', label: 'Confirmada' },
+  { value: 'cancelled', label: 'Cancelada' },
+]
 
 function formatCellValue(value: string | null) {
   const hasValue = value && value.trim().length > 0
@@ -54,47 +69,55 @@ function getFormattedLocationCode(locationCode: string | null) {
   return normalizedCode ? normalizedCode.replaceAll('-', ' ') : null
 }
 
-function isReservationStatus(value: string | null | undefined): value is ReservationStatus {
-  return value === 'pending' || value === 'confirmed' || value === 'cancelled'
-}
-
-function getLocationRequestStatus(location: AdminRequestLocation): ReservationStatus | AdminRequestLocation['reservationStatus'] {
-  if (isReservationStatus(location.reservationRecordStatus)) {
-    return location.reservationRecordStatus
-  }
-
-  return location.reservationStatus ?? 'pending'
-}
-
-function getLocationStatusLabel(location: AdminRequestLocation) {
-  const status = getLocationRequestStatus(location)
-
-  return isReservationStatus(status)
-    ? getReservationStatusLabel(status)
-    : 'Pendiente'
-}
-
-function getLocationStatusBadgeClass(location: AdminRequestLocation) {
-  const status = getLocationRequestStatus(location)
-
-  return isReservationStatus(status)
-    ? getReservationStatusBadgeClassName(status)
-    : getReservationStatusBadgeClassName('pending')
-}
-
 function inputClassName() {
   return 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
+}
+
+function getRequestProjectLocationStatusSelectClassName(
+  status: RequestProjectLocationStatus,
+) {
+  switch (status) {
+    case 'pending':
+      return 'border-amber-200 bg-amber-50 text-amber-700 focus:border-amber-300 focus:ring-amber-100'
+    case 'confirmed':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700 focus:border-emerald-300 focus:ring-emerald-100'
+    case 'cancelled':
+      return 'border-slate-300 bg-slate-100 text-slate-600 focus:border-slate-400 focus:ring-slate-200'
+  }
 }
 
 function fieldLabelClassName() {
   return 'mb-2 block text-sm font-medium text-slate-700'
 }
 
-function getReserveInitialValues(): ReserveFormValues {
-  return {
-    startsAt: '',
-    endsAt: '',
+function formatDateTimeLocalValue(value: string | null) {
+  const normalizedValue = value?.trim() || ''
+
+  if (!normalizedValue) {
+    return ''
   }
+
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(normalizedValue)) {
+    return normalizedValue
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)) {
+    return `${normalizedValue}T00:00`
+  }
+
+  const parsedDate = new Date(normalizedValue)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return ''
+  }
+
+  const year = parsedDate.getFullYear()
+  const month = String(parsedDate.getMonth() + 1).padStart(2, '0')
+  const day = String(parsedDate.getDate()).padStart(2, '0')
+  const hours = String(parsedDate.getHours()).padStart(2, '0')
+  const minutes = String(parsedDate.getMinutes()).padStart(2, '0')
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`
 }
 
 function formatToIsoDateTime(value: string) {
@@ -127,28 +150,22 @@ function formatDisplayDate(value: string | null) {
 
 function buildSelectionMessage(input: {
   ownerName: string | null
-  locationTitle: string
   tentativeStartDate: string | null
   tentativeEndDate: string | null
-  companyName: string | null
 }) {
   const ownerName = input.ownerName?.trim() || 'dueno'
-  const companyName = input.companyName?.trim() || 'A confirmar'
   const formattedStartDate = formatDisplayDate(input.tentativeStartDate)
   const formattedEndDate = formatDisplayDate(input.tentativeEndDate)
 
   return [
     `Hola ${ownerName}.`,
     '',
-    `Tu locacion "${input.locationTitle}" fue preseleccionada para una produccion audiovisual.`,
+    'Queremos informarte que una de tus locaciones fue preseleccionada para una posible producción audiovisual.',
     '',
     'Fecha tentativa:',
     `${formattedStartDate} al ${formattedEndDate}`,
     '',
-    'Productora:',
-    companyName,
-    '',
-    'Nos estaremos comunicando contigo para confirmar disponibilidad.',
+    'Nos estaremos comunicando contigo para confirmar disponibilidad y brindarte más detalles.',
     '',
     'Muchas gracias.',
   ].join('\n')
@@ -157,10 +174,8 @@ function buildSelectionMessage(input: {
 function getWhatsappUrl(input: {
   ownerPhone: string | null
   ownerName: string | null
-  locationTitle: string
   tentativeStartDate: string | null
   tentativeEndDate: string | null
-  companyName: string | null
 }) {
   const normalizedPhone = getOwnerWhatsappDigits(input.ownerPhone)
 
@@ -170,10 +185,8 @@ function getWhatsappUrl(input: {
 
   const message = buildSelectionMessage({
     ownerName: input.ownerName,
-    locationTitle: input.locationTitle,
     tentativeStartDate: input.tentativeStartDate,
     tentativeEndDate: input.tentativeEndDate,
-    companyName: input.companyName,
   })
 
   return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`
@@ -187,129 +200,27 @@ function CoverPlaceholder() {
   )
 }
 
-function EyeIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      className="h-4 w-4"
-      aria-hidden="true"
-    >
-      <path
-        d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle
-        cx="12"
-        cy="12"
-        r="3"
-        strokeWidth="1.8"
-      />
-    </svg>
-  )
-}
-
-function PlusIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      className="h-4 w-4"
-      aria-hidden="true"
-    >
-      <path
-        d="M12 5v14M5 12h14"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function CheckIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      className="h-4 w-4"
-      aria-hidden="true"
-    >
-      <path
-        d="m5 12 4.2 4.2L19 6.5"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function ActionLink({
-  actionLabel,
-  href,
-  children,
-}: {
-  actionLabel: string
-  href: string | null
-  children: React.ReactNode
-}) {
-  const className =
-    'group relative inline-flex h-9 w-9 items-center justify-center rounded-lg border bg-white transition'
-
-  if (!href) {
-    return (
-      <span
-        aria-label={`${actionLabel} no disponible`}
-        className={`${className} cursor-not-allowed border-slate-200 text-slate-300 opacity-60`}
-      >
-        {children}
-      </span>
-    )
-  }
-
-  return (
-    <a
-      href={href}
-      target={href.startsWith('mailto:') ? undefined : '_blank'}
-      rel={href.startsWith('mailto:') ? undefined : 'noopener noreferrer'}
-      aria-label={actionLabel}
-      className={`${className} border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50`}
-    >
-      {children}
-      <span className="pointer-events-none absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-950 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-sm transition group-hover:opacity-100">
-        {actionLabel}
-      </span>
-    </a>
-  )
-}
-
 function ReserveLocationModal({
+  errorMessage,
+  initialValues,
   isSubmitting,
   location,
   onClose,
   onSubmit,
 }: {
+  errorMessage: string | null
+  initialValues: ReserveFormValues
   isSubmitting: boolean
   location: AdminRequestLocation
   onClose: () => void
-  onSubmit: (input: {
-    requestProjectLocationId: string
-    startsAt: string
-    endsAt: string
-  }) => Promise<void>
+  onSubmit: (input: ReserveFormValues) => Promise<void>
 }) {
-  const [values, setValues] = useState<ReserveFormValues>(getReserveInitialValues)
+  const [values, setValues] = useState<ReserveFormValues>(initialValues)
   const formattedLocationCode = getFormattedLocationCode(location.locationCode)
 
   useEffect(() => {
-    setValues(getReserveInitialValues())
-  }, [location.requestProjectLocationId])
+    setValues(initialValues)
+  }, [initialValues, location.rowKey])
 
   function handleChange(field: keyof ReserveFormValues, value: string) {
     setValues((currentValues) => ({
@@ -321,11 +232,7 @@ function ReserveLocationModal({
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    await onSubmit({
-      requestProjectLocationId: location.requestProjectLocationId,
-      startsAt: values.startsAt,
-      endsAt: values.endsAt,
-    })
+    await onSubmit(values)
   }
 
   return (
@@ -345,6 +252,12 @@ function ReserveLocationModal({
               {`Confirmar reserva: ${formattedLocationCode ?? 'Sin código'}`}
             </h2>
           </div>
+
+          {errorMessage ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {errorMessage}
+            </div>
+          ) : null}
 
           <div className="grid gap-5 sm:grid-cols-2">
             <div>
@@ -426,21 +339,27 @@ function Toast({
 
 function RequestIncludedLocationsTable({
   locations,
+  product,
+  productionCompany,
   tentativeStartDate,
   tentativeEndDate,
-  companyName,
   onReservationCreated = async () => {},
   title = 'Locaciones incluidas',
   description = `${locations.length} locaciones asociadas a esta solicitud.`,
   emptyTitle = 'No hay locaciones asociadas',
   emptyDescription = 'Esta solicitud no tiene locaciones vinculadas para mostrar en la ficha.',
 }: RequestIncludedLocationsTableProps) {
-  const navigate = useNavigate()
-  const [selectedLocationToReserve, setSelectedLocationToReserve] =
-    useState<AdminRequestLocation | null>(null)
+  const [displayLocations, setDisplayLocations] = useState(locations)
+  const [pendingReservationSelection, setPendingReservationSelection] =
+    useState<PendingReservationSelection | null>(null)
   const [isCreatingReservation, setIsCreatingReservation] = useState(false)
-  const [activeConfirmReservationId, setActiveConfirmReservationId] = useState<string | null>(null)
+  const [reservationFormError, setReservationFormError] = useState<string | null>(null)
+  const [activeStatusUpdateId, setActiveStatusUpdateId] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastState>(null)
+
+  useEffect(() => {
+    setDisplayLocations(locations)
+  }, [locations])
 
   useEffect(() => {
     if (!toast) {
@@ -456,72 +375,237 @@ function RequestIncludedLocationsTable({
     }
   }, [toast])
 
-  async function handleCreateReservation(input: {
-    requestProjectLocationId: string
-    startsAt: string
-    endsAt: string
-  }) {
-    try {
-      setIsCreatingReservation(true)
+  function getReserveModalInitialValues(location: AdminRequestLocation): ReserveFormValues {
+    if (location.reservationStartsAt || location.reservationEndsAt) {
+      return {
+        startsAt: formatDateTimeLocalValue(location.reservationStartsAt),
+        endsAt: formatDateTimeLocalValue(location.reservationEndsAt),
+      }
+    }
 
-      await createRequestProjectLocationReservation({
-        requestProjectLocationId: input.requestProjectLocationId,
-        startsAt: formatToIsoDateTime(input.startsAt),
-        endsAt: formatToIsoDateTime(input.endsAt),
-      })
-
-      await onReservationCreated()
-      setSelectedLocationToReserve(null)
-      setToast({
-        message: 'Reserva creada correctamente.',
-        tone: 'success',
-      })
-    } catch (error) {
-      setToast({
-        message:
-          error instanceof Error && error.message.trim().length > 0
-            ? error.message
-            : 'No pudimos crear la reserva.',
-        tone: 'error',
-      })
-    } finally {
-      setIsCreatingReservation(false)
+    return {
+      startsAt: formatDateTimeLocalValue(tentativeStartDate),
+      endsAt: formatDateTimeLocalValue(tentativeEndDate),
     }
   }
 
-  async function handleConfirmReservation(location: AdminRequestLocation) {
-    if (!location.reservationId || location.reservationRecordStatus !== 'pending') {
-      return
-    }
+  async function handleCreateReservation(input: ReserveFormValues) {
+    const currentSelection = pendingReservationSelection
 
-    const shouldConfirm = window.confirm(
-      `¿Querés confirmar la reserva vinculada a ${location.title}?`,
-    )
-
-    if (!shouldConfirm) {
+    if (!currentSelection) {
       return
     }
 
     try {
-      setActiveConfirmReservationId(location.reservationId)
+      setIsCreatingReservation(true)
+      setReservationFormError(null)
 
-      const result = await confirmReservation(location.reservationId)
+      const result = await saveConfirmedReservation({
+        reservationId: currentSelection.location.reservationId,
+        locationId: currentSelection.location.id,
+        product,
+        productionCompany,
+        startsAt: formatToIsoDateTime(input.startsAt),
+        endsAt: formatToIsoDateTime(input.endsAt),
+        requestProjectLocationId: currentSelection.location.requestProjectLocationId,
+      })
 
       await onReservationCreated()
+      setPendingReservationSelection(null)
       setToast({
         message: result.syncWarning ?? 'Reserva confirmada correctamente.',
         tone: result.syncWarning ? 'error' : 'success',
       })
     } catch (error) {
+      setReservationFormError(
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : 'No pudimos crear la reserva.',
+      )
+    } finally {
+      setIsCreatingReservation(false)
+    }
+  }
+
+  async function handleStatusChange(
+    location: AdminRequestLocation,
+    nextStatus: RequestProjectLocationStatus,
+  ) {
+    const previousStatus = location.requestProjectLocationStatus
+
+    if (previousStatus === nextStatus) {
+      return
+    }
+
+    if (nextStatus === 'confirmed') {
+      setReservationFormError(null)
+      setPendingReservationSelection({
+        location,
+      })
+      return
+    }
+
+    if (nextStatus === 'pending' && location.reservationId) {
+      setActiveStatusUpdateId(location.rowKey)
+      setDisplayLocations((currentLocations) =>
+        currentLocations.map((currentLocation) =>
+          currentLocation.rowKey === location.rowKey
+            ? {
+                ...currentLocation,
+                requestProjectLocationStatus: 'pending',
+                reservationRecordStatus: 'cancelled',
+              }
+            : currentLocation,
+        ),
+      )
+
+      try {
+        await deleteReservation(location.reservationId)
+        await updateRequestProjectLocationStatus({
+          requestProjectVersionId: location.requestProjectVersionId,
+          locationId: location.id,
+          status: 'pending',
+        })
+        await onReservationCreated()
+        setToast({
+          message: 'Estado actualizado correctamente.',
+          tone: 'success',
+        })
+      } catch (error) {
+        await onReservationCreated()
+        setDisplayLocations((currentLocations) =>
+          currentLocations.map((currentLocation) =>
+            currentLocation.rowKey === location.rowKey
+              ? {
+                  ...currentLocation,
+                  requestProjectLocationStatus: previousStatus,
+                  reservationRecordStatus: location.reservationRecordStatus,
+                }
+              : currentLocation,
+          ),
+        )
+        setToast({
+          message:
+            error instanceof Error && error.message.trim().length > 0
+              ? error.message
+              : 'No pudimos actualizar la reserva asociada a esta locación.',
+          tone: 'error',
+        })
+      } finally {
+        setActiveStatusUpdateId(null)
+      }
+      return
+    }
+
+    if (nextStatus === 'cancelled') {
+      if (location.reservationId) {
+        setActiveStatusUpdateId(location.rowKey)
+        setDisplayLocations((currentLocations) =>
+          currentLocations.map((currentLocation) =>
+            currentLocation.rowKey === location.rowKey
+              ? {
+                  ...currentLocation,
+                  requestProjectLocationStatus: 'cancelled',
+                  reservationRecordStatus: 'cancelled',
+                }
+              : currentLocation,
+          ),
+        )
+
+        try {
+          await deleteReservation(location.reservationId)
+          await updateRequestProjectLocationStatus({
+            requestProjectVersionId: location.requestProjectVersionId,
+            locationId: location.id,
+            status: 'cancelled',
+          })
+          await onReservationCreated()
+          setToast({
+            message: 'Reserva cancelada correctamente.',
+            tone: 'success',
+          })
+        } catch (error) {
+          setDisplayLocations((currentLocations) =>
+            currentLocations.map((currentLocation) =>
+              currentLocation.rowKey === location.rowKey
+                ? {
+                    ...currentLocation,
+                    requestProjectLocationStatus: previousStatus,
+                    reservationRecordStatus: location.reservationRecordStatus,
+                  }
+                : currentLocation,
+            ),
+          )
+          setToast({
+            message:
+              error instanceof Error && error.message.trim().length > 0
+                ? error.message
+                : 'No pudimos cancelar la reserva.',
+            tone: 'error',
+          })
+        } finally {
+          setActiveStatusUpdateId(null)
+        }
+        return
+      }
+    }
+
+    setActiveStatusUpdateId(location.rowKey)
+    setDisplayLocations((currentLocations) =>
+      currentLocations.map((currentLocation) =>
+        currentLocation.rowKey === location.rowKey
+          ? {
+              ...currentLocation,
+              requestProjectLocationStatus: nextStatus,
+            }
+          : currentLocation,
+      ),
+    )
+
+    try {
+      const updatedLocation = await updateRequestProjectLocationStatus(
+        {
+          requestProjectVersionId: location.requestProjectVersionId,
+          locationId: location.id,
+          status: nextStatus,
+        },
+      )
+
+      setDisplayLocations((currentLocations) =>
+        currentLocations.map((currentLocation) =>
+          currentLocation.requestProjectVersionId === updatedLocation.requestProjectVersionId &&
+          currentLocation.id === updatedLocation.locationId
+            ? {
+                ...currentLocation,
+                requestProjectLocationStatus: updatedLocation.status,
+              }
+            : currentLocation,
+        ),
+      )
+      setToast({
+        message: 'Estado actualizado correctamente.',
+        tone: 'success',
+      })
+    } catch (error) {
+      setDisplayLocations((currentLocations) =>
+        currentLocations.map((currentLocation) =>
+          currentLocation.rowKey === location.rowKey
+            ? {
+                ...currentLocation,
+                requestProjectLocationStatus: previousStatus,
+              }
+            : currentLocation,
+        ),
+      )
       setToast({
         message:
           error instanceof Error && error.message.trim().length > 0
             ? error.message
-            : 'No pudimos confirmar la reserva.',
+            : 'No pudimos actualizar el estado de la locación.',
         tone: 'error',
       })
     } finally {
-      setActiveConfirmReservationId(null)
+      setActiveStatusUpdateId(null)
     }
   }
 
@@ -529,16 +613,19 @@ function RequestIncludedLocationsTable({
     <>
       <Toast toast={toast} />
 
-      {selectedLocationToReserve ? (
+      {pendingReservationSelection ? (
         <ReserveLocationModal
+          errorMessage={reservationFormError}
+          initialValues={getReserveModalInitialValues(pendingReservationSelection.location)}
           isSubmitting={isCreatingReservation}
-          location={selectedLocationToReserve}
+          location={pendingReservationSelection.location}
           onClose={() => {
             if (isCreatingReservation) {
               return
             }
 
-            setSelectedLocationToReserve(null)
+            setPendingReservationSelection(null)
+            setReservationFormError(null)
           }}
           onSubmit={handleCreateReservation}
         />
@@ -556,7 +643,7 @@ function RequestIncludedLocationsTable({
           </div>
         </div>
 
-        {locations.length === 0 ? (
+        {displayLocations.length === 0 ? (
           <div className="p-4 sm:p-6">
             <EmptyState
               title={emptyTitle}
@@ -583,33 +670,24 @@ function RequestIncludedLocationsTable({
                   <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                     Estado
                   </th>
-                  <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
-                    Acciones
-                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 bg-transparent">
-                {locations.map((location) => {
+                {displayLocations.map((location) => {
                   const formattedLocationCode = getFormattedLocationCode(
                     location.locationCode,
                   )
-                  const hasLinkedReservation = Boolean(location.reservationId)
-                  const canConfirmReservation =
-                    hasLinkedReservation && location.reservationRecordStatus === 'pending'
-                  const isConfirmingReservation =
-                    Boolean(location.reservationId) &&
-                    activeConfirmReservationId === location.reservationId
+                  const isUpdatingStatus =
+                    activeStatusUpdateId === location.rowKey
                   const whatsappUrl = getWhatsappUrl({
                     ownerPhone: location.ownerPhone,
                     ownerName: location.ownerName,
-                    locationTitle: location.title,
                     tentativeStartDate,
                     tentativeEndDate,
-                    companyName,
                   })
                   return (
                     <tr
-                      key={location.requestProjectLocationId}
+                      key={location.rowKey}
                       className="align-top transition hover:bg-[rgba(184,146,74,0.10)]"
                     >
                       <td className="px-3 py-4 sm:px-6">
@@ -663,54 +741,32 @@ function RequestIncludedLocationsTable({
                       </td>
                       <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                         <div className="flex min-w-[140px] items-center gap-2">
-                          <span
+                          <select
+                            value={location.requestProjectLocationStatus}
+                            onChange={(event) =>
+                              void handleStatusChange(
+                                location,
+                                event.target.value as RequestProjectLocationStatus,
+                              )
+                            }
+                            disabled={isUpdatingStatus}
                             className={[
-                              'inline-flex rounded-full border px-3 py-1 text-xs font-semibold',
-                              getLocationStatusBadgeClass(location),
+                              'min-w-[140px] rounded-xl pl-3 pr-1 py-2 text-sm outline-none transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500',
+                              getRequestProjectLocationStatusSelectClassName(
+                                location.requestProjectLocationStatus,
+                              ),
                             ].join(' ')}
                           >
-                            {getLocationStatusLabel(location)}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
-                        <div className="flex min-w-[140px] items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (isConfirmingReservation) {
-                                return
-                              }
-
-                              if (!hasLinkedReservation) {
-                                setSelectedLocationToReserve(location)
-                                return
-                              }
-
-                              if (!location.reservationId) {
-                                return
-                              }
-
-                              navigate(getReservationDetailPath(location.reservationId))
-                            }}
-                            aria-label={hasLinkedReservation ? 'Ver reserva' : 'Reservar'}
-                            title={hasLinkedReservation ? 'Ver reserva' : 'Reservar'}
-                            disabled={isConfirmingReservation}
-                            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
-                          >
-                            {hasLinkedReservation ? <EyeIcon /> : <PlusIcon />}
-                          </button>
-                          {canConfirmReservation ? (
-                            <button
-                              type="button"
-                              onClick={() => void handleConfirmReservation(location)}
-                              disabled={isConfirmingReservation}
-                              aria-label={isConfirmingReservation ? 'Confirmando reserva' : 'Confirmar reserva'}
-                              title={isConfirmingReservation ? 'Confirmando reserva' : 'Confirmar reserva'}
-                              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              <CheckIcon />
-                            </button>
+                            {REQUEST_PROJECT_LOCATION_STATUS_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                          {isUpdatingStatus ? (
+                            <span className="text-xs font-medium text-slate-500">
+                              Guardando...
+                            </span>
                           ) : null}
                         </div>
                       </td>

@@ -1,6 +1,12 @@
 export type LocationRequestStatus =
-  | 'submitted'
-  | 'closed'
+  | 'pending'
+  | 'confirmed'
+  | 'discarded'
+
+export type RequestProjectLocationStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'cancelled'
 
 export type AdminLocationRequest = {
   id: string
@@ -20,9 +26,14 @@ export type AdminLocationRequest = {
 
 export type AdminRequestLocation = {
   id: string
-  requestProjectLocationId: string
+  rowKey: string
+  requestProjectVersionId: string
+  requestProjectLocationId: string | null
+  requestProjectLocationStatus: RequestProjectLocationStatus
   reservationId: string | null
   reservationRecordStatus: string | null
+  reservationStartsAt: string | null
+  reservationEndsAt: string | null
   title: string
   locationCode: string | null
   coverImageUrl: string | null
@@ -33,7 +44,33 @@ export type AdminRequestLocation = {
   ownerName: string | null
   ownerPhone: string | null
   ownerEmail: string | null
-  reservationStatus?: 'pending' | null
+}
+
+export type AdminLocationRequestVersion = {
+  id: string
+  versionNumber: number | null
+  createdAt: string | null
+  isActive: boolean
+  isLatest: boolean
+}
+
+export type AdminManualRequestLocationOption = {
+  id: string
+  title: string
+  locationCode: string | null
+}
+
+export type CreateAdminManualRequestInput = {
+  userId: string
+  title: string
+  productionCompany: string | null
+  contactName: string
+  contactEmail: string
+  contactPhone: string
+  tentativeStartDate: string | null
+  tentativeEndDate: string | null
+  message: string | null
+  locationIds: string[]
 }
 
 export type AdminLocationRequestDetail = {
@@ -54,6 +91,11 @@ export type AdminLocationRequestDetail = {
     email: string | null
     phone: string | null
   }
+  activeVersionId: string | null
+  activeVersionNumber: number | null
+  latestVersionId: string | null
+  latestVersionNumber: number | null
+  hasNewerVersion: boolean
   officialPdf: {
     bucket: string
     path: string
@@ -62,6 +104,7 @@ export type AdminLocationRequestDetail = {
     uploadedAt: string | null
     sizeBytes: number | null
   } | null
+  versions: AdminLocationRequestVersion[]
   locations: AdminRequestLocation[]
 }
 
@@ -69,6 +112,7 @@ export const LOCATION_REQUEST_STATUS_OPTIONS: Array<{
   label: string
   value: LocationRequestStatus
 }> = [
-  { value: 'submitted', label: 'Pendiente' },
-  { value: 'closed', label: 'Finalizada' },
+  { value: 'pending', label: 'Pendiente' },
+  { value: 'confirmed', label: 'Confirmada' },
+  { value: 'discarded', label: 'Descartada' },
 ]

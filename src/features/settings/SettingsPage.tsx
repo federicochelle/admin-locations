@@ -1,275 +1,76 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useMemo } from 'react'
+import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
+import EmptyState from '../../components/ui/EmptyState'
 import PageContainer from '../../components/ui/PageContainer'
-import {
-  getGoogleCalendarAuthorizationUrl,
-  getGoogleCalendarConnectionStatus,
-  type GoogleCalendarConnectionStatus,
-} from './google-calendar.service'
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat('es-UY', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value))
-}
-
-function GoogleCalendarIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      className="h-5 w-5"
-    >
-      <path
-        d="M7 3v3M17 3v3M4 9h16"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M5 5.5h14A1.5 1.5 0 0 1 20.5 7v11A2.5 2.5 0 0 1 18 20.5H6A2.5 2.5 0 0 1 3.5 18V7A1.5 1.5 0 0 1 5 5.5Z"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M8 13h3M8 16h8M14.5 12.5h.01"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
-}
-
-function ChevronRightIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      className="h-4 w-4"
-    >
-      <path
-        d="m9 6 6 6-6 6"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
+import SettingsConnectionsTable from './SettingsConnectionsTable'
+import { useSettingsConnections } from './useSettingsConnections'
 
 function SettingsPage() {
-  const [searchParams] = useSearchParams()
-  const [connection, setConnection] = useState<GoogleCalendarConnectionStatus | null>(
-    null,
+  const {
+    connections,
+    errorMessage,
+    isLoading,
+    retry,
+  } = useSettingsConnections()
+
+  const headerConfig = useMemo(
+    () => ({
+      breadcrumbItems: [{ label: 'Configuración' }],
+      title: 'Configuración',
+      description:
+        'Pantalla base para revisar el estado de las integraciones y conexiones de la plataforma.',
+    }),
+    [],
   )
-  const [isLoadingConnection, setIsLoadingConnection] = useState(true)
-  const [isConnecting, setIsConnecting] = useState(false)
-  const [connectionError, setConnectionError] = useState<string | null>(null)
 
-  const oauthFeedback = useMemo(() => {
-    const status = searchParams.get('googleCalendar')
-    const reason = searchParams.get('reason')
-
-    if (status === 'success') {
-      return {
-        kind: 'success' as const,
-        message: 'Google Calendar quedó conectado correctamente.',
-      }
-    }
-
-    if (status === 'error') {
-      if (reason === 'oauth_denied') {
-        return {
-          kind: 'error' as const,
-          message: 'La conexión con Google Calendar fue cancelada o rechazada.',
-        }
-      }
-
-      return {
-        kind: 'error' as const,
-        message: 'No pudimos completar la conexión con Google Calendar.',
-      }
-    }
-
-    return null
-  }, [searchParams])
-
-  useEffect(() => {
-    let isActive = true
-
-    void getGoogleCalendarConnectionStatus()
-      .then((nextConnection) => {
-        if (!isActive) {
-          return
-        }
-
-        setConnection(nextConnection)
-        setConnectionError(null)
-      })
-      .catch((error: unknown) => {
-        if (!isActive) {
-          return
-        }
-
-        setConnectionError(
-          error instanceof Error
-            ? error.message
-            : 'No pudimos cargar el estado de Google Calendar.',
-        )
-      })
-      .finally(() => {
-        if (!isActive) {
-          return
-        }
-
-        setIsLoadingConnection(false)
-      })
-
-    return () => {
-      isActive = false
-    }
-  }, [])
-
-  async function handleConnectGoogleCalendar() {
-    try {
-      setIsConnecting(true)
-      setConnectionError(null)
-
-      const authorizationUrl = await getGoogleCalendarAuthorizationUrl()
-      window.location.assign(authorizationUrl)
-    } catch (error) {
-      setConnectionError(
-        error instanceof Error
-          ? error.message
-          : 'No pudimos iniciar la conexión con Google Calendar.',
-      )
-      setIsConnecting(false)
-    }
-  }
+  useLayoutHeader(headerConfig)
 
   return (
     <PageContainer
       title="Configuración"
-      description="Área reservada para parámetros generales del panel y catálogos secundarios que necesiten administración."
+      description="Pantalla base para revisar el estado de las integraciones y conexiones de la plataforma."
       hideHeader
     >
-      {oauthFeedback ? (
-        <Card
-          className={
-            oauthFeedback.kind === 'success'
-              ? 'border-emerald-200 bg-emerald-50/90'
-              : 'border-red-200 bg-red-50/90'
-          }
-        >
-          <p
-            className={
-              oauthFeedback.kind === 'success'
-                ? 'text-sm font-medium text-emerald-700'
-                : 'text-sm font-medium text-red-700'
-            }
-          >
-            {oauthFeedback.message}
-          </p>
+      {isLoading ? (
+        <Card>
+          <div className="flex min-h-48 items-center justify-center">
+            <p className="text-sm text-slate-600">Cargando conexiones...</p>
+          </div>
         </Card>
       ) : null}
 
-      <Card>
-        <div className="space-y-8">
-          {connectionError ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {connectionError}
+      {!isLoading && errorMessage ? (
+        <Card>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950">
+                No pudimos cargar las conexiones
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                {errorMessage}
+              </p>
             </div>
-          ) : null}
-
-          <div className="space-y-3 border-t border-slate-200 pt-6">
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-              <div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex min-w-0 items-start gap-4">
-                  <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
-                    <GoogleCalendarIcon />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <h4 className="text-base font-semibold text-slate-950">
-                        Google Calendar
-                      </h4>
-                      <span
-                        className={[
-                          'inline-flex rounded-full border px-3 py-1 text-xs font-semibold',
-                          connection?.connected
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : 'border-slate-200 bg-slate-50 text-slate-600',
-                        ].join(' ')}
-                      >
-                        {isLoadingConnection
-                          ? 'Cargando...'
-                          : connection?.connected
-                            ? 'Conectado'
-                            : 'Pendiente'}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      Conectá una cuenta de Google para que el panel pueda operar
-                      la sincronización de reservas con calendario.
-                    </p>
-                    {connection?.connected ? (
-                      <dl className="mt-4 grid gap-4 md:grid-cols-3">
-                        <div>
-                          <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                            Cuenta
-                          </dt>
-                          <dd className="mt-1 text-sm font-medium text-slate-900">
-                            {connection.googleAccountEmail}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                            Conectado
-                          </dt>
-                          <dd className="mt-1 text-sm font-medium text-slate-900">
-                            {formatDateTime(connection.connectedAt)}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                            Actualizado
-                          </dt>
-                          <dd className="mt-1 text-sm font-medium text-slate-900">
-                            {formatDateTime(connection.updatedAt)}
-                          </dd>
-                        </div>
-                      </dl>
-                    ) : (
-                      <p className="mt-3 text-sm leading-6 text-slate-600">
-                        Todavía no hay ninguna cuenta conectada para este panel.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex shrink-0 items-center gap-3">
-                  <Button
-                    type="button"
-                    disabled={isLoadingConnection || isConnecting}
-                    onClick={() => void handleConnectGoogleCalendar()}
-                  >
-                    {isConnecting ? 'Abriendo Google...' : 'Conectar'}
-                  </Button>
-                  <span className="text-slate-400">
-                    <ChevronRightIcon />
-                  </span>
-                </div>
-              </div>
-            </div>
+            <Button variant="secondary" onClick={() => void retry()}>
+              Reintentar
+            </Button>
           </div>
-        </div>
-      </Card>
+        </Card>
+      ) : null}
+
+      {!isLoading && !errorMessage && connections.length === 0 ? (
+        <Card className="p-4 sm:p-6">
+          <EmptyState
+            title="Todavía no hay conexiones visibles"
+            description="Cuando existan integraciones disponibles para este panel, aparecerán acá."
+          />
+        </Card>
+      ) : null}
+
+      {!isLoading && !errorMessage && connections.length > 0 ? (
+        <SettingsConnectionsTable connections={connections} />
+      ) : null}
     </PageContainer>
   )
 }

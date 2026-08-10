@@ -48,6 +48,37 @@ function mapLocationOption(location: Awaited<ReturnType<typeof getLocations>>[nu
   }
 }
 
+function compareLocationOptions(
+  leftOption: ReservationLocationOption,
+  rightOption: ReservationLocationOption,
+) {
+  const leftCode = leftOption.locationCode?.trim() || ''
+  const rightCode = rightOption.locationCode?.trim() || ''
+
+  if (leftCode && rightCode) {
+    const codeComparison = leftCode.localeCompare(rightCode, 'es-UY', {
+      numeric: true,
+      sensitivity: 'base',
+    })
+
+    if (codeComparison !== 0) {
+      return codeComparison
+    }
+  }
+
+  if (leftCode && !rightCode) {
+    return -1
+  }
+
+  if (!leftCode && rightCode) {
+    return 1
+  }
+
+  return leftOption.title.localeCompare(rightOption.title, 'es-UY', {
+    sensitivity: 'base',
+  })
+}
+
 export function useReservations(): UseReservationsResult {
   const [reservations, setReservations] = useState<ReservationListItem[]>([])
   const [locationOptions, setLocationOptions] = useState<ReservationLocationOption[]>([])
@@ -69,7 +100,7 @@ export function useReservations(): UseReservationsResult {
       ])
 
       setReservations(nextReservations)
-      setLocationOptions(nextLocations.map(mapLocationOption))
+      setLocationOptions(nextLocations.map(mapLocationOption).sort(compareLocationOptions))
     } catch (error) {
       setErrorMessage(
         getErrorMessage(error, 'No pudimos cargar las reservas en este momento.'),
@@ -137,6 +168,7 @@ export function useReservations(): UseReservationsResult {
       await loadReservations()
       setActionSuccessMessage('Reserva eliminada correctamente.')
     } catch (error) {
+      await loadReservations()
       setActionErrorMessage(
         getErrorMessage(error, 'No pudimos eliminar la reserva.'),
       )
@@ -155,7 +187,7 @@ export function useReservations(): UseReservationsResult {
         }
 
         setReservations(nextReservations)
-        setLocationOptions(nextLocations.map(mapLocationOption))
+        setLocationOptions(nextLocations.map(mapLocationOption).sort(compareLocationOptions))
         setErrorMessage(null)
       })
       .catch((error: unknown) => {

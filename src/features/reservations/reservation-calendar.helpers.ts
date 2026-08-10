@@ -113,7 +113,10 @@ export function getReservationsForDay(
   reservations: ReservationListItem[],
   day: Date,
 ) {
-  return reservations.filter((reservation) => reservationOccursOnDay(reservation, day))
+  return reservations.filter(
+    (reservation) =>
+      reservation.status === 'confirmed' && reservationOccursOnDay(reservation, day),
+  )
 }
 
 function toDateTimeLocalValue(date: Date) {
