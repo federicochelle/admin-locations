@@ -4,7 +4,6 @@ import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import { routePaths } from '../../app/router/route-paths'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
-import EmptyState from '../../components/ui/EmptyState'
 import PageContainer from '../../components/ui/PageContainer'
 import useAuth from '../auth/useAuth'
 import LocationRequestsAdminTable from './LocationRequestsAdminTable'
@@ -95,24 +94,7 @@ function AdminLocationRequestsPage() {
         </Card>
       ) : null}
 
-      {!isLoading && !errorMessage && filteredRequests.length === 0 ? (
-        <Card className="p-4 sm:p-6">
-          <EmptyState
-            title={
-              requests.length === 0
-                ? 'Todavía no hay solicitudes'
-                : 'No hay solicitudes para este estado'
-            }
-            description={
-              requests.length === 0
-                ? 'Cuando los usuarios envíen solicitudes de proyectos, aparecerán acá.'
-                : 'Probá con otro estado para ver más resultados.'
-            }
-          />
-        </Card>
-      ) : null}
-
-      {!isLoading && !errorMessage && filteredRequests.length > 0 ? (
+      {!isLoading && !errorMessage ? (
         <LocationRequestsAdminTable
           requests={filteredRequests}
           totalCount={requests.length}

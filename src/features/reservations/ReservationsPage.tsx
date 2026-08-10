@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
-import EmptyState from '../../components/ui/EmptyState'
 import PageContainer from '../../components/ui/PageContainer'
 import {
   startOfMonth,
@@ -167,6 +166,8 @@ function ReservationsPage() {
     const payload = {
       location_id: values.locationId,
       title: values.title.trim(),
+      production_company:
+        values.productionCompany.trim().length > 0 ? values.productionCompany.trim() : null,
       starts_at: toIsoDateTime(values.startsAt),
       ends_at: toIsoDateTime(values.endsAt),
       status: values.status,
@@ -196,13 +197,6 @@ function ReservationsPage() {
       <PlusIcon />
       Nueva reserva
     </Button>
-  )
-
-  const reservationHeaderActions = (
-    <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-      {reservationViewToggle}
-      {newReservationButton}
-    </div>
   )
 
   return (
@@ -281,21 +275,7 @@ function ReservationsPage() {
         </Card>
       ) : null}
 
-      {!isLoading && !errorMessage && reservations.length === 0 ? (
-        <Card className="p-4 sm:p-6">
-          <EmptyState
-            title="Todavía no hay reservas cargadas"
-            description="Cuando crees nuevas reservas para las locaciones, aparecerán acá."
-          />
-          <div className="mt-4 flex justify-center">
-            <Button onClick={handleOpenCreateDialog}>
-              Nueva reserva
-            </Button>
-          </div>
-        </Card>
-      ) : null}
-
-      {!isLoading && !errorMessage && reservations.length > 0 ? (
+      {!isLoading && !errorMessage ? (
         <>
           {activeView === 'calendar' ? (
             <ReservationsCalendar
@@ -309,7 +289,8 @@ function ReservationsPage() {
           ) : (
             <ReservationTable
               activeActionKey={activeActionKey}
-              headerActions={reservationHeaderActions}
+              headerCenter={reservationViewToggle}
+              headerEnd={newReservationButton}
               onDelete={handleDelete}
               onEdit={handleOpenEditDialog}
               onOpenReservation={handleOpenReservationDetail}

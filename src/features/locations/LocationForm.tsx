@@ -1301,7 +1301,7 @@ function LocationForm({
     }
 
     if (selectedOwner && selectedOwner.full_name !== nextValue) {
-      setOwnerPhoneInput(formatOwnerPhoneForInput(selectedOwner.phone))
+      setOwnerPhoneInput('')
       setValues((currentValues) => ({
         ...currentValues,
         owner_id: '',

@@ -3,6 +3,14 @@ export type ReservationStatus = 'pending' | 'confirmed' | 'cancelled'
 export type ReservationListItem = {
   id: string
   locationId: string
+  requestProjectLocationId: string | null
+  requestProjectId: string | null
+  productionCompany: string | null
+  requestProjectTitle: string | null
+  requestProductionCompany: string | null
+  requestRequesterFullName: string | null
+  requestRequesterEmail: string | null
+  requestRequesterPhone: string | null
   locationTitle: string
   locationCode: string | null
   formattedAddress: string | null
@@ -23,17 +31,21 @@ export type ReservationListItem = {
 export type ReservationCreatePayload = {
   location_id: string
   title: string
+  production_company?: string | null
   starts_at: string
   ends_at: string
   status: ReservationStatus
   notes: string | null
+  request_project_location_id?: string | null
 }
 
 export type ReservationUpdatePayload = ReservationCreatePayload
 
 export type ReservationFormValues = {
   locationId: string
+  locationSearch: string
   title: string
+  productionCompany: string
   startsAt: string
   endsAt: string
   status: ReservationStatus
@@ -97,7 +109,9 @@ export function toReservationDateTimeLocalValue(value: string) {
 export function getReservationInitialValues(): ReservationFormValues {
   return {
     locationId: '',
+    locationSearch: '',
     title: '',
+    productionCompany: '',
     startsAt: '',
     endsAt: '',
     status: 'pending',

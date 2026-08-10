@@ -35,15 +35,6 @@ export const navigationItems: NavigationItem[] = [
     },
   },
   {
-    label: 'Dueños',
-    to: routePaths.owners,
-    icon: {
-      paths: [
-        'M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2m18 0v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
-      ],
-    },
-  },
-  {
     label: 'Categorías',
     to: routePaths.categories,
     icon: {
@@ -100,21 +91,12 @@ export const navigationItems: NavigationItem[] = [
     type: 'divider',
   },
   {
-    disabled: true,
     label: 'Usuarios',
+    to: routePaths.users,
     icon: {
       paths: [
         'M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2',
         'M9.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z',
-      ],
-    },
-  },
-  {
-    disabled: true,
-    label: 'Suscripciones',
-    icon: {
-      paths: [
-        'M12 3v18M7 7.5h6a3 3 0 1 1 0 6H11a3 3 0 1 0 0 6h6',
       ],
     },
   },

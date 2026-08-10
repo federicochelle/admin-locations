@@ -34,7 +34,13 @@ function getInitialValues(
 
   return {
     locationId: reservation.locationId,
+    locationSearch:
+      initialValues?.locationSearch ??
+      reservation.locationCode?.trim()
+        ? `${reservation.locationCode?.replaceAll('-', ' ')} · ${reservation.locationTitle}`
+        : reservation.locationTitle,
     title: reservation.title,
+    productionCompany: reservation.productionCompany ?? '',
     startsAt: toReservationDateTimeLocalValue(reservation.startsAt),
     endsAt: toReservationDateTimeLocalValue(reservation.endsAt),
     status: reservation.status,
@@ -97,11 +103,6 @@ function ReservationDialog({
             >
               {mode === 'create' ? 'Nueva reserva' : 'Editar reserva'}
             </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {mode === 'create'
-                ? 'Cargá los datos de la reserva y asignala a una locación.'
-                : 'Actualizá el horario, estado o notas de la reserva.'}
-            </p>
           </div>
 
           <ReservationForm

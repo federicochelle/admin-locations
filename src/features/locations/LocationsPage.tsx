@@ -27,11 +27,19 @@ function LocationsPage() {
   const {
     actionErrorMessage,
     activeActionKey,
+    currentPage,
     errorMessage,
     isLoading,
     locations,
     remove,
     retry,
+    searchTerm,
+    setCurrentPage,
+    setSearchTerm,
+    setSort,
+    sortDirection,
+    sortKey,
+    totalCount,
   } = useLocations()
 
   async function handleDelete(location: LocationListItem) {
@@ -131,7 +139,16 @@ function LocationsPage() {
         <LocationsTable
           locations={locations}
           activeActionKey={activeActionKey}
+          currentPage={currentPage}
+          pageSize={30}
+          searchTerm={searchTerm}
+          sortDirection={sortDirection}
+          sortKey={sortKey}
+          totalCount={totalCount}
           visibleColumns={{ actions: false }}
+          onPageChange={setCurrentPage}
+          onSearchTermChange={setSearchTerm}
+          onSortChange={setSort}
           onDelete={handleDelete}
         />
       ) : null}

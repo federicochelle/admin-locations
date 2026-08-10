@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import Card from '../../components/ui/Card'
 import {
   formatReservationDateTime,
@@ -9,7 +9,8 @@ import {
 
 type ReservationTableProps = {
   activeActionKey: string | null
-  headerActions?: ReactNode
+  headerCenter?: ReactNode
+  headerEnd?: ReactNode
   onDelete: (reservation: ReservationListItem) => Promise<void>
   onEdit: (reservation: ReservationListItem) => void
   onOpenReservation: (reservation: ReservationListItem) => void
@@ -51,26 +52,6 @@ function ActionIconButton({
   )
 }
 
-function SearchIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      className="h-4 w-4"
-      aria-hidden="true"
-    >
-      <circle cx="11" cy="11" r="7" strokeWidth="1.8" />
-      <path
-        d="m20 20-3.5-3.5"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
 function EditIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-4 w-4" aria-hidden="true">
@@ -109,39 +90,17 @@ function formatLocation(reservation: ReservationListItem) {
 
 function ReservationTable({
   activeActionKey,
-  headerActions,
+  headerCenter,
+  headerEnd,
   onDelete,
   onEdit,
   onOpenReservation,
   reservations,
 }: ReservationTableProps) {
-  const [searchTerm, setSearchTerm] = useState('')
-
-  const filteredReservations = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLocaleLowerCase()
-
-    if (normalizedSearch.length === 0) {
-      return reservations
-    }
-
-    return reservations.filter((reservation) => {
-      const fields = [
-        reservation.title,
-        reservation.locationTitle,
-        reservation.locationCode ?? '',
-        getReservationStatusLabel(reservation.status),
-      ]
-
-      return fields.some((field) =>
-        field.toLocaleLowerCase().includes(normalizedSearch),
-      )
-    })
-  }, [reservations, searchTerm])
-
   return (
     <Card className="-mx-6 overflow-hidden rounded-none border-x-0 p-0 sm:mx-0 sm:rounded-2xl sm:border-x sm:border-y">
       <div className="border-b border-slate-200 px-3 py-5 sm:px-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr] lg:items-end">
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Listado de reservas</h2>
             <p className="mt-1 text-sm text-slate-600">
@@ -149,22 +108,19 @@ function ReservationTable({
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <label className="relative block min-w-0 sm:w-80">
-              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
-                <SearchIcon />
-              </span>
-              <input
-                type="search"
-                placeholder="Buscar por locación, título o estado"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white/95 py-2.5 pl-10 pr-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-500 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-              />
-            </label>
+          {headerCenter ? (
+            <div className="flex items-center justify-start lg:justify-center">
+              {headerCenter}
+            </div>
+          ) : (
+            <div />
+          )}
 
-            {headerActions}
-          </div>
+          {headerEnd ? (
+            <div className="flex items-center justify-start lg:justify-end">
+              {headerEnd}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -182,7 +138,7 @@ function ReservationTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-transparent">
-            {filteredReservations.length === 0 ? (
+            {reservations.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-3 py-8 text-sm text-slate-500 sm:px-6">
                   No se encontraron reservas.
@@ -190,7 +146,7 @@ function ReservationTable({
               </tr>
             ) : null}
 
-            {filteredReservations.map((reservation) => (
+            {reservations.map((reservation) => (
               <tr
                 key={reservation.id}
                 className="align-top transition hover:bg-slate-50"

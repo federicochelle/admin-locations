@@ -84,6 +84,7 @@ function LocationEditPage() {
   const { id } = useParams<{ id: string }>()
   const routerLocation = useLocation()
   const [initialValues, setInitialValues] = useState<LocationFormValues | null>(null)
+  const [loadedLocationId, setLoadedLocationId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [locationIdentifier, setLocationIdentifier] = useState<string | null>(null)
@@ -109,6 +110,13 @@ function LocationEditPage() {
       return
     }
 
+    setIsLoading(true)
+    setErrorMessage(null)
+    setInitialValues(null)
+    setLoadedLocationId(null)
+    setLocationCode(null)
+    setLocationIdentifier(null)
+
     void getLocationById(id)
       .then((record) => {
         if (!isActive) {
@@ -116,6 +124,7 @@ function LocationEditPage() {
         }
 
         setInitialValues(mapRecordToFormValues(record))
+        setLoadedLocationId(id)
         setLocationCode(record.location_code)
         setLocationIdentifier(formatLocationCode(record.location_code))
         setErrorMessage(null)
@@ -132,6 +141,10 @@ function LocationEditPage() {
             ? 'LOCATION_NOT_FOUND'
             : 'No pudimos cargar la locación.'
 
+        setInitialValues(null)
+        setLoadedLocationId(null)
+        setLocationCode(null)
+        setLocationIdentifier(null)
         setErrorMessage(message)
       })
       .finally(() => {
@@ -249,7 +262,7 @@ function LocationEditPage() {
           </div>
         ) : null}
 
-        {!isLoading && !errorMessage && initialValues && id ? (
+        {!isLoading && !errorMessage && initialValues && id && loadedLocationId === id ? (
           <LocationForm
             mode={'edit' satisfies LocationFormMode}
             locationId={id}
