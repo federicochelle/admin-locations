@@ -105,8 +105,19 @@ function normalizeLocationSlug(baseSlug: string) {
   return trimmed.length > 0 ? trimmed : 'locacion'
 }
 
+function normalizeLocationCategoryNameForCode(categoryName: string) {
+  const trimmed = categoryName.trim()
+
+  if (trimmed.toLocaleLowerCase() === 'locales de ropa') {
+    return 'Local de ropa'
+  }
+
+  return trimmed
+}
+
 function normalizeLocationCodePrefix(categoryName: string) {
-  const normalized = categoryName
+  const normalizedCategoryName = normalizeLocationCategoryNameForCode(categoryName)
+  const normalized = normalizedCategoryName
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
