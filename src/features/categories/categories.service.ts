@@ -14,6 +14,7 @@ type CategoryRow = {
   id: string
   name: string
   slug: string
+  location_code_prefix: string | null
   parent_id: string | null
   sort_order: number | null
   active: boolean | null
@@ -199,6 +200,7 @@ export async function getCategoryById(id: string): Promise<CategoryEditableRecor
         id,
         name,
         slug,
+        location_code_prefix,
         parent_id,
         sort_order,
         active,

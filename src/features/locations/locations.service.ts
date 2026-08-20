@@ -1,5 +1,10 @@
 import { getSupabaseClient } from '../../lib/supabase'
 import { createActivityLog } from '../activity/activity-logs.service'
+import {
+  LEGACY_LOCATION_CODE_PREFIX_MAP,
+  getLegacyLocationCodeCategoryName,
+  normalizeCategoryLocationCodePrefixInput,
+} from '../categories/location-code-prefix'
 import type {
   LocationCategoryOption,
   LocationCreatePayload,
@@ -34,6 +39,7 @@ type LocationCodeRow = {
 
 type CategoryNameRow = {
   name: string | null
+  location_code_prefix: string | null
 }
 
 type SupabaseErrorLike = {
@@ -68,28 +74,8 @@ const LOCATION_LIST_SELECT = `
   owners(id, full_name, phone)
 `
 
-const LOCATION_CODE_PREFIX_MAP: Record<string, string> = {
-  ALMACENES: 'ALMACEN',
-  ESTANCIAS: 'ESTANCIA',
-  CASAS: 'CASA',
-  CALLES: 'CALLE',
-  APARTAMENTOS: 'APARTAMENTO',
-  PEATONALES: 'PEATONAL',
-  PISCINAS: 'PISCINA',
-  PLAZAS: 'PLAZA',
-  PARQUES: 'PARQUE',
-  CAFETERIAS: 'CAFETERIA',
-  'CANCHAS-DE-FUTBOL': 'CANCHA DE FUTBOL',
-  BARES: 'BAR',
-  MUSEOS: 'MUSEO',
-  OFICINAS: 'OFICINA',
-  RESTAURANTES: 'RESTAURANTE',
-  ESTADIOS: 'ESTADIO',
-  'CANCHAS-DE-BASQUET': 'CANCHA DE BASQUET',
-  GIMNASIOS: 'GIMNASIO',
-  EDIFICIOS: 'EDIFICIO',
-  GALPONES: 'GALPON',
-}
+const LOCATION_CODE_PREFIX_MAP: Record<string, string> =
+  LEGACY_LOCATION_CODE_PREFIX_MAP
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -106,13 +92,7 @@ function normalizeLocationSlug(baseSlug: string) {
 }
 
 function normalizeLocationCategoryNameForCode(categoryName: string) {
-  const trimmed = categoryName.trim()
-
-  if (trimmed.toLocaleLowerCase() === 'locales de ropa') {
-    return 'Local de ropa'
-  }
-
-  return trimmed
+  return getLegacyLocationCodeCategoryName(categoryName)
 }
 
 function normalizeLocationCodePrefix(categoryName: string) {
@@ -218,7 +198,7 @@ async function getNextLocationCode(categoryId: string): Promise<string> {
 
   const { data: categoryData, error: categoryError } = await supabase
     .from('categories')
-    .select('name')
+    .select('name, location_code_prefix')
     .eq('id', categoryId)
     .single()
 
@@ -232,7 +212,18 @@ async function getNextLocationCode(categoryId: string): Promise<string> {
     throw new Error('No pudimos generar el código de la locación porque la categoría no es válida.')
   }
 
-  const prefix = normalizeLocationCodePrefix(categoryName)
+  const storedLocationCodePrefix = normalizeCategoryLocationCodePrefixInput(
+    ((categoryData as CategoryNameRow | null)?.location_code_prefix ?? ''),
+  )
+  const prefix =
+    storedLocationCodePrefix || normalizeLocationCodePrefix(categoryName)
+
+  if (prefix.length === 0) {
+    throw new Error(
+      'No pudimos generar el código de la locación porque la categoría no tiene un prefijo válido.',
+    )
+  }
+
   const { data: locationData, error: locationError } = await supabase
     .from('locations')
     .select('location_code')

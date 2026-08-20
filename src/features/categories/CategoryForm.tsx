@@ -13,6 +13,9 @@ import {
   deleteCategoryImage,
   uploadCategoryImage,
 } from './category-images.service'
+import {
+  normalizeCategoryLocationCodePrefixInput,
+} from './location-code-prefix'
 import useAuth from '../auth/useAuth'
 import { prepareImageUploadFile } from '../images/image-upload.processor'
 import { SUPPORTED_IMAGE_EXTENSIONS } from '../images/image-upload.constants'
@@ -80,6 +83,7 @@ type CategoryPendingImageState = {
 const defaultInitialValues: CategoryFormValues = {
   name: '',
   slug: '',
+  location_code_prefix: '',
   parent_id: '',
   sort_order: '0',
   active: true,
@@ -107,10 +111,18 @@ function buildPayload(
   const parsedSortOrder = Number.parseInt(values.sort_order, 10)
   const trimmedName = values.name.trim()
   const generatedSlug = slugifyCategoryName(trimmedName)
+  const normalizedLocationCodePrefix = normalizeCategoryLocationCodePrefixInput(
+    values.location_code_prefix,
+  )
+
+  if (normalizedLocationCodePrefix.length === 0) {
+    throw new Error('El prefijo de código es obligatorio.')
+  }
 
   return {
     name: trimmedName,
     slug: values.slug.trim() || generatedSlug || 'categoria',
+    location_code_prefix: normalizedLocationCodePrefix,
     parent_id: values.parent_id || null,
     sort_order: Number.isNaN(parsedSortOrder) ? 0 : parsedSortOrder,
     active: values.active,
@@ -600,6 +612,13 @@ function CategoryForm({
         }
       }
 
+      if (name === 'location_code_prefix') {
+        return {
+          ...currentValues,
+          location_code_prefix: normalizeCategoryLocationCodePrefixInput(value),
+        }
+      }
+
       return {
         ...currentValues,
         [name]: value,
@@ -1065,18 +1084,36 @@ function CategoryForm({
       ) : null}
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
-        <div className="max-w-xl">
-          <FieldLabel htmlFor="name" required>
-            Nombre
-          </FieldLabel>
-          <input
-            id="name"
-            name="name"
-            className={inputClassName()}
-            value={values.name}
-            onChange={handleTextChange}
-            required
-          />
+        <div className="max-w-xl space-y-6">
+          <div>
+            <FieldLabel htmlFor="name" required>
+              Nombre
+            </FieldLabel>
+            <input
+              id="name"
+              name="name"
+              className={inputClassName()}
+              value={values.name}
+              onChange={handleTextChange}
+              placeholder="Castillos"
+              required
+            />
+          </div>
+
+          <div>
+            <FieldLabel htmlFor="location_code_prefix" required>
+              Prefijo de código
+            </FieldLabel>
+            <input
+              id="location_code_prefix"
+              name="location_code_prefix"
+              className={inputClassName()}
+              value={values.location_code_prefix}
+              onChange={handleTextChange}
+              placeholder="Castillo"
+              required
+            />
+          </div>
         </div>
 
         <section className="space-y-4">
