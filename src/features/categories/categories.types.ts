@@ -26,6 +26,7 @@ export type CategoryFormOptions = {
 export type CategoryCreatePayload = {
   name: string
   slug: string
+  location_code_prefix: string
   parent_id: string | null
   sort_order: number
   active: boolean
@@ -36,6 +37,7 @@ export type CategoryUpdatePayload = CategoryCreatePayload
 export type CategoryFormValues = {
   name: string
   slug: string
+  location_code_prefix: string
   parent_id: string
   sort_order: string
   active: boolean
@@ -47,6 +49,7 @@ export type CategoryEditableRecord = {
   id: string
   name: string
   slug: string
+  location_code_prefix: string | null
   parent_id: string | null
   sort_order: number | null
   active: boolean | null
