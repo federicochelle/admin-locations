@@ -16,6 +16,7 @@ function mapRecordToFormValues(record: CategoryEditableRecord): CategoryFormValu
   return {
     name: record.name,
     slug: record.slug,
+    location_code_prefix: record.location_code_prefix ?? '',
     parent_id: record.parent_id ?? '',
     sort_order: String(record.sort_order ?? 0),
     active: record.active ?? true,

@@ -6,7 +6,9 @@ type LocationCategoryQuickCreateModalProps = {
   isOpen: boolean
   isSubmitting: boolean
   name: string
+  locationCodePrefix: string
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void
+  onLocationCodePrefixChange: (event: React.ChangeEvent<HTMLInputElement>) => void
   onClose: () => void
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
 }
@@ -37,7 +39,9 @@ function LocationCategoryQuickCreateModal({
   isOpen,
   isSubmitting,
   name,
+  locationCodePrefix,
   onChange,
+  onLocationCodePrefixChange,
   onClose,
   onSubmit,
 }: LocationCategoryQuickCreateModalProps) {
@@ -79,6 +83,22 @@ function LocationCategoryQuickCreateModal({
               className={inputClassName()}
               value={name}
               onChange={onChange}
+              placeholder="Castillos"
+              required
+            />
+          </div>
+
+          <div>
+            <FieldLabel htmlFor="quick-category-location-code-prefix" required>
+              Prefijo de código
+            </FieldLabel>
+            <input
+              id="quick-category-location-code-prefix"
+              name="location_code_prefix"
+              className={inputClassName()}
+              value={locationCodePrefix}
+              onChange={onLocationCodePrefixChange}
+              placeholder="Castillo"
               required
             />
           </div>

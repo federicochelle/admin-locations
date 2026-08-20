@@ -19,6 +19,9 @@ import {
   getLocationFormOptions,
   updateLocation,
 } from './locations.service'
+import {
+  normalizeCategoryLocationCodePrefixInput,
+} from '../categories/location-code-prefix'
 import LocationCategoryQuickCreateModal from './LocationCategoryQuickCreateModal'
 import LocationImagesGrid from './LocationImagesGrid'
 import LocationImageSourceModal from './LocationImageSourceModal'
@@ -680,6 +683,8 @@ function LocationForm({
   const [isCategoryComboboxOpen, setIsCategoryComboboxOpen] = useState(false)
   const [categorySearchTerm, setCategorySearchTerm] = useState('')
   const [categoryCreateName, setCategoryCreateName] = useState('')
+  const [categoryCreateLocationCodePrefix, setCategoryCreateLocationCodePrefix] =
+    useState('')
   const [categoryCreateError, setCategoryCreateError] = useState<string | null>(null)
   const [isCreatingCategory, setIsCreatingCategory] = useState(false)
   const [isZoneModalOpen, setIsZoneModalOpen] = useState(false)
@@ -1076,6 +1081,18 @@ function LocationForm({
     setCategoryCreateName(event.target.value)
   }
 
+  function handleCategoryCreateLocationCodePrefixChange(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    if (isReadOnly) {
+      return
+    }
+
+    setCategoryCreateLocationCodePrefix(
+      normalizeCategoryLocationCodePrefixInput(event.target.value),
+    )
+  }
+
   function handleCategorySearchChange(
     event: React.ChangeEvent<HTMLInputElement>,
   ) {
@@ -1282,6 +1299,7 @@ function LocationForm({
 
     setCategoryCreateError(null)
     setCategoryCreateName('')
+    setCategoryCreateLocationCodePrefix('')
     setIsCategoryModalOpen(true)
   }
 
@@ -1293,6 +1311,7 @@ function LocationForm({
     setIsCategoryModalOpen(false)
     setCategoryCreateError(null)
     setCategoryCreateName('')
+    setCategoryCreateLocationCodePrefix('')
   }
 
   function handleOpenZoneModal() {
@@ -1331,9 +1350,17 @@ function LocationForm({
     }
 
     const trimmedName = categoryCreateName.trim()
+    const normalizedLocationCodePrefix = normalizeCategoryLocationCodePrefixInput(
+      categoryCreateLocationCodePrefix,
+    )
 
     if (!trimmedName) {
       setCategoryCreateError('El nombre es obligatorio.')
+      return
+    }
+
+    if (!normalizedLocationCodePrefix) {
+      setCategoryCreateError('El prefijo de código es obligatorio.')
       return
     }
 
@@ -1344,6 +1371,7 @@ function LocationForm({
       const createdCategoryId = await createCategory({
         name: trimmedName,
         slug: slugifyCategoryName(trimmedName) || 'categoria',
+        location_code_prefix: normalizedLocationCodePrefix,
         parent_id: null,
         sort_order: 0,
         active: true,
@@ -1362,6 +1390,7 @@ function LocationForm({
       setCategorySearchTerm(createdCategory?.name ?? trimmedName)
       setIsCategoryModalOpen(false)
       setCategoryCreateName('')
+      setCategoryCreateLocationCodePrefix('')
     } catch (error) {
       const message =
         error instanceof Error
@@ -2756,8 +2785,10 @@ function markSaveProgressSuccess() {
           errorMessage={categoryCreateError}
           isOpen={isCategoryModalOpen}
           isSubmitting={isCreatingCategory}
+          locationCodePrefix={categoryCreateLocationCodePrefix}
           name={categoryCreateName}
           onChange={handleCategoryCreateChange}
+          onLocationCodePrefixChange={handleCategoryCreateLocationCodePrefixChange}
           onClose={handleCloseCategoryModal}
           onSubmit={handleCategoryQuickCreateSubmit}
         />
