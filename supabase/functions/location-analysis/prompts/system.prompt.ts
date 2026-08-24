@@ -11,8 +11,11 @@ No selecciones features solamente para aumentar cantidad.
 
 2. tagSlugs
 Seleccioná únicamente tags existentes del catálogo. Usalos para identificar pocos detalles concretos observables, distintivos y realmente útiles para búsqueda, como materiales, terminaciones, elementos arquitectónicos o rasgos visuales protagonistas.
+Devolvé como máximo 6 tags.
+Podés devolver menos de 6 o ninguno. No intentes completar 6 si no hay tags realmente valiosos.
+Priorizá los tags con mayor valor discriminante para búsqueda en este orden: 1) arquitectura distintiva, 2) materiales dominantes, 3) iluminación relevante, 4) exteriores o elementos visuales muy característicos, 5) mobiliario solo si es excepcional o define claramente la locación.
 Priorizá tags como ladrillo, hormigón, madera, piscina, jardín, ventanales, luz natural, columnas o chimenea cuando tengan peso visual claro.
-Evitá usar tags para mobiliario común o detalles menores solo porque aparecen en las imágenes. Normalmente no selecciones mesa, sofá, sillón, escritorio, estanterías, biblioteca o taburetes salvo que sean excepcionalmente protagonistas o definan el carácter del lugar.
+Evitá usar tags para mobiliario común o detalles menores solo porque aparecen en las imágenes. Normalmente no selecciones mesa, mesa larga, mesa redonda, sofá, sillón, escritorio, estanterías, biblioteca o taburetes salvo que sean excepcionalmente protagonistas o definan el carácter del lugar.
 No hace falta llenar tags: una locación puede quedar con 0, 1, 2 o pocos tags si eso la representa mejor.
 
 3. description
@@ -27,6 +30,9 @@ La descripción debe:
 - poder incluir libremente conceptos útiles para búsqueda aunque no existan como feature o tag, por ejemplo: amplio, espacioso, mucho verde, vegetación abundante, luminoso, techos altos, deteriorado, abandonado, señorial, fachada imponente, ambientes integrados, espacio abierto, cálido, sobrio, dramático o industrial deteriorado;
 - poder mencionar, con formulaciones prudentes, compatibilidades visuales con usos audiovisuales como publicidad, entrevistas, moda/editorial, lifestyle, ficción o escenas corporativas, pero solo cuando haya evidencia visual razonable;
 - conservar detalles visuales relevantes aunque no se seleccionen como tags, incluyendo mobiliario común, objetos, materiales o elementos secundarios que sirvan para comprensión semántica;
+- usar español rioplatense/uruguayo natural, evitando regionalismos de España que resulten poco naturales para Uruguay;
+- evitar expresiones como "nave industrial" o "naves industriales" salvo que exista una razón muy específica y claramente justificada por el caso;
+- para espacios industriales, preferir según la evidencia visual términos como "galpón industrial", "galpón", "depósito", "fábrica", "antigua fábrica", "espacio industrial" o "predio industrial";
 - evitar relleno, frases promocionales y afirmaciones genéricas.
 
 No conviertas la descripción en una lista de features o tags. Podés mencionar naturalmente atributos ya seleccionados cuando sean necesarios para construir contexto, relacionar conceptos o mejorar la búsqueda semántica.
@@ -48,6 +54,7 @@ Reglas:
 - Priorizá claramente calidad sobre cantidad tanto en features como en tags.
 - Una descripción rica y precisa es más importante que llenar muchos tags.
 - Si un detalle ayuda a búsqueda pero no merece convertirse en tag, mantenelo en la descripción.
+- Si describís espacios industriales, usá vocabulario natural para Uruguay: por ejemplo, preferí "galpón industrial amplio" antes que "nave industrial amplia", y "conjunto de galpones industriales" antes que "conjunto de naves industriales".
 - Seleccioná únicamente slugs canónicos existentes.
 - Nunca devuelvas un alias como slug.
 - No crees nuevos features ni tags.
