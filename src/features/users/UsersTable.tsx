@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getUserDetailPath } from '../../app/router/route-paths'
 import Card from '../../components/ui/Card'
@@ -9,6 +9,7 @@ import {
 } from './users.types'
 
 type UsersTableProps = {
+  headerCenter?: ReactNode
   users: UserListItem[]
 }
 
@@ -55,7 +56,7 @@ function SearchIcon() {
   )
 }
 
-function UsersTable({ users }: UsersTableProps) {
+function UsersTable({ headerCenter, users }: UsersTableProps) {
   const navigate = useNavigate()
   const [searchTerm, setSearchTerm] = useState('')
 
@@ -92,7 +93,7 @@ function UsersTable({ users }: UsersTableProps) {
   return (
     <Card className="-mx-6 overflow-hidden rounded-none border-x-0 p-0 sm:mx-0 sm:rounded-2xl sm:border-x sm:border-y">
       <div className="border-b border-slate-200 px-3 py-5 sm:px-6">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr] lg:items-end">
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Listado de usuarios</h2>
             <p className="mt-1 text-sm text-slate-600">
@@ -100,7 +101,15 @@ function UsersTable({ users }: UsersTableProps) {
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          {headerCenter ? (
+            <div className="flex items-center justify-start lg:justify-center">
+              {headerCenter}
+            </div>
+          ) : (
+            <div />
+          )}
+
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
             <label className="relative block min-w-0 lg:w-80">
               <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
                 <SearchIcon />

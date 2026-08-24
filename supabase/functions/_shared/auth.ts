@@ -12,6 +12,8 @@ type AdminProfile = {
 export type AdminContext = {
   adminClient: SupabaseClient
   profile: AdminProfile
+  token: string
+  userClient: SupabaseClient
   user: User
 }
 
@@ -29,6 +31,24 @@ function createAdminClient() {
   return createClient(
     getRequiredEnv('SUPABASE_URL'),
     getRequiredEnv('SUPABASE_SERVICE_ROLE_KEY'),
+  )
+}
+
+function createUserScopedClient(token: string) {
+  return createClient(
+    getRequiredEnv('SUPABASE_URL'),
+    getRequiredEnv('SUPABASE_SERVICE_ROLE_KEY'),
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    },
   )
 }
 
@@ -71,6 +91,7 @@ export function getServiceRoleClient() {
 export async function assertAdmin(request: Request): Promise<AdminContext> {
   const token = getBearerToken(request)
   const adminClient = createAdminClient()
+  const userClient = createUserScopedClient(token)
 
   const {
     data: { user },
@@ -86,6 +107,8 @@ export async function assertAdmin(request: Request): Promise<AdminContext> {
   return {
     adminClient,
     profile: typedProfile,
+    token,
+    userClient,
     user,
   }
 }
