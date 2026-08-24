@@ -15,6 +15,7 @@ type PendingLocationImagesGridProps = {
   images: PendingLocationImageFile[]
   isLocked?: boolean
   mode?: 'pending'
+  onManualBlur?: (imageId: string) => void
   onRemove?: (imageId: string) => void
   onSetCover?: (imageId: string) => void
 }
@@ -41,6 +42,7 @@ type MixedLocationImagesGridProps = {
   >
   isLocked?: boolean
   mode: 'mixed'
+  onManualBlurPending?: (imageId: string) => void
   onRemovePending?: (imageId: string) => void
   onRemovePersisted?: (imageId: string) => void
 }
@@ -95,6 +97,26 @@ function TrashIcon() {
   )
 }
 
+function BlurIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5 8.5A3.5 3.5 0 0 1 8.5 5H12" />
+      <path d="M12 5a3.5 3.5 0 1 1 0 7H9.5" />
+      <path d="M9.5 12A3.5 3.5 0 1 0 13 15.5V19" />
+      <path d="M13 19a3.5 3.5 0 1 0 3.5-3.5H12" />
+    </svg>
+  )
+}
+
 function ProcessingSpinner() {
   return (
     <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/40 bg-white/15">
@@ -107,6 +129,13 @@ function overlayActionClassName(tone: 'danger') {
   return tone === 'danger'
     ? 'bg-white/92 text-red-600 hover:bg-red-600 hover:text-white'
     : ''
+}
+
+function overlayIconButtonClassName() {
+  return [
+    'inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/20 bg-slate-950/62 text-white shadow-sm backdrop-blur transition',
+    'hover:bg-slate-950/78 disabled:cursor-not-allowed disabled:opacity-50',
+  ].join(' ')
 }
 
 function formatFileSize(size: number) {
@@ -128,7 +157,7 @@ function getImageDimensionsLabel(image: LocationImageRecord) {
 function getPendingStatusLabel(image: PendingLocationImageFile) {
   switch (image.status) {
     case 'processing':
-      return image.isCover ? 'Procesando portada' : 'Procesando'
+      return image.processingLabel ?? (image.isCover ? 'Procesando portada' : 'Procesando')
     case 'uploading':
       return 'Subiendo'
     case 'finalizing':
@@ -234,6 +263,12 @@ function LocationImagesGrid(
     props.mode === 'mixed'
       ? Boolean(props.onRemovePending || props.onRemovePersisted)
       : Boolean(props.onRemove)
+  const hasManualBlurAction =
+    props.mode === 'mixed'
+      ? Boolean(props.onManualBlurPending)
+      : props.mode === 'pending'
+        ? Boolean(props.onManualBlur)
+        : false
   const canDragToCover = Boolean(onSetCoverHandler)
   const title = props.title
   const showCount = props.showCount !== false && orderedItems.length > 0
@@ -319,6 +354,21 @@ function LocationImagesGrid(
     }
 
     props.onRemove?.(image.id)
+  }
+
+  function handleManualBlur(image: GridImageItem) {
+    if (image.kind !== 'pending') {
+      return
+    }
+
+    if (props.mode === 'mixed') {
+      props.onManualBlurPending?.(image.id)
+      return
+    }
+
+    if (props.mode === 'pending' || typeof props.mode === 'undefined') {
+      props.onManualBlur?.(image.id)
+    }
   }
 
   function handleOpenLightbox(imageId: string) {
@@ -419,9 +469,23 @@ function LocationImagesGrid(
                   </div>
                 </div>
               ) : null}
-              {(hasRemoveAction || (onSetCoverHandler && galleryItems.length > 0)) ? (
+              {(hasManualBlurAction || hasRemoveAction || (onSetCoverHandler && galleryItems.length > 0)) ? (
                 <div className="pointer-events-none absolute inset-0 bg-slate-950/10 transition md:bg-slate-950/0 md:group-hover:bg-slate-950/20">
                   <div className="pointer-events-auto absolute right-3 top-3 flex items-center gap-2 opacity-100 transition duration-200 md:opacity-0 md:group-hover:opacity-100">
+                    {hasManualBlurAction && !coverItem.isProcessing && !props.isLocked ? (
+                      <button
+                        type="button"
+                        title="Aplicar blur manual"
+                        aria-label="Aplicar blur manual"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleManualBlur(coverItem)
+                        }}
+                        className={overlayIconButtonClassName()}
+                      >
+                        <BlurIcon />
+                      </button>
+                    ) : null}
                     {hasRemoveAction ? (
                       <button
                         type="button"
@@ -500,9 +564,23 @@ function LocationImagesGrid(
                   </div>
                 </div>
               ) : null}
-              {(onSetCoverHandler || hasRemoveAction) ? (
+              {(onSetCoverHandler || hasRemoveAction || hasManualBlurAction) ? (
                 <div className="pointer-events-none absolute inset-0 bg-slate-950/10 transition md:bg-slate-950/0 md:group-hover:bg-slate-950/20">
                   <div className="pointer-events-auto absolute right-3 top-3 flex items-center gap-2 opacity-100 transition duration-200 md:opacity-0 md:group-hover:opacity-100">
+                    {hasManualBlurAction && !image.isProcessing && !props.isLocked ? (
+                      <button
+                        type="button"
+                        title="Aplicar blur manual"
+                        aria-label="Aplicar blur manual"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleManualBlur(image)
+                        }}
+                        className={overlayIconButtonClassName()}
+                      >
+                        <BlurIcon />
+                      </button>
+                    ) : null}
                     {hasRemoveAction ? (
                       <button
                         type="button"

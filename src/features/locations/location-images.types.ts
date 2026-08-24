@@ -108,5 +108,6 @@ export type PendingLocationImageFile = {
   isCover: boolean
   selectionTarget?: 'cover' | 'gallery'
   status: PendingLocationImageStatus
+  processingLabel?: string | null
   errorMessage?: string | null
 }
