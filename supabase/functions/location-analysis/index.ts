@@ -66,7 +66,7 @@ const MAX_AVAILABLE_TAGS = 300
 const OPENAI_API_URL = 'https://api.openai.com/v1/responses'
 const DEFAULT_OPENAI_MODEL = 'gpt-5'
 const MOCK_MODEL = 'mock-v1'
-const PROMPT_VERSION = 'v1'
+const PROMPT_VERSION = 'v2'
 const DATA_URL_DEBUG_PREFIX_LENGTH = 40
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
