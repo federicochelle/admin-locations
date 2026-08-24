@@ -1,5 +1,6 @@
 import { prepareImageUploadFile } from '../images/image-upload.processor'
-import { isHeicImageFile } from '../images/image-upload.constants'
+import { applyFaceBlurToImage } from './location-face-blur'
+import { detectLocationImageSensitiveContent } from './location-sensitive-content.service'
 import type { PendingLocationImageFile } from './location-images.types'
 
 const PLACEHOLDER_PREVIEW_URL =
@@ -19,6 +20,7 @@ export type PreparePendingLocationImageOptions = {
   isCover: boolean
   originalIndex: number
   target: PendingImageSelectionTarget
+  onStatusChange?: (statusLabel: string) => void
 }
 
 export type PreparePendingLocationImagesOptions = {
@@ -30,14 +32,6 @@ export type PreparePendingLocationImagesOptions = {
 export type PreparePendingLocationImagesResult = {
   images: PendingLocationImageFile[]
   errors: string[]
-}
-
-function bytesToMb(bytes: number) {
-  return Number((bytes / 1024 / 1024).toFixed(2))
-}
-
-function roundMs(value: number) {
-  return Number(value.toFixed(2))
 }
 
 export function createPendingLocationImagePlaceholder(
@@ -64,37 +58,36 @@ export async function preparePendingLocationImage(
 ): Promise<PendingLocationImageFile> {
   const prepareResult = await prepareImageUploadFile(file)
   const optimizedFile = prepareResult.file
-  const dimensionsLabel = `${prepareResult.outputDimensions.width}x${prepareResult.outputDimensions.height}`
 
-  if (prepareResult.heicPerf) {
-    console.log('[HEIC_PERF] summary', {
-      convertedSizeMb: bytesToMb(prepareResult.heicPerf.convertedSize),
-      conversionMs: roundMs(prepareResult.heicPerf.conversionMs),
-      decodeMs: roundMs(prepareResult.heicPerf.decodeMs),
-      fileName: file.name,
-      optimizedSizeMb: bytesToMb(optimizedFile.size),
-      originalSizeMb: bytesToMb(prepareResult.heicPerf.originalSize),
-      resizeEncodeMs: roundMs(prepareResult.heicPerf.resizeEncodeMs),
-      totalMs: roundMs(prepareResult.heicPerf.totalMs),
-    })
-    console.groupEnd()
+  options.onStatusChange?.('Analizando rostros...')
+
+  let finalFile = optimizedFile
+
+  try {
+    const detectionResult = await detectLocationImageSensitiveContent(optimizedFile)
+
+    if (detectionResult.summary.faces > 0) {
+      finalFile = await applyFaceBlurToImage(optimizedFile, detectionResult.faces)
+    }
+  } catch (error) {
+    throw new Error(
+      error instanceof Error
+        ? `No se pudo verificar el rostro de esta imagen. Intenta nuevamente.`
+        : 'No se pudo verificar el rostro de esta imagen. Intenta nuevamente.',
+      {
+        cause: error,
+      },
+    )
   }
-
-  console.log(
-    '[IMAGE SIZE]',
-    optimizedFile.name,
-    `${(optimizedFile.size / 1024).toFixed(0)} KB`,
-    `${(optimizedFile.size / 1024 / 1024).toFixed(2)} MB`,
-    dimensionsLabel,
-  )
 
   return {
     id: options.id,
-    file: optimizedFile,
+    file: finalFile,
     height: prepareResult.outputDimensions.height,
-    previewUrl: URL.createObjectURL(optimizedFile),
+    previewUrl: URL.createObjectURL(finalFile),
     originalIndex: options.originalIndex,
     isCover: options.isCover,
+    processingLabel: null,
     selectionTarget: options.target,
     status: 'pending',
     width: prepareResult.outputDimensions.width,
@@ -123,15 +116,12 @@ export async function preparePendingLocationImages(
         await preparePendingLocationImage(file, {
           id: crypto.randomUUID(),
           isCover: options.isCoverSelection && index === 0,
+          onStatusChange: undefined,
           originalIndex: options.startingOriginalIndex + nextImages.length,
           target: options.isCoverSelection ? 'cover' : 'gallery',
         }),
       )
     } catch (error) {
-      if (isHeicImageFile(file)) {
-        console.groupEnd()
-      }
-
       const message =
         error instanceof Error
           ? error.message
@@ -142,14 +132,6 @@ export async function preparePendingLocationImages(
       options.onProcessed?.(index + 1, selectedFiles.length)
     }
   }
-
-  const totalBytes = nextImages.reduce((sum, image) => sum + image.file.size, 0)
-
-  console.log(
-    '[UPLOAD BATCH]',
-    `${nextImages.length} imágenes`,
-    `${(totalBytes / 1024 / 1024).toFixed(2)} MB totales`,
-  )
 
   return {
     errors: nextErrors,

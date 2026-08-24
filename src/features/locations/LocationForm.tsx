@@ -24,6 +24,7 @@ import {
 } from '../categories/location-code-prefix'
 import LocationCategoryQuickCreateModal from './LocationCategoryQuickCreateModal'
 import LocationImagesGrid from './LocationImagesGrid'
+import LocationManualBlurModal from './LocationManualBlurModal'
 import LocationImageSourceModal from './LocationImageSourceModal'
 import LocationImageUploader, {
   type LocationImageUploaderHandle,
@@ -71,6 +72,10 @@ import {
 } from './dropbox/dropbox-chooser'
 import { downloadDropboxFiles } from './dropbox/dropbox-files'
 import {
+  applyBlurStrokesToImage,
+  type BlurStroke,
+} from './location-face-blur'
+import {
   createPendingLocationImagePlaceholder,
   preparePendingLocationImage,
 } from './location-image-selection'
@@ -91,6 +96,7 @@ type LocationFormProps = {
 }
 
 const GOOGLE_MAPS_LIBRARIES = ['places']
+const IMAGE_PREPARATION_CONCURRENCY = 3
 type ImageSelectionTarget = 'cover' | 'gallery'
 
 type LocationFormFieldErrors = {
@@ -229,15 +235,6 @@ function buildPayload(
     previousLat: options?.mode === 'edit' ? options.initialValues?.lat ?? null : null,
     previousLng: options?.mode === 'edit' ? options.initialValues?.lng ?? null : null,
   })
-
-  console.groupCollapsed('[Location payload audit] buildPayload')
-  console.log('mode', options?.mode ?? 'create')
-  console.log('lat', values.lat, 'type:', typeof values.lat)
-  console.log('lng', values.lng, 'type:', typeof values.lng)
-  console.log('current approx_lat', values.approx_lat, 'type:', typeof values.approx_lat)
-  console.log('current approx_lng', values.approx_lng, 'type:', typeof values.approx_lng)
-  console.log('generated publicCoordinates', publicCoordinates ?? null)
-  console.groupEnd()
 
   return {
     title: values.title.trim(),
@@ -723,6 +720,9 @@ function LocationForm({
   const [isPreparingImages, setIsPreparingImages] = useState(false)
   const [processedImagesCount, setProcessedImagesCount] = useState(0)
   const [totalImagesToProcess, setTotalImagesToProcess] = useState(0)
+  const [manualBlurTargetImageId, setManualBlurTargetImageId] = useState<string | null>(null)
+  const [manualBlurErrorMessage, setManualBlurErrorMessage] = useState<string | null>(null)
+  const [isApplyingManualBlur, setIsApplyingManualBlur] = useState(false)
   const pendingImagesRef = useRef<PendingLocationImageFile[]>([])
   const [pendingDeletedPersistedImageIds, setPendingDeletedPersistedImageIds] =
     useState<string[]>([])
@@ -1609,10 +1609,6 @@ function LocationForm({
   }
 
   function handleSelectDropboxSource() {
-    if (import.meta.env.DEV) {
-      console.debug('[Dropbox] handler ejecutado')
-    }
-
     if (isDropboxImporting) {
       return
     }
@@ -1668,10 +1664,6 @@ function LocationForm({
         'Dropbox no es compatible con este navegador.',
       ])
       return
-    }
-
-    if (import.meta.env.DEV) {
-      console.debug('[Dropbox] abriendo chooser')
     }
 
     const selectedFilesPromise = openDropboxChooser(dropbox, target)
@@ -1899,8 +1891,7 @@ function markSaveProgressSuccess() {
       .filter((image) => image.status === 'pending' && image.width > 0 && image.height > 0)
       .sort((leftImage, rightImage) => leftImage.originalIndex - rightImage.originalIndex)
 
-    let transientPendingAnalysisImages: LocationAnalysisImageInput[] = []
-
+    let transientPendingAnalysisImages: LocationAnalysisImageInput[]
     try {
       transientPendingAnalysisImages = await Promise.all(
         pendingImagesForAnalysis.map(async (image) => ({
@@ -2010,8 +2001,6 @@ function markSaveProgressSuccess() {
         suggestedFeatures: [],
         suggestedTags: [],
       }))
-    } finally {
-      transientPendingAnalysisImages = []
     }
   }
 
@@ -2148,11 +2137,30 @@ function markSaveProgressSuccess() {
 
       const nextErrors: string[] = []
 
-      for (const [index, placeholder] of placeholders.entries()) {
+      let processedCount = 0
+      let nextPlaceholderIndex = 0
+
+      async function processPlaceholder(placeholder: PendingLocationImageFile) {
         try {
           const preparedImage = await preparePendingLocationImage(placeholder.file, {
             id: placeholder.id,
             isCover: placeholder.isCover,
+            onStatusChange: (processingLabel) => {
+              if (!isMountedRef.current || removedPendingImageIdsRef.current.has(placeholder.id)) {
+                return
+              }
+
+              setPendingImages((currentImages) =>
+                currentImages.map((image) =>
+                  image.id === placeholder.id
+                    ? {
+                        ...image,
+                        processingLabel,
+                      }
+                    : image,
+                ),
+              )
+            },
             originalIndex: placeholder.originalIndex,
             target,
           })
@@ -2162,7 +2170,7 @@ function markSaveProgressSuccess() {
             removedPendingImageIdsRef.current.has(preparedImage.id)
           ) {
             revokePreviewUrl(preparedImage.previewUrl)
-            continue
+            return
           }
 
           setPendingImages((currentImages) =>
@@ -2173,6 +2181,7 @@ function markSaveProgressSuccess() {
                     errorMessage: null,
                     file: preparedImage.file,
                     height: preparedImage.height,
+                    processingLabel: null,
                     previewUrl: preparedImage.previewUrl,
                     status: 'pending',
                     width: preparedImage.width,
@@ -2189,7 +2198,7 @@ function markSaveProgressSuccess() {
           nextErrors.push(message)
 
           if (!isMountedRef.current || removedPendingImageIdsRef.current.has(placeholder.id)) {
-            continue
+            return
           }
 
           setPendingImages((currentImages) =>
@@ -2198,6 +2207,7 @@ function markSaveProgressSuccess() {
                 ? {
                     ...image,
                     errorMessage: message,
+                    processingLabel: null,
                     status: 'error',
                   }
                 : image,
@@ -2205,10 +2215,32 @@ function markSaveProgressSuccess() {
           )
         } finally {
           if (isMountedRef.current) {
-            setProcessedImagesCount(Math.min(index + 1, totalFiles))
+            processedCount += 1
+            setProcessedImagesCount(Math.min(processedCount, totalFiles))
           }
         }
       }
+
+      async function runPreparationWorker() {
+        while (nextPlaceholderIndex < placeholders.length) {
+          const currentIndex = nextPlaceholderIndex
+          nextPlaceholderIndex += 1
+
+          const placeholder = placeholders[currentIndex]
+
+          if (!placeholder) {
+            return
+          }
+
+          await processPlaceholder(placeholder)
+        }
+      }
+
+      const workerCount = Math.min(IMAGE_PREPARATION_CONCURRENCY, placeholders.length)
+
+      await Promise.all(
+        Array.from({ length: workerCount }, () => runPreparationWorker()),
+      )
 
       if (isMountedRef.current) {
         setImageValidationErrors(nextErrors)
@@ -2255,6 +2287,24 @@ function markSaveProgressSuccess() {
 
       return currentImages.filter((image) => image.id !== imageId)
     })
+  }
+
+  function handleOpenManualBlur(imageId: string) {
+    if (isReadOnly) {
+      return
+    }
+
+    setManualBlurErrorMessage(null)
+    setManualBlurTargetImageId(imageId)
+  }
+
+  function handleCloseManualBlurModal() {
+    if (isApplyingManualBlur) {
+      return
+    }
+
+    setManualBlurTargetImageId(null)
+    setManualBlurErrorMessage(null)
   }
 
   function renderImageFeedback() {
@@ -2315,6 +2365,54 @@ function markSaveProgressSuccess() {
           : image,
       ),
     )
+  }
+
+  async function handleApplyManualBlur(
+    imageId: string,
+    strokes: BlurStroke[],
+  ) {
+    const image = pendingImagesRef.current.find((pendingImage) => pendingImage.id === imageId)
+
+    if (!image) {
+      setManualBlurErrorMessage('No pudimos encontrar la imagen a editar.')
+      return
+    }
+
+    try {
+      setIsApplyingManualBlur(true)
+      setManualBlurErrorMessage(null)
+
+      const blurredFile = await applyBlurStrokesToImage(image.file, strokes)
+      const nextPreviewUrl = URL.createObjectURL(blurredFile)
+
+      setPendingImages((currentImages) =>
+        currentImages.map((pendingImage) => {
+          if (pendingImage.id !== imageId) {
+            return pendingImage
+          }
+
+          revokePreviewUrl(pendingImage.previewUrl)
+
+          return {
+            ...pendingImage,
+            errorMessage: null,
+            file: blurredFile,
+            previewUrl: nextPreviewUrl,
+            status: 'pending',
+          }
+        }),
+      )
+
+      setManualBlurTargetImageId(null)
+    } catch (error) {
+      setManualBlurErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos aplicar el blur manual a esta imagen.',
+      )
+    } finally {
+      setIsApplyingManualBlur(false)
+    }
   }
 
   async function runPendingImageDeletes(nextLocationId: string) {
@@ -2429,7 +2527,6 @@ function markSaveProgressSuccess() {
 
         activeUploadStatuses.set(image.id, 'uploading')
         syncUploadProgress()
-        console.info('[UPLOAD START]', image.id)
 
         const uploadTask = uploadLocationImage({
           file: image.file,
@@ -2458,7 +2555,6 @@ function markSaveProgressSuccess() {
           errorMessage: null,
           status: 'done',
         })
-        console.info('[UPLOAD SUCCESS]', image.id)
       } catch (error) {
         hasImageErrors = true
 
@@ -2766,6 +2862,21 @@ function markSaveProgressSuccess() {
           onChooseDropbox={() => void handleSelectDropboxSource()}
           onClose={handleCloseImageSourceModal}
           target={imageSelectionTarget}
+        />
+      ) : null}
+      {!isReadOnly && manualBlurTargetImageId !== null ? (
+        <LocationManualBlurModal
+          key={manualBlurTargetImageId}
+          errorMessage={manualBlurErrorMessage}
+          image={
+            manualBlurTargetImageId
+              ? pendingImages.find((image) => image.id === manualBlurTargetImageId) ?? null
+              : null
+          }
+          isApplying={isApplyingManualBlur}
+          isOpen={manualBlurTargetImageId !== null}
+          onApply={handleApplyManualBlur}
+          onClose={handleCloseManualBlurModal}
         />
       ) : null}
       {!isReadOnly ? (
@@ -3111,6 +3222,8 @@ function markSaveProgressSuccess() {
                     />
                   }
                   isLocked={isSubmitting}
+                  mode="pending"
+                  onManualBlur={handleOpenManualBlur}
                   onRemove={handleRemovePendingImage}
                   onSetCover={handleSetCoverImage}
                   showCount={false}
@@ -3141,6 +3254,7 @@ function markSaveProgressSuccess() {
                     images={[pendingCoverImage]}
                     isLocked={isSubmitting}
                     mode="pending"
+                    onManualBlur={handleOpenManualBlur}
                     onRemove={handleRemovePendingImage}
                     onSetCover={handleSetCoverImage}
                     showCount={false}
@@ -3372,6 +3486,8 @@ function markSaveProgressSuccess() {
                 <LocationImagesGrid
                   images={pendingGalleryImages}
                   isLocked={isSubmitting}
+                  mode="pending"
+                  onManualBlur={handleOpenManualBlur}
                   onRemove={handleRemovePendingImage}
                   showCount={false}
                   showCover={false}
@@ -3407,6 +3523,7 @@ function markSaveProgressSuccess() {
                   images={combinedEditGalleryImages}
                   isLocked={isSubmitting}
                   mode="mixed"
+                  onManualBlurPending={handleOpenManualBlur}
                   onRemovePending={handleRemovePendingImage}
                   onRemovePersisted={(imageId) => void handleDeletePersistedImage(imageId)}
                   showCount={false}
