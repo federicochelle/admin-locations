@@ -75,7 +75,16 @@ export function buildLocationAnalysisUserPrompt(
 ) {
   return [
     'Analizá esta locación usando exclusivamente la información provista.',
+    'Tomá el conjunto completo de imágenes como distintas vistas de una misma locación.',
+    'Primero comprendé el carácter general del lugar y después sintetizá los elementos repetidos o relevantes.',
+    'No describas cada fotografía por separado.',
+    'No asumas que algo está presente en toda la locación solo porque aparece de forma aislada en una única imagen.',
+    'Priorizá la evidencia visual por sobre el contexto administrativo para description y para la selección de rasgos visuales.',
     'Usá la ubicación solo como contexto. No inventes cercanías, barrios, landmarks ni información geográfica que no esté explícita en el input.',
+    'La categoría, la ubicación, las features actuales y los tags actuales sirven como apoyo, pero no reemplazan lo que muestran las imágenes.',
+    'Las features representan características amplias o importantes del lugar. Los tags representan detalles observables complementarios. No hace falta forzar tags si la evidencia no los sostiene.',
+    'La description debe ser rica en vocabulario natural útil para búsqueda y puede incluir conceptos que no existan como feature o tag si están visualmente justificados.',
+    'Si hay evidencia visual razonable, la description puede mencionar compatibilidades visuales con usos audiovisuales como publicidad, entrevistas, moda/editorial, lifestyle, ficción o escenas corporativas, sin usar lenguaje promocional ni afirmaciones absolutas.',
     '',
     'Contexto de la locación:',
     JSON.stringify(
