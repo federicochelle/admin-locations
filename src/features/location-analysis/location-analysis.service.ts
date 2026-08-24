@@ -5,6 +5,8 @@ import type {
 } from './location-analysis.types'
 import { OpenAIProvider } from './providers/openai.provider'
 
+const MAX_TAG_SLUGS = 6
+
 function getUniqueSlugs(slugs: string[]) {
   return Array.from(
     new Set(
@@ -21,7 +23,7 @@ function normalizeLocationAnalysisResult(
   return {
     description: result.description.trim(),
     featureSlugs: getUniqueSlugs(result.featureSlugs),
-    tagSlugs: getUniqueSlugs(result.tagSlugs),
+    tagSlugs: getUniqueSlugs(result.tagSlugs).slice(0, MAX_TAG_SLUGS),
   }
 }
 

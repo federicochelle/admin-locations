@@ -9,6 +9,7 @@ import type {
 } from '../location-analysis.types'
 
 const MAX_ANALYSIS_IMAGES = 12
+const MAX_TAG_SLUGS = 6
 
 function getUniqueSlugs(slugs: string[]) {
   return Array.from(
@@ -169,7 +170,9 @@ function normalizeLocationAnalysisResponse(
     ).filter((slug) => availableFeatureSlugs.has(slug)),
     tagSlugs: getUniqueSlugs(
       Array.isArray(rawResult.tagSlugs) ? rawResult.tagSlugs : [],
-    ).filter((slug) => availableTagSlugs.has(slug)),
+    )
+      .filter((slug) => availableTagSlugs.has(slug))
+      .slice(0, MAX_TAG_SLUGS),
   }
 }
 
