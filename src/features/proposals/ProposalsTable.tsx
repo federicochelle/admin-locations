@@ -4,9 +4,6 @@ import TablePagination from '../../components/ui/TablePagination'
 import { buttonBaseClassName, buttonVariantClasses } from '../../components/ui/button.styles'
 import { getProposalDetailPath } from '../../app/router/route-paths'
 import {
-  getProposalLocationLabel,
-} from './proposal-submissions.helpers'
-import {
   PROPOSAL_STATUS_OPTIONS,
   type ProposalListItem,
   type ProposalStatus,
@@ -114,7 +111,6 @@ function ProposalsTable({
               <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Nombre</th>
               <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Email</th>
               <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Teléfono</th>
-              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Ubicación</th>
               <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Estado</th>
               <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Acción</th>
             </tr>
@@ -153,9 +149,6 @@ function ProposalsTable({
                 </td>
                 <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                   <div className="min-w-[160px]">{proposal.ownerPhone}</div>
-                </td>
-                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
-                  <div className="min-w-[220px]">{getProposalLocationLabel(proposal)}</div>
                 </td>
                 <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                   <div className="min-w-[150px]">

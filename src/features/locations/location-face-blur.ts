@@ -25,6 +25,7 @@ type LoadedImageSource = {
 }
 
 export const FACE_BLUR_FILTER = 'blur(18px)'
+export const BLUR_STROKE_MASK_FILTER = 'blur(4px)'
 const JPEG_WEBP_QUALITY = 0.92
 const LARGE_FACE_BLUR_EXPANSION_RATIO = 0.18
 const MEDIUM_FACE_BLUR_EXPANSION_RATIO = 0.22
@@ -233,7 +234,7 @@ async function canvasToBlob(
   })
 }
 
-function drawStrokeMask(
+export function drawBlurStrokeMask(
   context: CanvasRenderingContext2D,
   stroke: BlurStroke,
 ) {
@@ -249,7 +250,7 @@ function drawStrokeMask(
   context.lineCap = 'round'
   context.lineJoin = 'round'
   context.lineWidth = stroke.radius * 2
-  context.filter = 'blur(4px)'
+  context.filter = BLUR_STROKE_MASK_FILTER
 
   if (remainingPoints.length === 0) {
     context.beginPath()
@@ -359,7 +360,7 @@ async function renderBlurredCanvas(
         }
 
         for (const stroke of strokes) {
-          drawStrokeMask(maskContext, stroke)
+          drawBlurStrokeMask(maskContext, stroke)
         }
 
         const compositeCanvas = document.createElement('canvas')
