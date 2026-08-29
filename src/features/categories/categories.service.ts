@@ -1,12 +1,15 @@
 import { getSupabaseClient } from '../../lib/supabase'
 import { createActivityLog } from '../activity/activity-logs.service'
 import type {
+  CategorySortDirection,
+  CategorySortKey,
   CategoryCreatePayload,
   CategoryEditableRecord,
   CategoryFormOptions,
   CategoryLocationListItem,
   CategoryListItem,
   CategoryParentOption,
+  PaginatedCategoriesResult,
   CategoryUpdatePayload,
 } from './categories.types'
 
@@ -59,6 +62,14 @@ type CategoryLocationRow = {
         name: string | null
       }[]
     | null
+}
+
+type PaginatedCategoriesInput = {
+  page: number
+  pageSize: number
+  searchTerm: string
+  sortKey: CategorySortKey
+  sortDirection: CategorySortDirection
 }
 
 function getRelationName(
@@ -154,6 +165,58 @@ export async function getCategories(): Promise<CategoryListItem[]> {
   const rows = (data ?? []) as CategoryRow[]
 
   return rows.map(mapCategory)
+}
+
+export async function getCategoriesPage(
+  input: PaginatedCategoriesInput,
+): Promise<PaginatedCategoriesResult> {
+  const supabase = getSupabaseClient()
+  const page = Math.max(1, input.page)
+  const pageSize = Math.max(1, input.pageSize)
+  const searchTerm = input.searchTerm.trim()
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
+  let query = supabase
+    .from('categories')
+    .select(
+      `
+        id,
+        image_url,
+        image_cloudflare_id,
+        name,
+        locations(count)
+      `,
+      { count: 'exact' },
+    )
+
+  if (searchTerm.length > 0) {
+    query = query.ilike('name', `%${searchTerm.replace(/[%,()]/g, '')}%`)
+  }
+
+  if (input.sortKey === 'locationsCount') {
+    query = query
+      .order('count', {
+        referencedTable: 'locations',
+        ascending: input.sortDirection === 'asc',
+      })
+      .order('name', { ascending: true })
+  } else {
+    query = query.order('name', {
+      ascending: input.sortDirection === 'asc',
+    })
+  }
+
+  const { data, error, count } = await query.range(from, to)
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return {
+    items: ((data ?? []) as CategoryRow[]).map(mapCategory),
+    totalCount: typeof count === 'number' ? count : 0,
+  }
 }
 
 export async function getCategoryLocations(

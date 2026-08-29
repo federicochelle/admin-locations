@@ -6,6 +6,15 @@ export type CategoryListItem = {
   image_cloudflare_id?: string | null
 }
 
+export type CategorySortKey = 'name' | 'locationsCount'
+
+export type CategorySortDirection = 'asc' | 'desc'
+
+export type PaginatedCategoriesResult = {
+  items: CategoryListItem[]
+  totalCount: number
+}
+
 export type CategoryLocationListItem = {
   id: string
   locationCode: string | null

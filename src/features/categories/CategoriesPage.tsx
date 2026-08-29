@@ -33,10 +33,18 @@ function CategoriesPage() {
     actionErrorMessage,
     activeActionKey,
     categories,
+    currentPage,
     errorMessage,
     isLoading,
+    pageSize,
     remove,
     retry,
+    searchTerm,
+    setCurrentPage,
+    setSearchTerm,
+    setSort,
+    sortKey,
+    totalCount,
   } = useCategories()
   const [selectedCategory, setSelectedCategory] = useState<CategoryListItem | null>(null)
   const [categoryLocations, setCategoryLocations] = useState<LocationListItem[]>([])
@@ -299,6 +307,14 @@ function CategoriesPage() {
         <CategoriesTable
           categories={categories}
           activeActionKey={activeActionKey}
+          currentPage={currentPage}
+          pageSize={pageSize}
+          totalCount={totalCount}
+          searchTerm={searchTerm}
+          sortKey={sortKey}
+          onPageChange={setCurrentPage}
+          onSearchTermChange={setSearchTerm}
+          onSortChange={setSort}
           onDelete={handleDelete}
           onView={handleView}
         />

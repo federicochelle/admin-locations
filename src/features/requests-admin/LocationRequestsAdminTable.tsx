@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
+import TablePagination from '../../components/ui/TablePagination'
 import { getRequestDetailPath } from '../../app/router/route-paths'
 import type {
   AdminLocationRequest,
@@ -10,9 +11,12 @@ import { LOCATION_REQUEST_STATUS_OPTIONS } from './admin-location-requests.types
 
 type LocationRequestsAdminTableProps = {
   requests: AdminLocationRequest[]
+  currentPage?: number
+  pageSize?: number
   totalCount: number
   selectedStatus: 'all' | LocationRequestStatus
   onSelectedStatusChange: (status: 'all' | LocationRequestStatus) => void
+  onPageChange?: (page: number) => void
   onCreateRequest?: () => void
   isCreatingRequest?: boolean
   isEmbedded?: boolean
@@ -63,9 +67,12 @@ function formatRequesterName(request: AdminLocationRequest) {
 
 function LocationRequestsAdminTable({
   requests,
+  currentPage = 1,
+  pageSize = Math.max(requests.length, 1),
   totalCount,
   selectedStatus,
   onSelectedStatusChange,
+  onPageChange,
   onCreateRequest,
   isCreatingRequest = false,
   isEmbedded = false,
@@ -223,6 +230,16 @@ function LocationRequestsAdminTable({
           </tbody>
         </table>
       </div>
+
+      {hasRequests && onPageChange ? (
+        <TablePagination
+          currentPage={currentPage}
+          pageSize={pageSize}
+          totalCount={totalCount}
+          itemCount={requests.length}
+          onPageChange={onPageChange}
+        />
+      ) : null}
     </>
   )
 

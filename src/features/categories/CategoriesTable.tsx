@@ -1,22 +1,31 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import Card from '../../components/ui/Card'
+import TablePagination from '../../components/ui/TablePagination'
 import {
   buttonBaseClassName,
   buttonVariantClasses,
 } from '../../components/ui/button.styles'
 import { getCategoryEditPath, routePaths } from '../../app/router/route-paths'
-import type { CategoryListItem } from './categories.types'
+import type {
+  CategoryListItem,
+  CategorySortKey,
+} from './categories.types'
 
 type CategoriesTableProps = {
   categories: CategoryListItem[]
   activeActionKey: string | null
+  currentPage: number
+  pageSize: number
+  totalCount: number
+  searchTerm: string
+  sortKey: CategorySortKey
+  onPageChange: (page: number) => void
+  onSearchTermChange: (value: string) => void
+  onSortChange: (key: CategorySortKey) => void
   onDelete: (category: CategoryListItem) => Promise<void>
   onView: (category: CategoryListItem) => void
 }
-
-type CategorySortKey = 'name' | 'locationsCount'
-type CategorySortDirection = 'asc' | 'desc'
 
 function CoverPlaceholder() {
   return (
@@ -174,47 +183,19 @@ function DeleteIcon() {
 function CategoriesTable({
   categories,
   activeActionKey,
+  currentPage,
+  pageSize,
+  totalCount,
+  searchTerm,
+  sortKey,
+  onPageChange,
+  onSearchTermChange,
+  onSortChange,
   onDelete,
   onView,
 }: CategoriesTableProps) {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [sortKey, setSortKey] = useState<CategorySortKey>('name')
-  const [sortDirection, setSortDirection] = useState<CategorySortDirection>('asc')
-
-  const filteredCategories = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLocaleLowerCase()
-
-    const nextCategories =
-      normalizedSearch.length === 0
-        ? categories
-        : categories.filter((category) =>
-            category.name.toLocaleLowerCase().includes(normalizedSearch),
-          )
-
-    return [...nextCategories].sort((left, right) => {
-      if (sortKey === 'locationsCount') {
-        const difference = left.locationsCount - right.locationsCount
-        return sortDirection === 'asc' ? difference : -difference
-      }
-
-      const comparison = left.name.localeCompare(right.name, 'es', {
-        sensitivity: 'base',
-      })
-
-      return sortDirection === 'asc' ? comparison : -comparison
-    })
-  }, [categories, searchTerm, sortDirection, sortKey])
-
   function handleSort(nextSortKey: CategorySortKey) {
-    if (sortKey === nextSortKey) {
-      setSortDirection((currentDirection) =>
-        currentDirection === 'asc' ? 'desc' : 'asc',
-      )
-      return
-    }
-
-    setSortKey(nextSortKey)
-    setSortDirection('asc')
+    onSortChange(nextSortKey)
   }
 
   function isInteractiveEventTarget(target: EventTarget | null) {
@@ -247,7 +228,7 @@ function CategoriesTable({
           <div>
             <h2 className="text-lg font-semibold text-slate-950">Listado de categorías</h2>
             <p className="mt-1 text-sm text-slate-600">
-              {categories.length} {categories.length === 1 ? 'categoría registrada' : 'categorías registradas'}
+              {totalCount} {totalCount === 1 ? 'categoría registrada' : 'categorías registradas'}
             </p>
           </div>
 
@@ -260,7 +241,7 @@ function CategoriesTable({
                 type="search"
                 placeholder="Buscar categoría"
                 value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
+                onChange={(event) => onSearchTermChange(event.target.value)}
                 className="w-full rounded-xl border border-slate-300 bg-white/95 py-2.5 pl-10 pr-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-500 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               />
             </label>
@@ -325,7 +306,7 @@ function CategoriesTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-transparent">
-            {filteredCategories.length === 0 ? (
+            {categories.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-3 py-8 text-sm text-slate-500 sm:px-6">
                   No se encontraron categorías.
@@ -333,7 +314,7 @@ function CategoriesTable({
               </tr>
             ) : null}
 
-            {filteredCategories.map((category) => (
+            {categories.map((category) => (
               <tr
                 key={category.id}
                 className="cursor-pointer align-top transition hover:bg-[rgba(184,146,74,0.10)] focus:bg-[rgba(184,146,74,0.10)] focus:outline-none"
@@ -396,6 +377,14 @@ function CategoriesTable({
           </tbody>
         </table>
       </div>
+
+      <TablePagination
+        currentPage={currentPage}
+        pageSize={pageSize}
+        totalCount={totalCount}
+        itemCount={categories.length}
+        onPageChange={onPageChange}
+      />
     </Card>
   )
 }
