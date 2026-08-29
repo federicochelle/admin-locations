@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PendingLocationImageFile } from './location-images.types'
 import {
+  drawBlurStrokeMask,
   FACE_BLUR_FILTER,
   type BlurStroke,
 } from './location-face-blur'
@@ -17,6 +18,8 @@ type LocationManualBlurModalProps = {
 
 type BrushCursorState = {
   isVisible: boolean
+  radiusX: number
+  radiusY: number
   x: number
   y: number
 }
@@ -50,7 +53,8 @@ type LoadedEditorSource = {
 }
 
 const BRUSH_RADIUS_RENDERED = 19
-const BRUSH_CENTER_MARK_SIZE = 8
+const BRUSH_CURSOR_VISUAL_OFFSET_Y = -12
+const BRUSH_APPLICATION_OFFSET_RENDERED_Y = 12
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
@@ -199,42 +203,6 @@ async function createEditorAssets(file: File): Promise<EditorAssets> {
   }
 }
 
-function drawStrokeMask(
-  context: CanvasRenderingContext2D,
-  stroke: BlurStroke,
-) {
-  if (stroke.points.length === 0) {
-    return
-  }
-
-  const [firstPoint, ...remainingPoints] = stroke.points
-
-  context.save()
-  context.fillStyle = '#ffffff'
-  context.strokeStyle = '#ffffff'
-  context.lineCap = 'round'
-  context.lineJoin = 'round'
-  context.lineWidth = stroke.radius * 2
-
-  if (remainingPoints.length === 0) {
-    context.beginPath()
-    context.arc(firstPoint.x, firstPoint.y, stroke.radius, 0, Math.PI * 2)
-    context.fill()
-    context.restore()
-    return
-  }
-
-  context.beginPath()
-  context.moveTo(firstPoint.x, firstPoint.y)
-
-  for (const point of remainingPoints) {
-    context.lineTo(point.x, point.y)
-  }
-
-  context.stroke()
-  context.restore()
-}
-
 function LocationManualBlurModal({
   errorMessage,
   image,
@@ -260,6 +228,8 @@ function LocationManualBlurModal({
   const [editorErrorMessage, setEditorErrorMessage] = useState<string | null>(null)
   const [brushCursor, setBrushCursor] = useState<BrushCursorState>({
     isVisible: false,
+    radiusX: BRUSH_RADIUS_RENDERED,
+    radiusY: BRUSH_RADIUS_RENDERED,
     x: 0,
     y: 0,
   })
@@ -301,7 +271,7 @@ function LocationManualBlurModal({
     assets.maskContext.clearRect(0, 0, assets.width, assets.height)
 
     for (const stroke of strokesToRender) {
-      drawStrokeMask(assets.maskContext, stroke)
+      drawBlurStrokeMask(assets.maskContext, stroke)
     }
 
     assets.compositeContext.clearRect(0, 0, assets.width, assets.height)
@@ -376,10 +346,14 @@ function LocationManualBlurModal({
       return
     }
 
+    const radiusInImagePixels = getBrushRadiusInImagePixels(pointerPosition)
+
     setBrushCursor({
       isVisible: true,
-      x: pointerPosition.renderedX,
-      y: pointerPosition.renderedY,
+      radiusX: radiusInImagePixels / pointerPosition.scaleX,
+      radiusY: radiusInImagePixels / pointerPosition.scaleY,
+      x: pointerPosition.imageX / pointerPosition.scaleX,
+      y: pointerPosition.imageY / pointerPosition.scaleY,
     })
   }
 
@@ -427,6 +401,16 @@ function LocationManualBlurModal({
     }
 
     return Math.max(1, BRUSH_RADIUS_RENDERED * pointerPosition.scaleX)
+  }
+
+  function getBlurApplicationOffsetInImagePixels(
+    pointerPosition: Pick<CanvasPointerPosition, 'scaleY'> | null,
+  ) {
+    if (!pointerPosition) {
+      return BRUSH_APPLICATION_OFFSET_RENDERED_Y
+    }
+
+    return BRUSH_APPLICATION_OFFSET_RENDERED_Y * pointerPosition.scaleY
   }
 
   function commitDraftStroke() {
@@ -479,12 +463,13 @@ function LocationManualBlurModal({
     }
 
     const radius = getBrushRadiusInImagePixels(pointerPosition)
+    const blurOffsetY = getBlurApplicationOffsetInImagePixels(pointerPosition)
     activePointerIdRef.current = event.pointerId
     draftStrokeRef.current = {
       points: [
         {
           x: pointerPosition.imageX,
-          y: pointerPosition.imageY,
+          y: clamp(pointerPosition.imageY + blurOffsetY, 0, editorAssetsRef.current?.height ?? pointerPosition.imageY + blurOffsetY),
         },
       ],
       radius,
@@ -525,7 +510,14 @@ function LocationManualBlurModal({
         ...draftStrokeRef.current.points,
         {
           x: pointerPosition.imageX,
-          y: pointerPosition.imageY,
+          y: clamp(
+            pointerPosition.imageY +
+              getBlurApplicationOffsetInImagePixels(pointerPosition),
+            0,
+            editorAssetsRef.current?.height ??
+              pointerPosition.imageY +
+                getBlurApplicationOffsetInImagePixels(pointerPosition),
+          ),
         },
       ],
     }
@@ -713,30 +705,30 @@ function LocationManualBlurModal({
                 aria-hidden="true"
                 className="pointer-events-none absolute"
                 style={{
-                  height: BRUSH_RADIUS_RENDERED * 2,
                   left: brushCursor.x,
-                  top: brushCursor.y,
-                  transform: 'translate(-50%, -50%)',
-                  width: BRUSH_RADIUS_RENDERED * 2,
+                  top: brushCursor.y + BRUSH_CURSOR_VISUAL_OFFSET_Y,
                 }}
               >
-                <div className="absolute inset-0 rounded-full border border-white/90 bg-black/5 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]" />
-                <div
-                  className="absolute left-1/2 top-1/2 bg-white/95 shadow-[0_0_0_1px_rgba(15,23,42,0.7)]"
-                  style={{
-                    height: 1,
-                    transform: 'translate(-50%, -50%)',
-                    width: BRUSH_CENTER_MARK_SIZE,
-                  }}
-                />
-                <div
-                  className="absolute left-1/2 top-1/2 bg-white/95 shadow-[0_0_0_1px_rgba(15,23,42,0.7)]"
-                  style={{
-                    height: BRUSH_CENTER_MARK_SIZE,
-                    transform: 'translate(-50%, -50%)',
-                    width: 1,
-                  }}
-                />
+                <svg
+                  viewBox="0 0 14 18"
+                  className="block h-[18px] w-[14px] overflow-visible drop-shadow-[0_0_1px_rgba(15,23,42,0.9)]"
+                  fill="none"
+                >
+                  <path
+                    d="M0 0L0 13L3.6 9.8L5.7 16L8 15L5.8 8.9L11 8L0 0Z"
+                    stroke="rgba(15,23,42,0.92)"
+                    strokeWidth="3"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M0 0L0 13L3.6 9.8L5.7 16L8 15L5.8 8.9L11 8L0 0Z"
+                    stroke="rgba(255,255,255,0.98)"
+                    strokeWidth="1.6"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                </svg>
               </div>
             ) : null}
 

@@ -31,6 +31,15 @@ export function normalizeCategoryLocationCodePrefixInput(value: string) {
     .toUpperCase()
 }
 
+export function normalizeCategoryLocationCodePrefixDisplayInput(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9 -]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trimStart()
+}
+
 export function getLegacyLocationCodeCategoryName(categoryName: string) {
   const trimmed = categoryName.trim()
 
