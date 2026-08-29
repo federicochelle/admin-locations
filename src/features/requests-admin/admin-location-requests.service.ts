@@ -658,11 +658,11 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
   const supabase = getSupabaseClient()
 
   const { data: requestsData, error: requestsError } = await supabase
-    .from('request_projects')
-    .select('*')
-    .neq('status', 'draft')
-    .order('submitted_at', { ascending: false, nullsFirst: false })
-    .order('id', { ascending: false })
+    .rpc('list_admin_request_projects', {
+      p_status: null,
+      p_limit: null,
+      p_offset: 0,
+    })
 
   if (requestsError) {
     throw new Error(requestsError.message)
@@ -694,47 +694,40 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
     )
   }
 
-  return requestRows
-    .map((row) => {
-      const profile = profilesByUserId.get(row.user_id) ?? null
-      const requestProjectLocations = requestProjectLocationsByRequestId.get(row.id) ?? []
-      const locationNames = getLocationNamesFromRequestProjectLocations(requestProjectLocations)
-      const title = row.title?.trim()
-      const requestContact = parseRequestProjectMessageWithContactMetadata(row.message)
+  return requestRows.map((row) => {
+    const profile = profilesByUserId.get(row.user_id) ?? null
+    const requestProjectLocations = requestProjectLocationsByRequestId.get(row.id) ?? []
+    const locationNames = getLocationNamesFromRequestProjectLocations(requestProjectLocations)
+    const title = row.title?.trim()
+    const requestContact = parseRequestProjectMessageWithContactMetadata(row.message)
 
-      return {
-        id: row.id,
-        userId: row.user_id,
-        title:
-          title && title.length > 0
-            ? title
-            : locationNames[0] ?? 'Solicitud sin titulo',
-        message: requestContact.notes,
-        status: normalizeLocationRequestStatus(row.status),
-        submittedAt: getCanonicalSubmittedAt(row),
-        updatedAt: row.updated_at,
-        requesterFullName:
-          requestContact.contactName ||
-          getRequestFullName(row) ||
-          profile?.full_name?.trim() ||
-          null,
-        requesterEmail: getRequestEmail(row),
-        requesterCompanyName: profile?.company_name?.trim() || null,
-        requesterPhone:
-          requestContact.contactPhone ||
-          getRequestPhone(row) ||
-          profile?.phone?.trim() ||
-          null,
-        locationCount: requestProjectLocations.length,
-        locationNames,
-      }
-    })
-    .sort(
-      (leftRequest, rightRequest) =>
-        new Date(rightRequest.submittedAt).getTime() -
-        new Date(leftRequest.submittedAt).getTime() ||
-        rightRequest.id.localeCompare(leftRequest.id),
-    )
+    return {
+      id: row.id,
+      userId: row.user_id,
+      title:
+        title && title.length > 0
+          ? title
+          : locationNames[0] ?? 'Solicitud sin titulo',
+      message: requestContact.notes,
+      status: normalizeLocationRequestStatus(row.status),
+      submittedAt: getCanonicalSubmittedAt(row),
+      updatedAt: row.updated_at,
+      requesterFullName:
+        requestContact.contactName ||
+        getRequestFullName(row) ||
+        profile?.full_name?.trim() ||
+        null,
+      requesterEmail: getRequestEmail(row),
+      requesterCompanyName: profile?.company_name?.trim() || null,
+      requesterPhone:
+        requestContact.contactPhone ||
+        getRequestPhone(row) ||
+        profile?.phone?.trim() ||
+        null,
+      locationCount: requestProjectLocations.length,
+      locationNames,
+    }
+  })
 }
 
 export async function getAdminLocationRequestsPage(input: {
@@ -746,24 +739,31 @@ export async function getAdminLocationRequestsPage(input: {
   const safePage = Math.max(1, input.page)
   const safePageSize = Math.max(1, input.pageSize)
   const from = (safePage - 1) * safePageSize
-  const to = from + safePageSize - 1
-
-  let query = supabase
+  let countQuery = supabase
     .from('request_projects')
-    .select('*', { count: 'exact' })
+    .select('id', { count: 'exact', head: true })
     .neq('status', 'draft')
-    .order('submitted_at', { ascending: false, nullsFirst: false })
-    .order('id', { ascending: false })
-    .range(from, to)
 
   if (input.status !== 'all') {
-    query = query.eq('status', input.status)
+    countQuery = countQuery.eq('status', input.status)
   }
 
-  const { data: requestsData, count, error: requestsError } = await query
+  const [{ data: requestsData, error: requestsError }, { count, error: countError }] =
+    await Promise.all([
+      supabase.rpc('list_admin_request_projects', {
+        p_status: input.status === 'all' ? null : input.status,
+        p_limit: safePageSize,
+        p_offset: from,
+      }),
+      countQuery,
+    ])
 
   if (requestsError) {
     throw new Error(requestsError.message)
+  }
+
+  if (countError) {
+    throw new Error(countError.message)
   }
 
   const requestRows = (requestsData ?? []) as RequestProjectRow[]
@@ -1217,12 +1217,13 @@ export async function getActiveAdminLocationRequestReservations(
     id: string | null
     status: string | null
   }>
-  const reservationIds = getUniqueValues(
-    reservationRows.map((row) => row.id),
-  )
-  const count = reservationRows.filter(
+  const activeReservationRows = reservationRows.filter(
     (row) => row.status === 'pending' || row.status === 'confirmed',
-  ).length
+  )
+  const reservationIds = getUniqueValues(
+    activeReservationRows.map((row) => row.id),
+  )
+  const count = activeReservationRows.length
 
   return {
     count,

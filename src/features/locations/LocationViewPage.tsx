@@ -10,9 +10,9 @@ import {
 import useAuth from '../auth/useAuth'
 import { createActivityLog } from '../activity/activity-logs.service'
 import Card from '../../components/ui/Card'
+import { useAdminFeedback } from '../../components/ui/admin-feedback/useAdminFeedback'
 import PageContainer from '../../components/ui/PageContainer'
 import LocationForm, { type LocationFormMode } from './LocationForm'
-import LocationDeleteProgressModal from './LocationDeleteProgressModal'
 import { deleteLocation, getLocationById } from './locations.service'
 import type { LocationEditableRecord, LocationFormValues } from './locations.types'
 
@@ -165,6 +165,7 @@ function LocationViewPage() {
   const navigate = useNavigate()
   const routerLocation = useLocation()
   const { profile } = useAuth()
+  const { alert, confirm, withLoading } = useAdminFeedback()
   const [initialValues, setInitialValues] = useState<LocationFormValues | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -276,9 +277,6 @@ function LocationViewPage() {
     [
       breadcrumbCurrentLabel,
       categoryContext,
-      errorMessage,
-      id,
-      isLoading,
       ownerContext,
       pageDescription,
       pageTitle,
@@ -296,9 +294,13 @@ function LocationViewPage() {
       locationCode,
       title: initialValues.title,
     })
-    const shouldDelete = window.confirm(
-      `¿Seguro que querés eliminar la locación "${formattedLocationIdentifier}"?\n\nEsta acción no se puede deshacer.`,
-    )
+    const shouldDelete = await confirm({
+      variant: 'danger',
+      title: 'Eliminar locación',
+      description: `¿Seguro que querés eliminar la locación "${formattedLocationIdentifier}"?`,
+      confirmLabel: 'Eliminar locación',
+      cancelLabel: 'Cancelar',
+    })
 
     if (!shouldDelete) {
       return
@@ -329,7 +331,27 @@ function LocationViewPage() {
         )
       }
 
-      await deleteLocation(id)
+      await withLoading({
+        title: 'Eliminar locación',
+        description: 'Estamos procesando la eliminación de la locación.',
+        progress: {
+          enabled: true,
+        },
+        action: async () => {
+          await deleteLocation(id)
+        },
+      })
+
+      await alert({
+        variant: 'success',
+        title: 'Locación eliminada',
+        hideProgressBar: true,
+        hideProgressPercentage: true,
+        iconVariant: 'success',
+        progressPercentage: 100,
+        closeLabel: 'Ver locaciones',
+      })
+
       navigate(routePaths.locations)
     } catch (error) {
       setDeleteErrorMessage(
@@ -394,8 +416,6 @@ function LocationViewPage() {
       }
       hideHeader
     >
-      <LocationDeleteProgressModal isOpen={isDeleting} />
-
       <Card className="border-0 bg-[radial-gradient(circle_at_top_left,_rgba(184,146,74,0.10),_transparent_24%),linear-gradient(180deg,_#111111_0%,_#151515_52%,_#1a1a1a_100%)] p-6 shadow-none backdrop-blur-0">
         {isLoading ? (
           <div className="flex min-h-72 items-center justify-center">

@@ -24,6 +24,7 @@ type PersistedLocationImagesGridProps = {
   images: LocationImageRecord[]
   isLocked?: boolean
   mode: 'persisted'
+  onManualBlur?: (imageId: string) => void
   onRemove?: (imageId: string) => void
   onSetCover?: (imageId: string) => void
 }
@@ -43,6 +44,7 @@ type MixedLocationImagesGridProps = {
   isLocked?: boolean
   mode: 'mixed'
   onManualBlurPending?: (imageId: string) => void
+  onManualBlurPersisted?: (imageId: string) => void
   onRemovePending?: (imageId: string) => void
   onRemovePersisted?: (imageId: string) => void
 }
@@ -55,6 +57,7 @@ type LocationImagesGridProps =
 type LocationImagesGridBaseProps = {
   emptyCoverAction?: React.ReactNode
   emptyGalleryAction?: React.ReactNode
+  manualBlurLoadingImageId?: string | null
   showCount?: boolean
   showCover?: boolean
   showGallery?: boolean
@@ -265,10 +268,10 @@ function LocationImagesGrid(
       : Boolean(props.onRemove)
   const hasManualBlurAction =
     props.mode === 'mixed'
-      ? Boolean(props.onManualBlurPending)
-      : props.mode === 'pending'
-        ? Boolean(props.onManualBlur)
-        : false
+      ? Boolean(props.onManualBlurPending || props.onManualBlurPersisted)
+    : props.mode === 'pending'
+      ? Boolean(props.onManualBlur)
+      : Boolean(props.onManualBlur)
   const canDragToCover = Boolean(onSetCoverHandler)
   const title = props.title
   const showCount = props.showCount !== false && orderedItems.length > 0
@@ -357,18 +360,21 @@ function LocationImagesGrid(
   }
 
   function handleManualBlur(image: GridImageItem) {
-    if (image.kind !== 'pending') {
-      return
-    }
-
     if (props.mode === 'mixed') {
-      props.onManualBlurPending?.(image.id)
+      if (image.kind === 'pending') {
+        props.onManualBlurPending?.(image.id)
+      } else {
+        props.onManualBlurPersisted?.(image.id)
+      }
       return
     }
 
     if (props.mode === 'pending' || typeof props.mode === 'undefined') {
       props.onManualBlur?.(image.id)
+      return
     }
+
+    props.onManualBlur?.(image.id)
   }
 
   function handleOpenLightbox(imageId: string) {
@@ -475,15 +481,24 @@ function LocationImagesGrid(
                     {hasManualBlurAction && !coverItem.isProcessing && !props.isLocked ? (
                       <button
                         type="button"
-                        title="Aplicar blur manual"
+                        title={
+                          props.manualBlurLoadingImageId === coverItem.id
+                            ? 'Preparando editor de blur...'
+                            : 'Aplicar blur manual'
+                        }
                         aria-label="Aplicar blur manual"
+                        disabled={props.manualBlurLoadingImageId !== null}
                         onClick={(event) => {
                           event.stopPropagation()
                           handleManualBlur(coverItem)
                         }}
                         className={overlayIconButtonClassName()}
                       >
-                        <BlurIcon />
+                        {props.manualBlurLoadingImageId === coverItem.id ? (
+                          <ProcessingSpinner />
+                        ) : (
+                          <BlurIcon />
+                        )}
                       </button>
                     ) : null}
                     {hasRemoveAction ? (
@@ -570,15 +585,24 @@ function LocationImagesGrid(
                     {hasManualBlurAction && !image.isProcessing && !props.isLocked ? (
                       <button
                         type="button"
-                        title="Aplicar blur manual"
+                        title={
+                          props.manualBlurLoadingImageId === image.id
+                            ? 'Preparando editor de blur...'
+                            : 'Aplicar blur manual'
+                        }
                         aria-label="Aplicar blur manual"
+                        disabled={props.manualBlurLoadingImageId !== null}
                         onClick={(event) => {
                           event.stopPropagation()
                           handleManualBlur(image)
                         }}
                         className={overlayIconButtonClassName()}
                       >
-                        <BlurIcon />
+                        {props.manualBlurLoadingImageId === image.id ? (
+                          <ProcessingSpinner />
+                        ) : (
+                          <BlurIcon />
+                        )}
                       </button>
                     ) : null}
                     {hasRemoveAction ? (
