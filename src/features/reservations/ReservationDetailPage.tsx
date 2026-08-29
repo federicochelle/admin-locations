@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import {
@@ -9,6 +9,7 @@ import {
 } from '../../app/router/route-paths'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
+import { useAdminFeedback } from '../../components/ui/admin-feedback/useAdminFeedback'
 import PageContainer from '../../components/ui/PageContainer'
 import { getOwnerWhatsappUrl } from '../../lib/phone'
 import ReservationDialog from './ReservationDialog'
@@ -57,6 +58,33 @@ function getDateRangeValidationMessage(values: ReservationFormValues) {
   }
 
   return null
+}
+
+type ReservationCrudFeedback =
+  | {
+      kind: 'success'
+      title: string
+    }
+  | {
+      kind: 'warning'
+      title: string
+      description: string
+    }
+
+function getReservationCrudErrorDescription(
+  error: unknown,
+  fallbackMessage: string,
+) {
+  const message =
+    error instanceof Error && error.message.trim()
+      ? error.message.trim()
+      : fallbackMessage
+
+  if (message.includes('Google Calendar')) {
+    return 'No pudimos completar la operación por un problema de sincronización con Google Calendar. Revisá la conexión e intentá nuevamente.'
+  }
+
+  return message
 }
 
 function formatReservationDateLabel(value: string) {
@@ -307,6 +335,7 @@ function NoteIcon() {
 }
 
 function ReservationDetailPage() {
+  const { alert, showError, withLoading } = useAdminFeedback()
   const { reservationId } = useParams<{ reservationId: string }>()
   const routerLocation = useLocation()
   const navigationState = (routerLocation.state as ReservationNavigationState | null) ?? null
@@ -317,13 +346,12 @@ function ReservationDetailPage() {
     isLoading,
     isSaving,
     errorMessage,
-    actionErrorMessage,
-    actionSuccessMessage,
     retry,
     update,
   } = useReservations()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [dialogValidationError, setDialogValidationError] = useState<string | null>(null)
+  const [pendingFeedback, setPendingFeedback] = useState<ReservationCrudFeedback | null>(null)
 
   const reservation = useMemo(
     () =>
@@ -350,6 +378,35 @@ function ReservationDetailPage() {
   )
 
   useLayoutHeader(headerConfig)
+
+  useEffect(() => {
+    if (isDialogOpen || !pendingFeedback) {
+      return
+    }
+
+    void (async () => {
+      if (pendingFeedback.kind === 'warning') {
+        await alert({
+          variant: 'warning',
+          title: pendingFeedback.title,
+          description: pendingFeedback.description,
+          closeLabel: 'Entendido',
+        })
+      } else {
+        await alert({
+          variant: 'success',
+          title: pendingFeedback.title,
+          hideProgressBar: true,
+          hideProgressPercentage: true,
+          iconVariant: 'success',
+          progressPercentage: 100,
+          closeLabel: 'Entendido',
+        })
+      }
+
+      setPendingFeedback(null)
+    })()
+  }, [alert, isDialogOpen, pendingFeedback])
 
   const locationDetailHref = reservation ? getLocationDetailPath(reservation.locationId) : null
   const requestDetailHref = reservation?.requestProjectId
@@ -394,16 +451,52 @@ function ReservationDetailPage() {
 
     setDialogValidationError(null)
 
-    return update(reservation.id, {
-      location_id: values.locationId,
-      title: values.title.trim(),
-      production_company:
-        values.productionCompany.trim().length > 0 ? values.productionCompany.trim() : null,
-      starts_at: toIsoDateTime(values.startsAt),
-      ends_at: toIsoDateTime(values.endsAt),
-      status: values.status,
-      notes: values.notes.trim().length > 0 ? values.notes.trim() : null,
-    })
+    try {
+      const result = await withLoading({
+        title: 'Guardar cambios',
+        description: 'Estamos guardando los cambios de la reserva.',
+        progress: {
+          enabled: true,
+        },
+        action: async () =>
+          await update(reservation.id, {
+            location_id: values.locationId,
+            title: values.title.trim(),
+            production_company:
+              values.productionCompany.trim().length > 0 ? values.productionCompany.trim() : null,
+            starts_at: toIsoDateTime(values.startsAt),
+            ends_at: toIsoDateTime(values.endsAt),
+            status: values.status,
+            notes: values.notes.trim().length > 0 ? values.notes.trim() : null,
+          }),
+      })
+
+      setPendingFeedback(
+        result.syncWarning
+          ? {
+              kind: 'warning',
+              title: 'Reserva actualizada con advertencias',
+              description:
+                'La reserva se guardó, pero quedaron sincronizaciones pendientes. Revisá Google Calendar o la solicitud vinculada antes de continuar.',
+            }
+          : {
+              kind: 'success',
+              title: 'Reserva actualizada',
+            },
+      )
+
+      return true
+    } catch (error) {
+      await showError({
+        title: 'No pudimos guardar los cambios',
+        description: getReservationCrudErrorDescription(
+          error,
+          'No pudimos guardar los cambios de la reserva.',
+        ),
+        closeLabel: 'Entendido',
+      })
+      return false
+    }
   }
 
   return (
@@ -414,7 +507,7 @@ function ReservationDetailPage() {
     >
       <ReservationDialog
         key={reservation?.id ?? 'missing'}
-        errorMessage={dialogValidationError ?? actionErrorMessage}
+        errorMessage={dialogValidationError}
         isOpen={isDialogOpen}
         isSubmitting={isSaving}
         locationOptions={locationOptions}
@@ -465,32 +558,6 @@ function ReservationDetailPage() {
 
       {!isLoading && !errorMessage && reservation ? (
         <>
-          {actionErrorMessage && !isDialogOpen ? (
-            <Card>
-              <div>
-                <h2 className="text-lg font-semibold text-slate-950">
-                  No pudimos guardar los cambios
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {actionErrorMessage}
-                </p>
-              </div>
-            </Card>
-          ) : null}
-
-          {actionSuccessMessage ? (
-            <Card>
-              <div>
-                <h2 className="text-lg font-semibold text-slate-950">
-                  Operación completada
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">
-                  {actionSuccessMessage}
-                </p>
-              </div>
-            </Card>
-          ) : null}
-
           <Card className="-mx-4 rounded-none border-x-0 sm:mx-0 sm:rounded-2xl sm:border-x">
             <div>
               <div className="flex flex-col gap-4 border-b border-slate-200 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">

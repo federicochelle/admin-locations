@@ -11,6 +11,7 @@ type ProfileRow = {
   full_name: string | null
   email: string | null
   company_name: string | null
+  production_company_id: string | null
   role: string | null
   avatar_url: string | null
   status: string | null
@@ -25,6 +26,7 @@ function mapUserRow(row: ProfileRow): UserListItem {
     fullName: row.full_name?.trim() || null,
     email: row.email?.trim() || null,
     companyName: row.company_name?.trim() || null,
+    productionCompanyId: row.production_company_id?.trim() || null,
     role: row.role?.trim() || null,
     avatarUrl: row.avatar_url?.trim() || null,
     status: row.status?.trim() || null,
@@ -42,7 +44,7 @@ export async function getUsers(): Promise<UserListItem[]> {
   const { data, error } = await supabase
     .from('profiles')
     .select(
-      'id, user_id, full_name, email, company_name, role, avatar_url, status, phone, created_at',
+      'id, user_id, full_name, email, company_name, production_company_id, role, avatar_url, status, phone, created_at',
     )
     .order('created_at', { ascending: false })
 
@@ -58,7 +60,7 @@ export async function getUserByProfileId(profileId: string): Promise<UserDetail>
   const { data: profileData, error: profileError } = await supabase
     .from('profiles')
     .select(
-      'id, user_id, full_name, email, company_name, role, avatar_url, status, phone, created_at',
+      'id, user_id, full_name, email, company_name, production_company_id, role, avatar_url, status, phone, created_at',
     )
     .eq('id', profileId)
     .maybeSingle()
@@ -115,5 +117,35 @@ export async function getUserByProfileId(profileId: string): Promise<UserDetail>
       favoritesCount: getExactCountOrZero(favoritesResult.count),
       requests: adminRequests.filter((request) => request.userId === profile.user_id),
     },
+  }
+}
+
+export async function updateUserProductionCompanyAssociation(input: {
+  profileId: string
+  productionCompanyId: string | null
+}): Promise<void> {
+  const supabase = getSupabaseClient()
+  const profileId = input.profileId.trim()
+
+  if (!profileId) {
+    throw new Error('No encontramos el perfil que querés actualizar.')
+  }
+
+  const { data, error } = await supabase.rpc(
+    'admin_set_profile_production_company',
+    {
+      p_profile_id: profileId,
+      p_production_company_id: input.productionCompanyId,
+    },
+  )
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const resultRow = Array.isArray(data) ? data[0] : data
+
+  if (!resultRow || typeof resultRow.profile_id !== 'string') {
+    throw new Error('No recibimos confirmación al actualizar la productora asociada.')
   }
 }

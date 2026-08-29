@@ -82,10 +82,10 @@ function DeleteIcon() {
   )
 }
 
-function formatLocation(reservation: ReservationListItem) {
-  return reservation.locationCode?.trim()
-    ? `${reservation.locationCode.replaceAll('-', ' ')} · ${reservation.locationTitle}`
-    : reservation.locationTitle
+function formatLocationCode(reservation: ReservationListItem) {
+  const locationCode = reservation.locationCode?.trim()
+
+  return locationCode ? locationCode.replaceAll('-', ' ') : 'Sin código'
 }
 
 function ReservationTable({
@@ -128,19 +128,17 @@ function ReservationTable({
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-[#f3f2ee]">
             <tr>
-              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Locación</th>
-              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Título</th>
+              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Código locación</th>
               <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Inicio</th>
               <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Fin</th>
               <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Estado</th>
-              <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Creado</th>
               <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-transparent">
             {reservations.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-sm text-slate-500 sm:px-6">
+                <td colSpan={5} className="px-3 py-8 text-sm text-slate-500 sm:px-6">
                   No se encontraron reservas.
                 </td>
               </tr>
@@ -153,10 +151,7 @@ function ReservationTable({
                 onClick={() => onOpenReservation(reservation)}
               >
                 <td className="px-3 py-4 text-sm font-medium text-slate-950 sm:px-6">
-                  <div className="min-w-[240px]">{formatLocation(reservation)}</div>
-                </td>
-                <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
-                  <div className="min-w-[220px]">{reservation.title}</div>
+                  <div className="min-w-[180px]">{formatLocationCode(reservation)}</div>
                 </td>
                 <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
                   <div className="min-w-[160px]">{formatReservationDateTime(reservation.startsAt)}</div>
@@ -175,9 +170,6 @@ function ReservationTable({
                       {getReservationStatusLabel(reservation.status)}
                     </span>
                   </div>
-                </td>
-                <td className="px-3 py-4 text-sm text-slate-600 sm:px-6">
-                  <div className="min-w-[160px]">{formatReservationDateTime(reservation.createdAt)}</div>
                 </td>
                 <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
                   <div className="flex flex-wrap gap-2">

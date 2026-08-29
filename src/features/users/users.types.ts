@@ -10,6 +10,7 @@ export type UserListItem = {
   fullName: string | null
   email: string | null
   companyName: string | null
+  productionCompanyId: string | null
   role: string | null
   avatarUrl: string | null
   status: string | null

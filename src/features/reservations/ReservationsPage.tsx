@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
+import { useAdminFeedback } from '../../components/ui/admin-feedback/useAdminFeedback'
 import PageContainer from '../../components/ui/PageContainer'
 import {
   startOfMonth,
@@ -68,16 +69,42 @@ function getDateRangeValidationMessage(values: ReservationFormValues) {
   return null
 }
 
+type ReservationCrudFeedback =
+  | {
+      kind: 'success'
+      title: string
+    }
+  | {
+      kind: 'warning'
+      title: string
+      description: string
+    }
+
+function getReservationCrudErrorDescription(
+  error: unknown,
+  fallbackMessage: string,
+) {
+  const message =
+    error instanceof Error && error.message.trim()
+      ? error.message.trim()
+      : fallbackMessage
+
+  if (message.includes('Google Calendar')) {
+    return 'No pudimos completar la operación por un problema de sincronización con Google Calendar. Revisá la conexión e intentá nuevamente.'
+  }
+
+  return message
+}
+
 function ReservationsPage() {
   const navigate = useNavigate()
+  const { alert, confirm, showError, withLoading } = useAdminFeedback()
   const {
     reservations,
     locationOptions,
     isLoading,
     isSaving,
     errorMessage,
-    actionErrorMessage,
-    actionSuccessMessage,
     activeActionKey,
     retry,
     create,
@@ -93,6 +120,7 @@ function ReservationsPage() {
     useState<ReservationListItem | null>(null)
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()))
   const [activeView, setActiveView] = useState<'calendar' | 'list'>('calendar')
+  const [pendingFeedback, setPendingFeedback] = useState<ReservationCrudFeedback | null>(null)
 
   const headerConfig = useMemo(
     () => ({
@@ -105,6 +133,35 @@ function ReservationsPage() {
   )
 
   useLayoutHeader(headerConfig)
+
+  useEffect(() => {
+    if (isDialogOpen || !pendingFeedback) {
+      return
+    }
+
+    void (async () => {
+      if (pendingFeedback.kind === 'warning') {
+        await alert({
+          variant: 'warning',
+          title: pendingFeedback.title,
+          description: pendingFeedback.description,
+          closeLabel: 'Entendido',
+        })
+      } else {
+        await alert({
+          variant: 'success',
+          title: pendingFeedback.title,
+          hideProgressBar: true,
+          hideProgressPercentage: true,
+          iconVariant: 'success',
+          progressPercentage: 100,
+          closeLabel: 'Entendido',
+        })
+      }
+
+      setPendingFeedback(null)
+    })()
+  }, [alert, isDialogOpen, pendingFeedback])
 
   function handleOpenCreateDialog() {
     setDialogMode('create')
@@ -142,15 +199,49 @@ function ReservationsPage() {
   }
 
   async function handleDelete(reservation: ReservationListItem) {
-    const shouldDelete = window.confirm(
-      `¿Seguro que querés eliminar la reserva "${reservation.title}"?`,
-    )
+    const shouldDelete = await confirm({
+      variant: 'danger',
+      title: 'Eliminar reserva',
+      description: `¿Seguro que querés eliminar la reserva "${reservation.title}"?`,
+      confirmLabel: 'Eliminar reserva',
+      cancelLabel: 'Cancelar',
+    })
 
     if (!shouldDelete) {
       return
     }
 
-    await remove(reservation)
+    try {
+      await withLoading({
+        title: 'Eliminar reserva',
+        description: 'Estamos procesando la eliminación de la reserva.',
+        progress: {
+          enabled: true,
+        },
+        action: async () => {
+          await remove(reservation)
+        },
+      })
+
+      await alert({
+        variant: 'success',
+        title: 'Reserva eliminada',
+        hideProgressBar: true,
+        hideProgressPercentage: true,
+        iconVariant: 'success',
+        progressPercentage: 100,
+        closeLabel: 'Entendido',
+      })
+    } catch (error) {
+      await showError({
+        title: 'No pudimos eliminar la reserva',
+        description: getReservationCrudErrorDescription(
+          error,
+          'No pudimos eliminar la reserva.',
+        ),
+        closeLabel: 'Entendido',
+      })
+    }
   }
 
   async function handleSubmit(values: ReservationFormValues) {
@@ -174,15 +265,62 @@ function ReservationsPage() {
       notes: values.notes.trim().length > 0 ? values.notes.trim() : null,
     }
 
-    if (dialogMode === 'create') {
-      return create(payload)
-    }
+    try {
+      const result = await withLoading({
+        title: dialogMode === 'create' ? 'Crear reserva' : 'Guardar cambios',
+        description:
+          dialogMode === 'create'
+            ? 'Estamos guardando la nueva reserva.'
+            : 'Estamos guardando los cambios de la reserva.',
+        progress: {
+          enabled: true,
+        },
+        action: async () => {
+          if (dialogMode === 'create') {
+            return await create(payload)
+          }
 
-    if (!selectedReservation) {
+          if (!selectedReservation) {
+            throw new Error('No encontramos la reserva que querés editar.')
+          }
+
+          return await update(selectedReservation.id, payload)
+        },
+      })
+
+      setPendingFeedback(
+        result.syncWarning
+          ? {
+              kind: 'warning',
+              title: dialogMode === 'create'
+                ? 'Reserva creada con advertencias'
+                : 'Reserva actualizada con advertencias',
+              description:
+                'La reserva se guardó, pero quedaron sincronizaciones pendientes. Revisá Google Calendar o la solicitud vinculada antes de continuar.',
+            }
+          : {
+              kind: 'success',
+              title: dialogMode === 'create' ? 'Reserva creada' : 'Reserva actualizada',
+            },
+      )
+
+      return true
+    } catch (error) {
+      await showError({
+        title:
+          dialogMode === 'create'
+            ? 'No pudimos crear la reserva'
+            : 'No pudimos guardar los cambios',
+        description: getReservationCrudErrorDescription(
+          error,
+          dialogMode === 'create'
+            ? 'No pudimos crear la reserva.'
+            : 'No pudimos guardar los cambios de la reserva.',
+        ),
+        closeLabel: 'Entendido',
+      })
       return false
     }
-
-    return update(selectedReservation.id, payload)
   }
 
   const reservationViewToggle = (
@@ -212,7 +350,7 @@ function ReservationsPage() {
           selectedDatePrefill?.startsAt ?? '',
           selectedDatePrefill?.endsAt ?? '',
         ].join(':')}
-        errorMessage={dialogValidationError ?? actionErrorMessage}
+        errorMessage={dialogValidationError}
         initialValues={selectedDatePrefill}
         isOpen={isDialogOpen}
         isSubmitting={isSaving}
@@ -245,32 +383,6 @@ function ReservationsPage() {
             <Button variant="secondary" onClick={() => void retry()}>
               Reintentar
             </Button>
-          </div>
-        </Card>
-      ) : null}
-
-      {!isLoading && !errorMessage && actionErrorMessage && !isDialogOpen ? (
-        <Card>
-          <div>
-            <h2 className="text-lg font-semibold text-slate-950">
-              No pudimos actualizar la reserva
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {actionErrorMessage}
-            </p>
-          </div>
-        </Card>
-      ) : null}
-
-      {!isLoading && !errorMessage && actionSuccessMessage ? (
-        <Card>
-          <div>
-            <h2 className="text-lg font-semibold text-slate-950">
-              Operación completada
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {actionSuccessMessage}
-            </p>
           </div>
         </Card>
       ) : null}

@@ -19,12 +19,10 @@ type UseReservationsResult = {
   isLoading: boolean
   isSaving: boolean
   errorMessage: string | null
-  actionErrorMessage: string | null
-  actionSuccessMessage: string | null
   activeActionKey: string | null
   retry: () => Promise<void>
-  create: (payload: ReservationCreatePayload) => Promise<boolean>
-  update: (id: string, payload: ReservationUpdatePayload) => Promise<boolean>
+  create: (payload: ReservationCreatePayload) => Promise<{ syncWarning: string | null }>
+  update: (id: string, payload: ReservationUpdatePayload) => Promise<{ syncWarning: string | null }>
   remove: (reservation: ReservationListItem) => Promise<void>
 }
 
@@ -85,8 +83,6 @@ export function useReservations(): UseReservationsResult {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null)
-  const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null)
   const [activeActionKey, setActiveActionKey] = useState<string | null>(null)
 
   async function loadReservations() {
@@ -117,20 +113,16 @@ export function useReservations(): UseReservationsResult {
   async function create(payload: ReservationCreatePayload) {
     try {
       setIsSaving(true)
-      setActionErrorMessage(null)
-      setActionSuccessMessage(null)
 
       const result = await createReservation(payload)
       await loadReservations()
-      setActionSuccessMessage(
-        result.syncWarning ?? 'Reserva creada correctamente.',
-      )
-      return true
+      return {
+        syncWarning: result.syncWarning ?? null,
+      }
     } catch (error) {
-      setActionErrorMessage(
+      throw new Error(
         getErrorMessage(error, 'No pudimos crear la reserva.'),
       )
-      return false
     } finally {
       setIsSaving(false)
     }
@@ -139,20 +131,16 @@ export function useReservations(): UseReservationsResult {
   async function update(id: string, payload: ReservationUpdatePayload) {
     try {
       setIsSaving(true)
-      setActionErrorMessage(null)
-      setActionSuccessMessage(null)
 
       const result = await updateReservation(id, payload)
       await loadReservations()
-      setActionSuccessMessage(
-        result.syncWarning ?? 'Reserva actualizada correctamente.',
-      )
-      return true
+      return {
+        syncWarning: result.syncWarning ?? null,
+      }
     } catch (error) {
-      setActionErrorMessage(
+      throw new Error(
         getErrorMessage(error, 'No pudimos actualizar la reserva.'),
       )
-      return false
     } finally {
       setIsSaving(false)
     }
@@ -161,15 +149,12 @@ export function useReservations(): UseReservationsResult {
   async function remove(reservation: ReservationListItem) {
     try {
       setActiveActionKey(`delete:${reservation.id}`)
-      setActionErrorMessage(null)
-      setActionSuccessMessage(null)
 
       await deleteReservation(reservation.id)
       await loadReservations()
-      setActionSuccessMessage('Reserva eliminada correctamente.')
     } catch (error) {
       await loadReservations()
-      setActionErrorMessage(
+      throw new Error(
         getErrorMessage(error, 'No pudimos eliminar la reserva.'),
       )
     } finally {
@@ -218,8 +203,6 @@ export function useReservations(): UseReservationsResult {
     isLoading,
     isSaving,
     errorMessage,
-    actionErrorMessage,
-    actionSuccessMessage,
     activeActionKey,
     retry,
     create,

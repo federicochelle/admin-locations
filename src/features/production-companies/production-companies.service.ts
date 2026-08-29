@@ -272,6 +272,19 @@ export async function updateProductionCompany(
   return mapProductionCompanyRow(data as ProductionCompanyRow)
 }
 
+export async function deleteProductionCompany(id: string): Promise<void> {
+  const supabase = getSupabaseClient()
+
+  const { error } = await supabase
+    .from('production_companies')
+    .delete()
+    .eq('id', id)
+
+  if (error) {
+    throw new Error(error.message || 'No pudimos eliminar la productora.')
+  }
+}
+
 export async function getProductionCompanyLogoUploadUrl(
   input: ProductionCompanyLogoUploadUrlInput,
 ): Promise<ProductionCompanyLogoUploadUrlResult> {

@@ -135,7 +135,12 @@ type RequestProjectVersionSyncRow = {
 }
 
 type GoogleCalendarSyncInput = {
+  action?: 'sync' | 'cleanup'
   reservationId: string
+}
+
+type GoogleCalendarSyncOptions = {
+  throwOnError?: boolean
 }
 
 type ReservationSaveResult = {
@@ -342,11 +347,14 @@ async function getEdgeFunctionErrorMessage(
 
 async function syncReservationWithGoogleCalendar(
   input: GoogleCalendarSyncInput,
+  options: GoogleCalendarSyncOptions = {},
 ): Promise<string | null> {
   const supabase = getSupabaseClient()
+  const { throwOnError = false } = options
 
   const { error } = await supabase.functions.invoke('google-calendar-sync-reservation', {
     body: {
+      ...(input.action ? { action: input.action } : {}),
       reservationId: input.reservationId,
     },
   })
@@ -359,6 +367,10 @@ async function syncReservationWithGoogleCalendar(
     error,
     GOOGLE_CALENDAR_SYNC_WARNING_MESSAGE,
   )
+
+  if (throwOnError) {
+    throw new Error(syncErrorMessage)
+  }
 
   return syncErrorMessage.trim()
     ? `${GOOGLE_CALENDAR_SYNC_WARNING_MESSAGE} ${syncErrorMessage.trim()}`
@@ -377,6 +389,7 @@ export async function syncExistingReservation(
   return {
     id: normalizedReservationId,
     syncWarning: await syncReservationWithGoogleCalendar({
+      action: 'sync',
       reservationId: normalizedReservationId,
     }),
   }
@@ -661,6 +674,7 @@ export async function updateReservation(
   }
   const savedId = savedReservation.id
   const googleCalendarSyncWarning = await syncReservationWithGoogleCalendar({
+    action: payload.status === 'confirmed' ? 'sync' : 'cleanup',
     reservationId: savedId,
   })
   const requestLocationStatusSyncWarning =
@@ -766,37 +780,23 @@ export async function deleteReservation(id: string): Promise<string> {
     throw new Error('No encontramos la reserva que querés eliminar.')
   }
 
-  let syncWarning: string | null = null
-
-  if (reservation.status === 'cancelled') {
-    const googleCalendarSyncWarning = await syncReservationWithGoogleCalendar({
-      reservationId: reservation.id,
-    })
-    const requestLocationStatusSyncWarning =
-      await syncRequestProjectLocationStatusFromReservation({
-        requestProjectLocationId: reservation.request_project_location_id ?? null,
-        reservationStatus: 'cancelled',
-      })
-    syncWarning = mergeReservationWarnings(
-      googleCalendarSyncWarning,
-      requestLocationStatusSyncWarning,
+  try {
+    await syncReservationWithGoogleCalendar(
+      {
+        action: 'cleanup',
+        reservationId: reservation.id,
+      },
+      { throwOnError: true },
     )
-  } else {
-    const result = await updateReservation(id, {
-      location_id: reservation.location_id,
-      title: reservation.title,
-      production_company: reservation.production_company ?? null,
-      starts_at: reservation.starts_at,
-      ends_at: reservation.ends_at,
-      status: 'cancelled',
-      notes: reservation.notes,
-    })
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : GOOGLE_CALENDAR_DELETE_SYNC_ERROR_MESSAGE
 
-    syncWarning = result.syncWarning
-  }
-
-  if (syncWarning) {
-    throw new Error(GOOGLE_CALENDAR_DELETE_SYNC_ERROR_MESSAGE)
+    throw new Error(
+      `${GOOGLE_CALENDAR_DELETE_SYNC_ERROR_MESSAGE} ${errorMessage}`.trim(),
+    )
   }
 
   const { data: deletedReservation, error: deleteError } = await supabase
@@ -808,6 +808,23 @@ export async function deleteReservation(id: string): Promise<string> {
 
   if (deleteError) {
     throw new Error(deleteError.message)
+  }
+
+  const requestLocationStatusSyncWarning =
+    await syncRequestProjectLocationStatusFromReservation({
+      requestProjectLocationId: reservation.request_project_location_id ?? null,
+      reservationStatus: 'cancelled',
+    })
+
+  if (requestLocationStatusSyncWarning) {
+    console.warn(
+      '[reservations.delete] request_project_location_sync_warning',
+      {
+        requestProjectLocationId: reservation.request_project_location_id ?? null,
+        reservationId: reservation.id,
+        warning: requestLocationStatusSyncWarning,
+      },
+    )
   }
 
   return (deletedReservation as ReservationIdRow).id
