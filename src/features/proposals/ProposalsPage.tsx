@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
@@ -6,13 +6,20 @@ import EmptyState from '../../components/ui/EmptyState'
 import PageContainer from '../../components/ui/PageContainer'
 import ProposalsTable from './ProposalsTable'
 import { useProposalSubmissions } from './useProposalSubmissions'
-import {
-  type ProposalStatus,
-} from './proposal-submissions.types'
 
 function ProposalsPage() {
-  const { proposals, isLoading, errorMessage, retry } = useProposalSubmissions()
-  const [selectedStatus, setSelectedStatus] = useState<'all' | ProposalStatus>('all')
+  const {
+    proposals,
+    currentPage,
+    pageSize,
+    totalCount,
+    selectedStatus,
+    isLoading,
+    errorMessage,
+    retry,
+    setCurrentPage,
+    setSelectedStatus,
+  } = useProposalSubmissions()
 
   const headerConfig = useMemo(
     () => ({
@@ -27,11 +34,6 @@ function ProposalsPage() {
   )
 
   useLayoutHeader(headerConfig)
-
-  const filteredProposals =
-    selectedStatus === 'all'
-      ? proposals
-      : proposals.filter((proposal) => proposal.status === selectedStatus)
 
   return (
     <PageContainer
@@ -65,16 +67,16 @@ function ProposalsPage() {
         </Card>
       ) : null}
 
-      {!isLoading && !errorMessage && filteredProposals.length === 0 ? (
+      {!isLoading && !errorMessage && proposals.length === 0 ? (
         <Card className="p-4 sm:p-6">
           <EmptyState
             title={
-              proposals.length === 0
+              selectedStatus === 'all'
                 ? 'Todavía no hay propuestas'
                 : 'No hay propuestas para este estado'
             }
             description={
-              proposals.length === 0
+              selectedStatus === 'all'
                 ? 'Cuando lleguen nuevas postulaciones desde la web pública, aparecerán acá.'
                 : 'Probá con otro estado para ver más resultados.'
             }
@@ -82,12 +84,15 @@ function ProposalsPage() {
         </Card>
       ) : null}
 
-      {!isLoading && !errorMessage && filteredProposals.length > 0 ? (
+      {!isLoading && !errorMessage && proposals.length > 0 ? (
         <ProposalsTable
-          proposals={filteredProposals}
-          totalCount={proposals.length}
+          proposals={proposals}
+          currentPage={currentPage}
+          pageSize={pageSize}
+          totalCount={totalCount}
           selectedStatus={selectedStatus}
           onSelectedStatusChange={setSelectedStatus}
+          onPageChange={setCurrentPage}
         />
       ) : null}
     </PageContainer>

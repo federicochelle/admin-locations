@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import Card from '../../components/ui/Card'
+import TablePagination from '../../components/ui/TablePagination'
 import { buttonBaseClassName, buttonVariantClasses } from '../../components/ui/button.styles'
 import { getProposalDetailPath } from '../../app/router/route-paths'
 import {
@@ -14,9 +15,12 @@ import ProposalStatusBadge from './ProposalStatusBadge'
 
 type ProposalsTableProps = {
   proposals: ProposalListItem[]
+  currentPage: number
+  pageSize: number
   totalCount: number
   selectedStatus: 'all' | ProposalStatus
   onSelectedStatusChange: (status: 'all' | ProposalStatus) => void
+  onPageChange: (page: number) => void
 }
 
 function formatProposalDate(value: string) {
@@ -36,9 +40,12 @@ function formatProposalTime(value: string) {
 
 function ProposalsTable({
   proposals,
+  currentPage,
+  pageSize,
   totalCount,
   selectedStatus,
   onSelectedStatusChange,
+  onPageChange,
 }: ProposalsTableProps) {
   const navigate = useNavigate()
 
@@ -169,6 +176,14 @@ function ProposalsTable({
           </tbody>
         </table>
       </div>
+
+      <TablePagination
+        currentPage={currentPage}
+        pageSize={pageSize}
+        totalCount={totalCount}
+        itemCount={proposals.length}
+        onPageChange={onPageChange}
+      />
     </Card>
   )
 }

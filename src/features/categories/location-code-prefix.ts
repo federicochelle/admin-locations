@@ -22,7 +22,13 @@ export const LEGACY_LOCATION_CODE_PREFIX_MAP: Record<string, string> = {
 }
 
 export function normalizeCategoryLocationCodePrefixInput(value: string) {
-  return value.replace(/\s+/g, ' ').trim().toUpperCase()
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toUpperCase()
 }
 
 export function getLegacyLocationCodeCategoryName(categoryName: string) {

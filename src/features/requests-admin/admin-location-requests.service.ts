@@ -6,6 +6,7 @@ import type {
   AdminLocationRequestVersion,
   CreateAdminManualRequestInput,
   LocationRequestStatus,
+  PaginatedAdminLocationRequestsResult,
   RequestProjectLocationStatus,
 } from './admin-location-requests.types'
 import {
@@ -649,6 +650,10 @@ function mapRequestProjectLocationToDetail(input: {
   }
 }
 
+function getCanonicalSubmittedAt(row: RequestProjectRow) {
+  return row.submitted_at?.trim() || row.created_at
+}
+
 export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]> {
   const supabase = getSupabaseClient()
 
@@ -657,6 +662,7 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
     .select('*')
     .neq('status', 'draft')
     .order('submitted_at', { ascending: false, nullsFirst: false })
+    .order('id', { ascending: false })
 
   if (requestsError) {
     throw new Error(requestsError.message)
@@ -705,12 +711,7 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
             : locationNames[0] ?? 'Solicitud sin titulo',
         message: requestContact.notes,
         status: normalizeLocationRequestStatus(row.status),
-        submittedAt:
-          getOptionalStringValue(row, [
-            'submitted_at',
-            'official_pdf_uploaded_at',
-            'updated_at',
-          ]) ?? row.created_at,
+        submittedAt: getCanonicalSubmittedAt(row),
         updatedAt: row.updated_at,
         requesterFullName:
           requestContact.contactName ||
@@ -731,8 +732,104 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
     .sort(
       (leftRequest, rightRequest) =>
         new Date(rightRequest.submittedAt).getTime() -
-        new Date(leftRequest.submittedAt).getTime(),
+        new Date(leftRequest.submittedAt).getTime() ||
+        rightRequest.id.localeCompare(leftRequest.id),
     )
+}
+
+export async function getAdminLocationRequestsPage(input: {
+  page: number
+  pageSize: number
+  status: 'all' | LocationRequestStatus
+}): Promise<PaginatedAdminLocationRequestsResult> {
+  const supabase = getSupabaseClient()
+  const safePage = Math.max(1, input.page)
+  const safePageSize = Math.max(1, input.pageSize)
+  const from = (safePage - 1) * safePageSize
+  const to = from + safePageSize - 1
+
+  let query = supabase
+    .from('request_projects')
+    .select('*', { count: 'exact' })
+    .neq('status', 'draft')
+    .order('submitted_at', { ascending: false, nullsFirst: false })
+    .order('id', { ascending: false })
+    .range(from, to)
+
+  if (input.status !== 'all') {
+    query = query.eq('status', input.status)
+  }
+
+  const { data: requestsData, count, error: requestsError } = await query
+
+  if (requestsError) {
+    throw new Error(requestsError.message)
+  }
+
+  const requestRows = (requestsData ?? []) as RequestProjectRow[]
+  const requestIds = requestRows.map((row) => row.id)
+  const uniqueUserIds = Array.from(new Set(requestRows.map((row) => row.user_id)))
+  const requestProjectLocationsByRequestId = await getRequestProjectLocationsByRequestIds(
+    requestIds,
+  )
+
+  let profilesByUserId = new Map<string, ProfileRow>()
+
+  if (uniqueUserIds.length > 0) {
+    const { data: profilesData, error: profilesError } = await supabase
+      .from('profiles')
+      .select('user_id, full_name, email, company_name, phone')
+      .in('user_id', uniqueUserIds)
+
+    if (profilesError) {
+      throw new Error(profilesError.message)
+    }
+
+    profilesByUserId = new Map(
+      ((profilesData ?? []) as ProfileRow[]).map((profile) => [
+        profile.user_id,
+        profile,
+      ]),
+    )
+  }
+
+  return {
+    items: requestRows.map((row) => {
+      const profile = profilesByUserId.get(row.user_id) ?? null
+      const requestProjectLocations = requestProjectLocationsByRequestId.get(row.id) ?? []
+      const locationNames = getLocationNamesFromRequestProjectLocations(requestProjectLocations)
+      const title = row.title?.trim()
+      const requestContact = parseRequestProjectMessageWithContactMetadata(row.message)
+
+      return {
+        id: row.id,
+        userId: row.user_id,
+        title:
+          title && title.length > 0
+            ? title
+            : locationNames[0] ?? 'Solicitud sin titulo',
+        message: requestContact.notes,
+        status: normalizeLocationRequestStatus(row.status),
+        submittedAt: getCanonicalSubmittedAt(row),
+        updatedAt: row.updated_at,
+        requesterFullName:
+          requestContact.contactName ||
+          getRequestFullName(row) ||
+          profile?.full_name?.trim() ||
+          null,
+        requesterEmail: getRequestEmail(row),
+        requesterCompanyName: profile?.company_name?.trim() || null,
+        requesterPhone:
+          requestContact.contactPhone ||
+          getRequestPhone(row) ||
+          profile?.phone?.trim() ||
+          null,
+        locationCount: requestProjectLocations.length,
+        locationNames,
+      }
+    }),
+    totalCount: count ?? 0,
+  }
 }
 
 export async function getPendingRequestsCount(): Promise<number> {
@@ -1236,12 +1333,7 @@ export async function getAdminLocationRequestById(
     message: requestContact.notes,
     status: normalizeLocationRequestStatus(row.status),
     createdAt: row.created_at,
-    submittedAt:
-      getOptionalStringValue(row, [
-        'submitted_at',
-        'official_pdf_uploaded_at',
-        'updated_at',
-      ]) ?? row.created_at,
+    submittedAt: getCanonicalSubmittedAt(row),
     updatedAt: row.updated_at,
     requester: {
       userId: row.user_id,

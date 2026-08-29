@@ -1,10 +1,5 @@
 import { getSupabaseClient } from '../../lib/supabase'
 import { createActivityLog } from '../activity/activity-logs.service'
-import {
-  LEGACY_LOCATION_CODE_PREFIX_MAP,
-  getLegacyLocationCodeCategoryName,
-  normalizeCategoryLocationCodePrefixInput,
-} from '../categories/location-code-prefix'
 import type {
   LocationCategoryOption,
   LocationCreatePayload,
@@ -31,15 +26,6 @@ import type {
 type LocationSlugRow = {
   id: string
   slug: string
-}
-
-type LocationCodeRow = {
-  location_code: string | null
-}
-
-type CategoryNameRow = {
-  name: string | null
-  location_code_prefix: string | null
 }
 
 type SupabaseErrorLike = {
@@ -74,9 +60,6 @@ const LOCATION_LIST_SELECT = `
   owners(id, full_name, phone)
 `
 
-const LOCATION_CODE_PREFIX_MAP: Record<string, string> =
-  LEGACY_LOCATION_CODE_PREFIX_MAP
-
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -85,31 +68,43 @@ function escapeLikePattern(value: string) {
   return value.replace(/[%,()]/g, '')
 }
 
+function normalizeLocationCodeSearchTerm(value: string) {
+  return value
+    .toLocaleLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/[\s_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+}
+
+function buildLocationCodeSearchFilter(searchTerm: string) {
+  const normalizedSearchTerm = normalizeLocationCodeSearchTerm(searchTerm)
+
+  if (normalizedSearchTerm.length === 0) {
+    return null
+  }
+
+  const tokens = normalizedSearchTerm
+    .split(' ')
+    .map((token) => escapeLikePattern(token))
+    .filter((token) => token.length > 0)
+
+  if (tokens.length === 0) {
+    return null
+  }
+
+  const tokenFilters = tokens.map((token) => `location_code.ilike.%${token}%`)
+
+  return tokenFilters.length === 1
+    ? tokenFilters[0]
+    : `and(${tokenFilters.join(',')})`
+}
+
 function normalizeLocationSlug(baseSlug: string) {
   const trimmed = baseSlug.trim()
 
   return trimmed.length > 0 ? trimmed : 'locacion'
-}
-
-function normalizeLocationCategoryNameForCode(categoryName: string) {
-  return getLegacyLocationCodeCategoryName(categoryName)
-}
-
-function normalizeLocationCodePrefix(categoryName: string) {
-  const normalizedCategoryName = normalizeLocationCategoryNameForCode(categoryName)
-  const normalized = normalizedCategoryName
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .replace(/[^a-zA-Z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .toUpperCase()
-
-  if (normalized.length === 0) {
-    return 'CATEGORIA'
-  }
-
-  return LOCATION_CODE_PREFIX_MAP[normalized] ?? normalized
 }
 
 function normalizeLocationPayloadTitle<T extends { title: string }>(payload: T): T {
@@ -191,68 +186,6 @@ async function getUniqueLocationSlug(
   }, 1)
 
   return `${normalizedBaseSlug}-${maxSuffix + 1}`
-}
-
-async function getNextLocationCode(categoryId: string): Promise<string> {
-  const supabase = getSupabaseClient()
-
-  const { data: categoryData, error: categoryError } = await supabase
-    .from('categories')
-    .select('name, location_code_prefix')
-    .eq('id', categoryId)
-    .single()
-
-  if (categoryError) {
-    throw new Error(categoryError.message)
-  }
-
-  const categoryName = ((categoryData as CategoryNameRow | null)?.name ?? '').trim()
-
-  if (categoryName.length === 0) {
-    throw new Error('No pudimos generar el código de la locación porque la categoría no es válida.')
-  }
-
-  const storedLocationCodePrefix = normalizeCategoryLocationCodePrefixInput(
-    ((categoryData as CategoryNameRow | null)?.location_code_prefix ?? ''),
-  )
-  const prefix =
-    storedLocationCodePrefix || normalizeLocationCodePrefix(categoryName)
-
-  if (prefix.length === 0) {
-    throw new Error(
-      'No pudimos generar el código de la locación porque la categoría no tiene un prefijo válido.',
-    )
-  }
-
-  const { data: locationData, error: locationError } = await supabase
-    .from('locations')
-    .select('location_code')
-    .eq('category_id', categoryId)
-    .not('location_code', 'is', null)
-
-  if (locationError) {
-    throw new Error(locationError.message)
-  }
-
-  const rows = (locationData ?? []) as LocationCodeRow[]
-  const maxSequence = rows.reduce((highest, row) => {
-    const code = row.location_code?.trim()
-
-    if (!code) {
-      return highest
-    }
-
-    const match = code.match(/-(\d+)$/)
-    const parsedSequence = Number.parseInt(match?.[1] ?? '', 10)
-
-    if (Number.isNaN(parsedSequence)) {
-      return highest
-    }
-
-    return Math.max(highest, parsedSequence)
-  }, 0)
-
-  return `${prefix}-${String(maxSequence + 1).padStart(3, '0')}`
 }
 
 function getRelationName(relation: LocationNameRelation) {
@@ -341,6 +274,7 @@ function mapLocation(row: SupabaseLocationRow): LocationListItem {
 
 type CreatedLocationRow = {
   id: string
+  location_code: string | null
 }
 
 type DeleteLocationResult = {
@@ -468,7 +402,14 @@ export async function getLocationsPage(
     .select(LOCATION_LIST_SELECT, { count: 'exact' })
 
   if (searchTerm.length > 0) {
-    const filters = [`location_code.ilike.${searchPattern}`]
+    const filters: string[] = []
+    const locationCodeFilter = buildLocationCodeSearchFilter(searchTerm)
+
+    if (locationCodeFilter) {
+      filters.push(locationCodeFilter)
+    } else {
+      filters.push(`location_code.ilike.${searchPattern}`)
+    }
 
     if (ownerIds.length > 0) {
       filters.push(`owner_id.in.(${ownerIds.join(',')})`)
@@ -615,56 +556,35 @@ export async function createLocation(
   const { selectedFeatureIds, selectedTagIds, ...rawLocationPayload } = payload
   const locationPayload = normalizeLocationPayloadTitle(rawLocationPayload)
   const uniqueSlug = await getUniqueLocationSlug(locationPayload.slug)
-  let createdRow: CreatedLocationRow | null = null
-  let generatedLocationCode: string | null = null
+  const { data, error } = await supabase
+    .from('locations')
+    .insert({
+      ...locationPayload,
+      slug: uniqueSlug,
+      location_code: null,
+    })
+    .select('id, location_code')
+    .single()
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const locationCode = locationPayload.category_id
-      ? await getNextLocationCode(locationPayload.category_id)
-      : null
-    generatedLocationCode = locationCode
-
-    const { data, error } = await supabase
-      .from('locations')
-      .insert({
-        ...locationPayload,
-        slug: uniqueSlug,
-        location_code: locationCode,
-      })
-      .select('id')
-      .single()
-
-    if (!error) {
-      createdRow = data as CreatedLocationRow
-      break
-    }
-
-    if (isLocationCodeUniqueError(error) && attempt < 2) {
-      continue
-    }
-
-    if (isLocationSlugUniqueError(error)) {
-      throw new Error(
-        'Ya existe una locación con un código similar. Intentá guardar nuevamente.',
-      )
-    }
-
-    if (isLocationCodeUniqueError(error)) {
-      throw new Error(
-        'No pudimos asignar un código único a la locación. Intentá guardar nuevamente.',
-      )
-    }
-
-    throw new Error(error.message)
+  if (isLocationSlugUniqueError(error)) {
+    throw new Error(
+      'Ya existe una locación con un código similar. Intentá guardar nuevamente.',
+    )
   }
 
-  if (!createdRow) {
+  if (isLocationCodeUniqueError(error)) {
     throw new Error(
       'No pudimos asignar un código único a la locación. Intentá guardar nuevamente.',
     )
   }
 
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const createdRow = data as CreatedLocationRow
   const locationId = createdRow.id
+  const generatedLocationCode = createdRow.location_code
 
   await replaceLocationRelations({
     locationId,
@@ -810,70 +730,42 @@ export async function updateLocation(
       null)
   const nextCategoryId = locationPayload.category_id
   const shouldRegenerateLocationCode = currentCategoryId !== nextCategoryId
-  let updatedRow: CreatedLocationRow | null = null
-  let finalLocationCode = currentLocationCode
+  const updatePayload = shouldRegenerateLocationCode
+    ? {
+        ...locationPayload,
+        slug: uniqueSlug,
+        location_code: null,
+      }
+    : {
+        ...locationPayload,
+        slug: uniqueSlug,
+      }
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const nextLocationCode =
-      shouldRegenerateLocationCode && nextCategoryId
-        ? await getNextLocationCode(nextCategoryId)
-        : undefined
+  const { data, error } = await supabase
+    .from('locations')
+    .update(updatePayload)
+    .eq('id', id)
+    .select('id, location_code')
+    .single()
 
-    if (shouldRegenerateLocationCode) {
-      finalLocationCode = nextLocationCode ?? null
-    }
-
-    const updatePayload = shouldRegenerateLocationCode
-      ? {
-          ...locationPayload,
-          slug: uniqueSlug,
-          location_code: nextLocationCode ?? null,
-        }
-      : {
-          ...locationPayload,
-          slug: uniqueSlug,
-        }
-
-    const { data, error } = await supabase
-      .from('locations')
-      .update(updatePayload)
-      .eq('id', id)
-      .select('id')
-      .single()
-
-    if (!error) {
-      updatedRow = data as CreatedLocationRow
-      break
-    }
-
-    if (
-      shouldRegenerateLocationCode &&
-      isLocationCodeUniqueError(error) &&
-      attempt < 2
-    ) {
-      continue
-    }
-
-    if (isLocationSlugUniqueError(error)) {
-      throw new Error(
-        'Ya existe una locación con un código similar. Intentá guardar nuevamente.',
-      )
-    }
-
-    if (isLocationCodeUniqueError(error)) {
-      throw new Error(
-        'No pudimos asignar un código único a la locación. Intentá guardar nuevamente.',
-      )
-    }
-
-    throw new Error(error.message)
+  if (isLocationSlugUniqueError(error)) {
+    throw new Error(
+      'Ya existe una locación con un código similar. Intentá guardar nuevamente.',
+    )
   }
 
-  if (!updatedRow) {
+  if (isLocationCodeUniqueError(error)) {
     throw new Error(
       'No pudimos asignar un código único a la locación. Intentá guardar nuevamente.',
     )
   }
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const updatedRow = data as CreatedLocationRow
+  const finalLocationCode = updatedRow.location_code ?? currentLocationCode
 
   await replaceLocationRelations({
     locationId: id,

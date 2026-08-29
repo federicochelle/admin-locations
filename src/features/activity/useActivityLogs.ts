@@ -1,21 +1,20 @@
 import { useEffect, useState } from 'react'
-import { getProposalSubmissionsPage } from './proposal-submissions.service'
-import type { ProposalListItem, ProposalStatus } from './proposal-submissions.types'
+import { getActivityLogsPage, type ActivityLogListItem } from './activity-logs.service'
 
 const PAGE_SIZE = 30
 
-type UseProposalSubmissionsResult = {
-  proposals: ProposalListItem[]
+type UseActivityLogsResult = {
+  activityLogs: ActivityLogListItem[]
   currentPage: number
   pageSize: number
   totalCount: number
-  selectedStatus: 'all' | ProposalStatus
+  searchTerm: string
   isLoading: boolean
   errorMessage: string | null
-  loadProposals: () => Promise<void>
+  loadActivityLogs: () => Promise<void>
   retry: () => Promise<void>
   setCurrentPage: (page: number) => void
-  setSelectedStatus: (status: 'all' | ProposalStatus) => void
+  setSearchTerm: (value: string) => void
 }
 
 function getErrorMessage(error: unknown) {
@@ -23,35 +22,32 @@ function getErrorMessage(error: unknown) {
     return error.message
   }
 
-  return 'No pudimos cargar las propuestas en este momento.'
+  return 'No pudimos cargar el historial de actividad.'
 }
 
-export function useProposalSubmissions(
-  enabled = true,
-): UseProposalSubmissionsResult {
-  const [proposals, setProposals] = useState<ProposalListItem[]>([])
+export function useActivityLogs(): UseActivityLogsResult {
+  const [activityLogs, setActivityLogs] = useState<ActivityLogListItem[]>([])
   const [currentPage, setCurrentPageState] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
-  const [selectedStatus, setSelectedStatusState] = useState<'all' | ProposalStatus>('all')
-  const [isLoading, setIsLoading] = useState(enabled)
+  const [searchTerm, setSearchTermState] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   function setCurrentPage(page: number) {
     setCurrentPageState(Math.max(1, page))
   }
 
-  function setSelectedStatus(status: 'all' | ProposalStatus) {
-    setSelectedStatusState(status)
+  function setSearchTerm(value: string) {
+    setSearchTermState(value)
     setCurrentPageState(1)
   }
 
-  async function fetchProposalsPage(page: number) {
-    const result = await getProposalSubmissionsPage({
+  async function fetchActivityLogsPage(page: number) {
+    const result = await getActivityLogsPage({
       page,
       pageSize: PAGE_SIZE,
-      status: selectedStatus,
+      searchTerm,
     })
-
     const lastAvailablePage = Math.max(1, Math.ceil(result.totalCount / PAGE_SIZE))
 
     if (page > lastAvailablePage) {
@@ -62,48 +58,39 @@ export function useProposalSubmissions(
     return result
   }
 
-  async function loadProposals() {
-    if (!enabled) {
-      setProposals([])
-      setTotalCount(0)
-      setIsLoading(false)
-      return
-    }
-
+  async function loadActivityLogs() {
     try {
       setIsLoading(true)
       setErrorMessage(null)
 
-      const result = await fetchProposalsPage(currentPage)
+      const result = await fetchActivityLogsPage(currentPage)
 
       if (!result) {
         return
       }
 
-      setProposals(result.items)
+      setActivityLogs(result.items)
       setTotalCount(result.totalCount)
     } catch (error) {
+      console.error('No pudimos cargar el historial de actividad.', error)
       setErrorMessage(getErrorMessage(error))
+      setActivityLogs([])
     } finally {
       setIsLoading(false)
     }
   }
 
   async function retry() {
-    await loadProposals()
+    await loadActivityLogs()
   }
 
   useEffect(() => {
-    if (!enabled) {
-      return
-    }
-
     let isActive = true
 
-    void getProposalSubmissionsPage({
+    void getActivityLogsPage({
       page: currentPage,
       pageSize: PAGE_SIZE,
-      status: selectedStatus,
+      searchTerm,
     })
       .then((result) => {
         if (!isActive) {
@@ -117,7 +104,7 @@ export function useProposalSubmissions(
           return
         }
 
-        setProposals(result.items)
+        setActivityLogs(result.items)
         setTotalCount(result.totalCount)
         setErrorMessage(null)
       })
@@ -126,7 +113,9 @@ export function useProposalSubmissions(
           return
         }
 
+        console.error('No pudimos cargar el historial de actividad.', error)
         setErrorMessage(getErrorMessage(error))
+        setActivityLogs([])
       })
       .finally(() => {
         if (!isActive) {
@@ -139,19 +128,19 @@ export function useProposalSubmissions(
     return () => {
       isActive = false
     }
-  }, [currentPage, enabled, selectedStatus])
+  }, [currentPage, searchTerm])
 
   return {
-    proposals: enabled ? proposals : [],
+    activityLogs,
     currentPage,
     pageSize: PAGE_SIZE,
-    totalCount: enabled ? totalCount : 0,
-    selectedStatus,
-    isLoading: enabled ? isLoading : false,
-    errorMessage: enabled ? errorMessage : null,
-    loadProposals,
+    totalCount,
+    searchTerm,
+    isLoading,
+    errorMessage,
+    loadActivityLogs,
     retry,
     setCurrentPage,
-    setSelectedStatus,
+    setSearchTerm,
   }
 }

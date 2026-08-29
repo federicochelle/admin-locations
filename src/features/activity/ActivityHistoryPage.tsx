@@ -1,19 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import EmptyState from '../../components/ui/EmptyState'
 import PageContainer from '../../components/ui/PageContainer'
+import TablePagination from '../../components/ui/TablePagination'
 import {
   formatActivityEntityName,
   formatRelativeCreatedAt,
   getActivityEntityPath,
 } from './activity-logs.helpers'
-import {
-  getActivityLogs,
-  type ActivityLogListItem,
-} from './activity-logs.service'
+import type { ActivityLogListItem } from './activity-logs.service'
+import { useActivityLogs } from './useActivityLogs'
 
 function SearchIcon() {
   return (
@@ -73,79 +72,18 @@ function getActivityActionCellLabel(action: ActivityLogListItem['action']) {
 
 function ActivityHistoryPage() {
   const navigate = useNavigate()
-  const [activityLogs, setActivityLogs] = useState<ActivityLogListItem[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [searchTerm, setSearchTerm] = useState('')
-
-  async function loadActivityLogs() {
-    try {
-      setIsLoading(true)
-      setErrorMessage(null)
-
-      const nextActivityLogs = await getActivityLogs({ limit: 50 })
-      setActivityLogs(nextActivityLogs)
-    } catch (error) {
-      console.error('No pudimos cargar el historial de actividad.', error)
-      setErrorMessage('No pudimos cargar el historial de actividad.')
-      setActivityLogs([])
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    let isActive = true
-
-    void getActivityLogs({ limit: 50 })
-      .then((nextActivityLogs) => {
-        if (!isActive) {
-          return
-        }
-
-        setActivityLogs(nextActivityLogs)
-        setErrorMessage(null)
-      })
-      .catch((error) => {
-        if (!isActive) {
-          return
-        }
-
-        console.error('No pudimos cargar el historial de actividad.', error)
-        setErrorMessage('No pudimos cargar el historial de actividad.')
-        setActivityLogs([])
-      })
-      .finally(() => {
-        if (!isActive) {
-          return
-        }
-
-        setIsLoading(false)
-      })
-
-    return () => {
-      isActive = false
-    }
-  }, [])
-
-  const filteredActivityLogs = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLocaleLowerCase()
-
-    if (normalizedSearch.length === 0) {
-      return activityLogs
-    }
-
-    return activityLogs.filter((log) => {
-      const actorName = log.actor_name || 'Alguien'
-      const actionLabel = getActivityActionCellLabel(log.action)
-      const entityName = formatActivityEntityName(log)
-      const typeLabel = getActivityTypeLabel(log.entity_type)
-
-      return [actorName, actionLabel, entityName, typeLabel].some((field) =>
-        field.toLocaleLowerCase().includes(normalizedSearch),
-      )
-    })
-  }, [activityLogs, searchTerm])
+  const {
+    activityLogs,
+    currentPage,
+    pageSize,
+    totalCount,
+    searchTerm,
+    isLoading,
+    errorMessage,
+    loadActivityLogs,
+    setCurrentPage,
+    setSearchTerm,
+  } = useActivityLogs()
 
   const headerConfig = useMemo(
     () => ({
@@ -214,78 +152,88 @@ function ActivityHistoryPage() {
           {activityLogs.length === 0 ? (
             <div className="p-4 sm:p-6">
               <EmptyState
-                title="No hay actividad registrada"
-                description="Las acciones realizadas en el panel aparecerán aquí."
+                title={
+                  searchTerm.trim().length === 0
+                    ? 'No hay actividad registrada'
+                    : 'No se encontraron actividades'
+                }
+                description={
+                  searchTerm.trim().length === 0
+                    ? 'Las acciones realizadas en el panel aparecerán aquí.'
+                    : 'Probá con otra búsqueda para ver más resultados.'
+                }
               />
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-[#f3f2ee]">
-                  <tr>
-                    <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
-                      Usuario
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
-                      Acción
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
-                      Nombre
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
-                      Tipo
-                    </th>
-                    <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
-                      Fecha
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 bg-transparent">
-                  {filteredActivityLogs.length === 0 ? (
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-[#f3f2ee]">
                     <tr>
-                      <td colSpan={5} className="px-3 py-8 text-sm text-slate-500 sm:px-6">
-                        No se encontraron actividades.
-                      </td>
+                      <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
+                        Usuario
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
+                        Acción
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
+                        Nombre
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
+                        Tipo
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
+                        Fecha
+                      </th>
                     </tr>
-                  ) : null}
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 bg-transparent">
+                    {activityLogs.map((log) => {
+                      const entityName = formatActivityEntityName(log)
+                      const entityPath = getActivityEntityPath(log)
 
-                  {filteredActivityLogs.map((log) => {
-                    const entityName = formatActivityEntityName(log)
-                    const entityPath = getActivityEntityPath(log)
+                      return (
+                        <tr key={log.id} className="align-top">
+                          <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
+                            {log.actor_name || '-'}
+                          </td>
+                          <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
+                            {getActivityActionCellLabel(log.action)}
+                          </td>
+                          <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
+                            {entityPath ? (
+                              <button
+                                type="button"
+                                onClick={() => navigate(entityPath)}
+                                className="font-medium text-slate-900 underline-offset-4 transition hover:cursor-pointer hover:underline"
+                              >
+                                {entityName}
+                              </button>
+                            ) : (
+                              <span>{entityName}</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
+                            {getActivityTypeLabel(log.entity_type)}
+                          </td>
+                          <td className="px-3 py-4 text-sm text-slate-500 sm:px-6">
+                            {formatRelativeCreatedAt(log.created_at)}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
-                    return (
-                      <tr key={log.id} className="align-top">
-                        <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
-                          {log.actor_name || '-'}
-                        </td>
-                        <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
-                          {getActivityActionCellLabel(log.action)}
-                        </td>
-                        <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
-                          {entityPath ? (
-                            <button
-                              type="button"
-                              onClick={() => navigate(entityPath)}
-                              className="font-medium text-slate-900 underline-offset-4 transition hover:cursor-pointer hover:underline"
-                            >
-                              {entityName}
-                            </button>
-                          ) : (
-                            <span>{entityName}</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
-                          {getActivityTypeLabel(log.entity_type)}
-                        </td>
-                        <td className="px-3 py-4 text-sm text-slate-500 sm:px-6">
-                          {formatRelativeCreatedAt(log.created_at)}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+              <TablePagination
+                currentPage={currentPage}
+                pageSize={pageSize}
+                totalCount={totalCount}
+                itemCount={activityLogs.length}
+                onPageChange={setCurrentPage}
+              />
+            </>
           )}
         </Card>
       ) : null}

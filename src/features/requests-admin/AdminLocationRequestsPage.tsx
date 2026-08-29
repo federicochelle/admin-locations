@@ -1,5 +1,5 @@
 import { Navigate } from 'react-router-dom'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import { routePaths } from '../../app/router/route-paths'
 import Button from '../../components/ui/Button'
@@ -7,9 +7,6 @@ import Card from '../../components/ui/Card'
 import PageContainer from '../../components/ui/PageContainer'
 import useAuth from '../auth/useAuth'
 import LocationRequestsAdminTable from './LocationRequestsAdminTable'
-import {
-  type LocationRequestStatus,
-} from './admin-location-requests.types'
 import { useAdminLocationRequests } from './useAdminLocationRequests'
 
 function AdminLocationRequestsPage() {
@@ -17,11 +14,16 @@ function AdminLocationRequestsPage() {
   const isAdmin = profile?.role === 'admin'
   const {
     requests,
+    currentPage,
+    pageSize,
+    totalCount,
+    selectedStatus,
     isLoading,
     errorMessage,
     retry,
+    setCurrentPage,
+    setSelectedStatus,
   } = useAdminLocationRequests(isAdmin)
-  const [selectedStatus, setSelectedStatus] = useState<'all' | LocationRequestStatus>('all')
 
   const headerConfig = useMemo(
     () => ({
@@ -57,11 +59,6 @@ function AdminLocationRequestsPage() {
     return <Navigate to={routePaths.dashboard} replace />
   }
 
-  const filteredRequests =
-    selectedStatus === 'all'
-      ? requests
-      : requests.filter((request) => request.status === selectedStatus)
-
   return (
     <PageContainer
       title="Solicitudes"
@@ -96,10 +93,13 @@ function AdminLocationRequestsPage() {
 
       {!isLoading && !errorMessage ? (
         <LocationRequestsAdminTable
-          requests={filteredRequests}
-          totalCount={requests.length}
+          requests={requests}
+          currentPage={currentPage}
+          pageSize={pageSize}
+          totalCount={totalCount}
           selectedStatus={selectedStatus}
           onSelectedStatusChange={setSelectedStatus}
+          onPageChange={setCurrentPage}
         />
       ) : null}
     </PageContainer>

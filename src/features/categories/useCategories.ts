@@ -2,18 +2,33 @@ import { useEffect, useState } from 'react'
 import {
   archiveCategory,
   deleteCategory,
-  getCategories,
+  getCategoriesPage,
 } from './categories.service'
-import type { CategoryListItem } from './categories.types'
+import type {
+  CategoryListItem,
+  CategorySortDirection,
+  CategorySortKey,
+} from './categories.types'
+
+const PAGE_SIZE = 30
 
 type UseCategoriesResult = {
   categories: CategoryListItem[]
+  currentPage: number
+  pageSize: number
+  totalCount: number
+  searchTerm: string
+  sortKey: CategorySortKey
+  sortDirection: CategorySortDirection
   isLoading: boolean
   errorMessage: string | null
   actionErrorMessage: string | null
   activeActionKey: string | null
   loadCategories: () => Promise<void>
   retry: () => Promise<void>
+  setCurrentPage: (page: number) => void
+  setSearchTerm: (value: string) => void
+  setSort: (key: CategorySortKey) => void
   archive: (id: string) => Promise<void>
   remove: (id: string) => Promise<void>
 }
@@ -28,18 +43,70 @@ function getErrorMessage(error: unknown) {
 
 export function useCategories(): UseCategoriesResult {
   const [categories, setCategories] = useState<CategoryListItem[]>([])
+  const [currentPage, setCurrentPageState] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+  const [searchTerm, setSearchTermState] = useState('')
+  const [sortKey, setSortKey] = useState<CategorySortKey>('name')
+  const [sortDirection, setSortDirection] = useState<CategorySortDirection>('asc')
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null)
   const [activeActionKey, setActiveActionKey] = useState<string | null>(null)
+
+  function setCurrentPage(page: number) {
+    setCurrentPageState(Math.max(1, page))
+  }
+
+  function setSearchTerm(value: string) {
+    setSearchTermState(value)
+    setCurrentPageState(1)
+  }
+
+  function setSort(nextSortKey: CategorySortKey) {
+    setCurrentPageState(1)
+
+    if (sortKey === nextSortKey) {
+      setSortDirection((currentDirection) =>
+        currentDirection === 'asc' ? 'desc' : 'asc',
+      )
+      return
+    }
+
+    setSortKey(nextSortKey)
+    setSortDirection('asc')
+  }
+
+  async function fetchCategoriesPage(page: number) {
+    const result = await getCategoriesPage({
+      page,
+      pageSize: PAGE_SIZE,
+      searchTerm,
+      sortKey,
+      sortDirection,
+    })
+    const lastAvailablePage = Math.max(1, Math.ceil(result.totalCount / PAGE_SIZE))
+
+    if (page > lastAvailablePage) {
+      setCurrentPageState(lastAvailablePage)
+      return null
+    }
+
+    return result
+  }
 
   async function loadCategories() {
     try {
       setIsLoading(true)
       setErrorMessage(null)
 
-      const nextCategories = await getCategories()
-      setCategories(nextCategories)
+      const result = await fetchCategoriesPage(currentPage)
+
+      if (!result) {
+        return
+      }
+
+      setCategories(result.items)
+      setTotalCount(result.totalCount)
     } catch (error) {
       setErrorMessage(getErrorMessage(error))
     } finally {
@@ -79,13 +146,27 @@ export function useCategories(): UseCategoriesResult {
   useEffect(() => {
     let isActive = true
 
-    void getCategories()
-      .then((nextCategories) => {
+    void getCategoriesPage({
+      page: currentPage,
+      pageSize: PAGE_SIZE,
+      searchTerm,
+      sortKey,
+      sortDirection,
+    })
+      .then((result) => {
         if (!isActive) {
           return
         }
 
-        setCategories(nextCategories)
+        const lastAvailablePage = Math.max(1, Math.ceil(result.totalCount / PAGE_SIZE))
+
+        if (currentPage > lastAvailablePage) {
+          setCurrentPageState(lastAvailablePage)
+          return
+        }
+
+        setCategories(result.items)
+        setTotalCount(result.totalCount)
         setErrorMessage(null)
       })
       .catch((error: unknown) => {
@@ -106,16 +187,25 @@ export function useCategories(): UseCategoriesResult {
     return () => {
       isActive = false
     }
-  }, [])
+  }, [currentPage, searchTerm, sortDirection, sortKey])
 
   return {
     categories,
+    currentPage,
+    pageSize: PAGE_SIZE,
+    totalCount,
+    searchTerm,
+    sortKey,
+    sortDirection,
     isLoading,
     errorMessage,
     actionErrorMessage,
     activeActionKey,
     loadCategories,
     retry,
+    setCurrentPage,
+    setSearchTerm,
+    setSort,
     archive,
     remove,
   }

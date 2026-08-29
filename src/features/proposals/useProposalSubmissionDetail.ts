@@ -16,9 +16,8 @@ type UseProposalSubmissionDetailResult = {
   isSaving: boolean
   errorMessage: string | null
   saveErrorMessage: string | null
-  saveSuccessMessage: string | null
   reload: () => Promise<void>
-  save: (status: ProposalStatus, adminNotes: string) => Promise<void>
+  save: (status: ProposalStatus) => Promise<void>
 }
 
 function getErrorMessage(error: unknown, fallbackMessage: string) {
@@ -39,7 +38,6 @@ export function useProposalSubmissionDetail(
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
-  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null)
 
   async function loadProposal() {
     if (!enabled || !submissionId) {
@@ -70,7 +68,7 @@ export function useProposalSubmissionDetail(
     await loadProposal()
   }
 
-  async function save(status: ProposalStatus, adminNotes: string) {
+  async function save(status: ProposalStatus) {
     if (!proposal) {
       return
     }
@@ -78,12 +76,10 @@ export function useProposalSubmissionDetail(
     try {
       setIsSaving(true)
       setSaveErrorMessage(null)
-      setSaveSuccessMessage(null)
 
       await updateProposalSubmission({
         id: proposal.id,
         status,
-        adminNotes,
       })
 
       setProposal((currentProposal) =>
@@ -91,13 +87,11 @@ export function useProposalSubmissionDetail(
           ? {
               ...currentProposal,
               status,
-              adminNotes: adminNotes.trim().length > 0 ? adminNotes.trim() : null,
               updatedAt: new Date().toISOString(),
             }
           : currentProposal,
       )
       await refreshCounts()
-      setSaveSuccessMessage('Propuesta actualizada correctamente.')
     } catch (error) {
       setSaveErrorMessage(
         getErrorMessage(error, 'No pudimos guardar los cambios de la propuesta.'),
@@ -153,7 +147,6 @@ export function useProposalSubmissionDetail(
     isSaving,
     errorMessage: enabled && submissionId ? errorMessage : null,
     saveErrorMessage,
-    saveSuccessMessage,
     reload,
     save,
   }

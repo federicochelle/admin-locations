@@ -1,5 +1,11 @@
-import { getSupabaseClient } from '../../lib/supabase'
+import {
+  FunctionsFetchError,
+  FunctionsHttpError,
+  FunctionsRelayError,
+  getSupabaseClient,
+} from '../../lib/supabase'
 import type {
+  PaginatedProposalSubmissionsResult,
   ProposalDetails,
   ProposalImage,
   ProposalListItem,
@@ -20,6 +26,7 @@ type LocationSubmissionRow = {
   department: string | null
   zone: string | null
   address: string | null
+  location_type: string | null
   description: string | null
   message: string | null
   admin_notes: string | null
@@ -29,9 +36,21 @@ type LocationSubmissionImageRow = {
   id: string
   submission_id: string
   cloudflare_image_id: string | null
-  image_url: string
+  image_url: string | null
+  storage_bucket: string | null
+  storage_path: string | null
   sort_order: number | null
   created_at: string
+}
+
+type LocationSubmissionImageReadUrl = {
+  imageId: string
+  url: string | null
+}
+
+type LocationSubmissionImageReadUrlsResult = {
+  expiresInSeconds: number
+  images: LocationSubmissionImageReadUrl[]
 }
 
 function normalizeRequiredText(value: string, fallback: string) {
@@ -44,12 +63,70 @@ function normalizeOptionalText(value: string | null) {
   return normalizedValue && normalizedValue.length > 0 ? normalizedValue : null
 }
 
-function mapProposalImage(row: LocationSubmissionImageRow): ProposalImage {
+function getErrorMessage(error: unknown, fallbackMessage: string) {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return fallbackMessage
+}
+
+async function getEdgeFunctionErrorMessage(
+  error: unknown,
+  fallbackMessage: string,
+): Promise<string> {
+  if (error instanceof FunctionsHttpError) {
+    const response = error.context
+
+    try {
+      const payload = await response.json()
+
+      if (
+        typeof payload === 'object' &&
+        payload !== null &&
+        'error' in payload &&
+        typeof payload.error === 'string'
+      ) {
+        return payload.error
+      }
+    } catch {
+      try {
+        const text = await response.text()
+
+        if (text.trim().length > 0) {
+          return text
+        }
+      } catch {
+        return fallbackMessage
+      }
+    }
+
+    return fallbackMessage
+  }
+
+  if (error instanceof FunctionsRelayError || error instanceof FunctionsFetchError) {
+    return error.message
+  }
+
+  return getErrorMessage(error, fallbackMessage)
+}
+
+function mapProposalImage(
+  row: LocationSubmissionImageRow,
+  signedUrlByImageId: Map<string, string>,
+): ProposalImage {
+  const storageBucket = normalizeOptionalText(row.storage_bucket)
+  const storagePath = normalizeOptionalText(row.storage_path)
+
   return {
     id: row.id,
     submissionId: row.submission_id,
     cloudflareImageId: normalizeOptionalText(row.cloudflare_image_id),
-    imageUrl: row.image_url,
+    imageUrl: normalizeOptionalText(row.image_url),
+    storageBucket,
+    storagePath,
+    signedUrl: signedUrlByImageId.get(row.id) ?? null,
+    isStorageImage: Boolean(storageBucket && storagePath),
     sortOrder: row.sort_order,
     createdAt: row.created_at,
   }
@@ -98,6 +175,53 @@ export async function getProposalSubmissions(): Promise<ProposalListItem[]> {
   return ((data ?? []) as LocationSubmissionRow[]).map(mapProposalListItem)
 }
 
+export async function getProposalSubmissionsPage(input: {
+  page: number
+  pageSize: number
+  status: 'all' | ProposalStatus
+}): Promise<PaginatedProposalSubmissionsResult> {
+  const supabase = getSupabaseClient()
+  const safePage = Math.max(1, input.page)
+  const safePageSize = Math.max(1, input.pageSize)
+  const from = (safePage - 1) * safePageSize
+  const to = from + safePageSize - 1
+
+  let query = supabase
+    .from('location_submissions')
+    .select(
+      `
+        id,
+        status,
+        submitted_at,
+        owner_name,
+        owner_email,
+        owner_phone,
+        address,
+        department,
+        zone,
+        title
+      `,
+      { count: 'exact' },
+    )
+    .order('submitted_at', { ascending: false })
+    .range(from, to)
+
+  if (input.status !== 'all') {
+    query = query.eq('status', input.status)
+  }
+
+  const { data, count, error } = await query
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  return {
+    items: ((data ?? []) as LocationSubmissionRow[]).map(mapProposalListItem),
+    totalCount: count ?? 0,
+  }
+}
+
 export async function getPendingProposalSubmissionsCount(): Promise<number> {
   const supabase = getSupabaseClient()
 
@@ -133,6 +257,7 @@ export async function getProposalSubmissionById(
         department,
         zone,
         address,
+        location_type,
         description,
         message,
         admin_notes
@@ -157,6 +282,8 @@ export async function getProposalSubmissionById(
         submission_id,
         cloudflare_image_id,
         image_url,
+        storage_bucket,
+        storage_path,
         sort_order,
         created_at
       `,
@@ -170,14 +297,55 @@ export async function getProposalSubmissionById(
   }
 
   const row = submissionData as LocationSubmissionRow
+  const imageRows = (imagesData ?? []) as LocationSubmissionImageRow[]
+  const storageBackedImages = imageRows.filter(
+    (imageRow) =>
+      normalizeOptionalText(imageRow.storage_bucket) &&
+      normalizeOptionalText(imageRow.storage_path),
+  )
+  const signedUrlByImageId = new Map<string, string>()
+  let imageReadUrlsError: string | null = null
+
+  if (storageBackedImages.length > 0) {
+    const { data, error } =
+      await supabase.functions.invoke<LocationSubmissionImageReadUrlsResult>(
+        'location-submission-image-read-urls',
+        {
+          body: { submissionId },
+        },
+      )
+
+    if (error) {
+      imageReadUrlsError = await getEdgeFunctionErrorMessage(
+        error,
+        'No pudimos resolver temporalmente las imágenes privadas de esta propuesta.',
+      )
+    } else if (data) {
+      for (const image of data.images) {
+        if (typeof image.imageId !== 'string') {
+          continue
+        }
+
+        const url = normalizeOptionalText(image.url)
+
+        if (url) {
+          signedUrlByImageId.set(image.imageId, url)
+        }
+      }
+    }
+  }
 
   return {
     ...mapProposalListItem(row),
     updatedAt: row.updated_at,
+    locationType: normalizeOptionalText(row.location_type),
     description: normalizeOptionalText(row.description),
     message: normalizeOptionalText(row.message),
     adminNotes: normalizeOptionalText(row.admin_notes),
-    images: ((imagesData ?? []) as LocationSubmissionImageRow[]).map(mapProposalImage),
+    imageReadUrlsError,
+    images: imageRows.map((imageRow) =>
+      mapProposalImage(imageRow, signedUrlByImageId),
+    ),
   }
 }
 
@@ -190,7 +358,6 @@ export async function updateProposalSubmission(
     .from('location_submissions')
     .update({
       status: input.status,
-      admin_notes: normalizeOptionalText(input.adminNotes),
     })
     .eq('id', input.id)
     .select('id')
