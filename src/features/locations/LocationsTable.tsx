@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import Card from '../../components/ui/Card'
 import EmptyState from '../../components/ui/EmptyState'
+import TablePagination from '../../components/ui/TablePagination'
 import {
   buttonBaseClassName,
   buttonVariantClasses,
@@ -89,7 +90,11 @@ function formatLocationCode(locationCode: string | null) {
 function normalizeSearchValue(value: string) {
   return value
     .toLocaleLowerCase()
-    .replace(/[\s-_]+/g, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/[\s_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
 }
 
 function CoverPlaceholder() {
@@ -131,25 +136,6 @@ function PlusIcon() {
     >
       <path
         d="M12 5v14M5 12h14"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      className="h-4 w-4"
-      aria-hidden="true"
-    >
-      <path
-        d={direction === 'left' ? 'm15 18-6-6 6-6' : 'm9 18 6-6-6-6'}
         strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -329,11 +315,6 @@ function LocationsTable({
   const resolvedPageSize = pageSize ?? Math.max(locations.length, 1)
   const resolvedTotalCount = totalCount ?? locations.length
   const isServerPaginated = typeof onPageChange === 'function'
-  const totalPages = Math.max(1, Math.ceil(resolvedTotalCount / resolvedPageSize))
-  const showingFrom = resolvedTotalCount === 0 ? 0 : (resolvedCurrentPage - 1) * resolvedPageSize + 1
-  const showingTo = resolvedTotalCount === 0
-    ? 0
-    : Math.min((resolvedCurrentPage - 1) * resolvedPageSize + locations.length, resolvedTotalCount)
   const resolvedVisibleColumns: Required<VisibleColumns> = {
     cover: visibleColumns?.cover ?? true,
     code: visibleColumns?.code ?? true,
@@ -389,18 +370,6 @@ function LocationsTable({
       return resolvedSortDirection === 'asc' ? comparison : -comparison
     })
   }, [filteredLocations, isServerPaginated, locations, resolvedSortDirection, resolvedSortKey])
-
-  const pageNumbers = useMemo(() => {
-    if (totalPages <= 5) {
-      return Array.from({ length: totalPages }, (_, index) => index + 1)
-    }
-
-    const pages = new Set<number>([1, totalPages, resolvedCurrentPage - 1, resolvedCurrentPage, resolvedCurrentPage + 1])
-
-    return Array.from(pages)
-      .filter((pageNumber) => pageNumber >= 1 && pageNumber <= totalPages)
-      .sort((left, right) => left - right)
-  }, [resolvedCurrentPage, totalPages])
 
   function handleSort(nextSortKey: LocationSortKey) {
     if (onSortChange) {
@@ -721,49 +690,13 @@ function LocationsTable({
         )}
 
         {!isEmptyState && isServerPaginated ? (
-          <div className="flex flex-col gap-4 border-t border-slate-200 px-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-            <p className="text-sm text-slate-600">
-              Mostrando {showingFrom}–{showingTo} de {resolvedTotalCount}
-            </p>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={resolvedCurrentPage <= 1}
-                onClick={() => onPageChange?.(resolvedCurrentPage - 1)}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <ChevronIcon direction="left" />
-                Anterior
-              </button>
-
-              {pageNumbers.map((pageNumber) => (
-                <button
-                  key={pageNumber}
-                  type="button"
-                  onClick={() => onPageChange?.(pageNumber)}
-                  className={[
-                    'inline-flex h-10 min-w-10 items-center justify-center rounded-lg border px-3 text-sm font-medium transition',
-                    pageNumber === resolvedCurrentPage
-                      ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#8a6c16]'
-                      : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50',
-                  ].join(' ')}
-                >
-                  {pageNumber}
-                </button>
-              ))}
-
-              <button
-                type="button"
-                disabled={resolvedCurrentPage >= totalPages}
-                onClick={() => onPageChange?.(resolvedCurrentPage + 1)}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Siguiente
-                <ChevronIcon direction="right" />
-              </button>
-            </div>
-          </div>
+          <TablePagination
+            currentPage={resolvedCurrentPage}
+            pageSize={resolvedPageSize}
+            totalCount={resolvedTotalCount}
+            itemCount={locations.length}
+            onPageChange={(pageNumber) => onPageChange?.(pageNumber)}
+          />
         ) : null}
       </Card>
     </>

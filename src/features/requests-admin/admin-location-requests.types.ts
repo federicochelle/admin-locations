@@ -24,6 +24,11 @@ export type AdminLocationRequest = {
   locationNames: string[]
 }
 
+export type PaginatedAdminLocationRequestsResult = {
+  items: AdminLocationRequest[]
+  totalCount: number
+}
+
 export type AdminRequestLocation = {
   id: string
   rowKey: string
