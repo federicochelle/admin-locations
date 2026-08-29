@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import { getReservationDetailPath } from '../../app/router/route-paths'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
+import { useAdminFeedback } from '../../components/ui/admin-feedback/useAdminFeedback'
 import EmptyState from '../../components/ui/EmptyState'
 import PageContainer from '../../components/ui/PageContainer'
 import {
@@ -114,8 +115,36 @@ function getDateRangeValidationMessage(values: ReservationFormValues) {
   return null
 }
 
+type ReservationCrudFeedback =
+  | {
+      kind: 'success'
+      title: string
+    }
+  | {
+      kind: 'warning'
+      title: string
+      description: string
+    }
+
+function getReservationCrudErrorDescription(
+  error: unknown,
+  fallbackMessage: string,
+) {
+  const message =
+    error instanceof Error && error.message.trim()
+      ? error.message.trim()
+      : fallbackMessage
+
+  if (message.includes('Google Calendar')) {
+    return 'No pudimos completar la operación por un problema de sincronización con Google Calendar. Revisá la conexión e intentá nuevamente.'
+  }
+
+  return message
+}
+
 function ReservationDayPage() {
   const navigate = useNavigate()
+  const { alert, showError, withLoading } = useAdminFeedback()
   const { date: dateParam } = useParams<{ date: string }>()
   const selectedDay = useMemo(() => parseRouteDate(dateParam), [dateParam])
   const {
@@ -124,8 +153,6 @@ function ReservationDayPage() {
     isLoading,
     isSaving,
     errorMessage,
-    actionErrorMessage,
-    actionSuccessMessage,
     retry,
     create,
     update,
@@ -137,6 +164,7 @@ function ReservationDayPage() {
   const [dialogValidationError, setDialogValidationError] = useState<string | null>(null)
   const [selectedReservation, setSelectedReservation] =
     useState<ReservationListItem | null>(null)
+  const [pendingFeedback, setPendingFeedback] = useState<ReservationCrudFeedback | null>(null)
 
   const dayLabel = selectedDay ? formatFullDate(selectedDay) : 'Fecha inválida'
   const dayReservations = useMemo(
@@ -166,6 +194,35 @@ function ReservationDayPage() {
   )
 
   useLayoutHeader(headerConfig)
+
+  useEffect(() => {
+    if (isDialogOpen || !pendingFeedback) {
+      return
+    }
+
+    void (async () => {
+      if (pendingFeedback.kind === 'warning') {
+        await alert({
+          variant: 'warning',
+          title: pendingFeedback.title,
+          description: pendingFeedback.description,
+          closeLabel: 'Entendido',
+        })
+      } else {
+        await alert({
+          variant: 'success',
+          title: pendingFeedback.title,
+          hideProgressBar: true,
+          hideProgressPercentage: true,
+          iconVariant: 'success',
+          progressPercentage: 100,
+          closeLabel: 'Entendido',
+        })
+      }
+
+      setPendingFeedback(null)
+    })()
+  }, [alert, isDialogOpen, pendingFeedback])
 
   function handleOpenCreateDialog() {
     if (!selectedDay) {
@@ -223,15 +280,62 @@ function ReservationDayPage() {
       notes: values.notes.trim().length > 0 ? values.notes.trim() : null,
     }
 
-    if (dialogMode === 'create') {
-      return create(payload)
-    }
+    try {
+      const result = await withLoading({
+        title: dialogMode === 'create' ? 'Crear reserva' : 'Guardar cambios',
+        description:
+          dialogMode === 'create'
+            ? 'Estamos guardando la nueva reserva.'
+            : 'Estamos guardando los cambios de la reserva.',
+        progress: {
+          enabled: true,
+        },
+        action: async () => {
+          if (dialogMode === 'create') {
+            return await create(payload)
+          }
 
-    if (!selectedReservation) {
+          if (!selectedReservation) {
+            throw new Error('No encontramos la reserva que querés editar.')
+          }
+
+          return await update(selectedReservation.id, payload)
+        },
+      })
+
+      setPendingFeedback(
+        result.syncWarning
+          ? {
+              kind: 'warning',
+              title: dialogMode === 'create'
+                ? 'Reserva creada con advertencias'
+                : 'Reserva actualizada con advertencias',
+              description:
+                'La reserva se guardó, pero quedaron sincronizaciones pendientes. Revisá Google Calendar o la solicitud vinculada antes de continuar.',
+            }
+          : {
+              kind: 'success',
+              title: dialogMode === 'create' ? 'Reserva creada' : 'Reserva actualizada',
+            },
+      )
+
+      return true
+    } catch (error) {
+      await showError({
+        title:
+          dialogMode === 'create'
+            ? 'No pudimos crear la reserva'
+            : 'No pudimos guardar los cambios',
+        description: getReservationCrudErrorDescription(
+          error,
+          dialogMode === 'create'
+            ? 'No pudimos crear la reserva.'
+            : 'No pudimos guardar los cambios de la reserva.',
+        ),
+        closeLabel: 'Entendido',
+      })
       return false
     }
-
-    return update(selectedReservation.id, payload)
   }
 
   return (
@@ -247,7 +351,7 @@ function ReservationDayPage() {
           selectedDatePrefill?.startsAt ?? '',
           selectedDatePrefill?.endsAt ?? '',
         ].join(':')}
-        errorMessage={dialogValidationError ?? actionErrorMessage}
+        errorMessage={dialogValidationError}
         initialValues={selectedDatePrefill}
         isOpen={isDialogOpen}
         isSubmitting={isSaving}
@@ -280,32 +384,6 @@ function ReservationDayPage() {
             <Button variant="secondary" onClick={() => void retry()}>
               Reintentar
             </Button>
-          </div>
-        </Card>
-      ) : null}
-
-      {selectedDay !== null && !isLoading && !errorMessage && actionErrorMessage && !isDialogOpen ? (
-        <Card>
-          <div>
-            <h2 className="text-lg font-semibold text-slate-950">
-              No pudimos actualizar la reserva
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {actionErrorMessage}
-            </p>
-          </div>
-        </Card>
-      ) : null}
-
-      {selectedDay !== null && !isLoading && !errorMessage && actionSuccessMessage ? (
-        <Card>
-          <div>
-            <h2 className="text-lg font-semibold text-slate-950">
-              Operación completada
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              {actionSuccessMessage}
-            </p>
           </div>
         </Card>
       ) : null}

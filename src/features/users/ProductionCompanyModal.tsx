@@ -4,10 +4,7 @@ import Button from '../../components/ui/Button'
 import LocationImageUploader, {
   type LocationImageUploaderHandle,
 } from '../locations/LocationImageUploader'
-import { prepareImageUploadFile } from '../images/image-upload.processor'
-import {
-  LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
-} from '../locations/location-top-stack.styles'
+import { prepareProductionCompanyLogoFile } from '../images/image-upload.processor'
 import type {
   ProductionCompanyFormValues,
   ProductionCompanyListItem,
@@ -47,6 +44,10 @@ function FieldLabel({
 
 function inputClassName() {
   return 'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
+}
+
+function logoPreviewSurfaceClassName() {
+  return 'flex min-h-[220px] items-center justify-center rounded-2xl border border-slate-200 p-4'
 }
 
 function ReplaceIcon() {
@@ -131,7 +132,7 @@ function ProductionCompanyModal({
     try {
       setLogoError(null)
 
-      const preparedFile = await prepareImageUploadFile(selectedFile)
+      const preparedFile = await prepareProductionCompanyLogoFile(selectedFile)
 
       setPendingLogo((currentLogo) => {
         if (currentLogo) {
@@ -223,7 +224,7 @@ function ProductionCompanyModal({
             </section>
 
             <section className="space-y-3">
-              <FieldLabel htmlFor="production-company-logo">Foto</FieldLabel>
+              <FieldLabel htmlFor="production-company-logo">Logo</FieldLabel>
               <div className="hidden">
                 <LocationImageUploader
                   ref={uploaderRef}
@@ -236,17 +237,16 @@ function ProductionCompanyModal({
                 />
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                {visibleLogoUrl ? (
+              {visibleLogoUrl ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="group relative overflow-hidden rounded-2xl">
-                    <img
-                      src={visibleLogoUrl}
-                      alt={values.name.trim() ? `Logo de ${values.name.trim()}` : 'Vista previa de la foto'}
-                      className={[
-                        'rounded-2xl bg-white object-contain p-4',
-                        LOCATION_TOP_STACK_PANEL_SURFACE_CLASS,
-                      ].join(' ')}
-                    />
+                    <div className={logoPreviewSurfaceClassName()}>
+                      <img
+                        src={visibleLogoUrl}
+                        alt={values.name.trim() ? `Logo de ${values.name.trim()}` : 'Vista previa del logo'}
+                        className="max-h-56 w-full rounded-2xl object-contain"
+                      />
+                    </div>
                     <div className="pointer-events-none absolute inset-0 bg-slate-950/0 transition group-hover:bg-slate-950/20">
                       <div className="pointer-events-auto absolute right-3 top-3 flex items-center gap-2 opacity-0 transition duration-200 group-hover:opacity-100">
                         <button
@@ -261,36 +261,23 @@ function ProductionCompanyModal({
                       </div>
                     </div>
                   </div>
-                ) : (
-                  <LocationImageUploader
-                    ref={uploaderRef}
-                    label="Seleccionar imagen"
-                    multiple={false}
-                    variant="empty-state"
-                    disabled={isSubmitting}
-                    onFilesSelected={(files) => {
-                      void handleFilesSelected(files)
-                    }}
-                  />
-                )}
+                </div>
+              ) : (
+                <LocationImageUploader
+                  ref={uploaderRef}
+                  label="Seleccionar imagen"
+                  multiple={false}
+                  variant="empty-state"
+                  disabled={isSubmitting}
+                  onFilesSelected={(files) => {
+                    void handleFilesSelected(files)
+                  }}
+                />
+              )}
 
-                {!visibleLogoUrl ? null : (
-                  <div className="mt-3">
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => uploaderRef.current?.openFileDialog()}
-                        disabled={isSubmitting}
-                      >
-                        Cambiar foto
-                    </Button>
-                  </div>
-                )}
-
-                {logoError ? (
-                  <p className="mt-3 text-sm text-red-600">{logoError}</p>
-                ) : null}
-              </div>
+              {logoError ? (
+                <p className="text-sm text-red-600">{logoError}</p>
+              ) : null}
             </section>
           </div>
 

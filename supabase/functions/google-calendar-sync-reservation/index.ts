@@ -17,6 +17,7 @@ import {
 } from '../_shared/http.ts'
 
 type ReservationStatus = 'pending' | 'confirmed' | 'cancelled'
+type ReservationSyncAction = 'sync' | 'cleanup'
 
 type LocationRelation =
   | {
@@ -292,12 +293,27 @@ async function parseBody(request: Request) {
   }
 
   const reservationId = body.reservationId.trim()
+  const actionValue =
+    'action' in body && typeof body.action === 'string'
+      ? body.action.trim().toLowerCase()
+      : ''
 
   if (!isUuid(reservationId)) {
     throw new HttpError(400, 'reservationId must be a valid UUID.')
   }
 
+  let action: ReservationSyncAction | null = null
+
+  if (actionValue) {
+    if (actionValue !== 'sync' && actionValue !== 'cleanup') {
+      throw new HttpError(400, 'action must be either sync or cleanup.')
+    }
+
+    action = actionValue
+  }
+
   return {
+    action,
     reservationId,
   }
 }
@@ -633,7 +649,16 @@ Deno.serve(async (request) => {
     const parsedBody = await parseBody(request)
     reservationId = parsedBody.reservationId
 
+    const { action } = parsedBody
     const reservation = await loadReservation(adminClient, reservationId)
+
+    if (action === 'cleanup') {
+      return await syncInactiveReservation(adminClient, reservation)
+    }
+
+    if (action === 'sync') {
+      return await syncConfirmedReservation(adminClient, reservation)
+    }
 
     if (reservation.status === 'confirmed') {
       return await syncConfirmedReservation(adminClient, reservation)
