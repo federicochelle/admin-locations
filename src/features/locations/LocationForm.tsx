@@ -35,6 +35,9 @@ import LocationOwnerQuickCreateModal, {
 import LocationValidationModal from './LocationValidationModal'
 import {
   deleteLocationImage,
+  downloadLocationImageSource,
+  replaceLocationImage,
+  uploadLocationImageAsset,
   uploadLocationImage,
 } from './location-images.service'
 import LocationSaveProgressModal, {
@@ -90,6 +93,8 @@ type LocationFormProps = {
   initialValues?: LocationFormValues
   locationId?: string
   locationCode?: string | null
+  onCreateSuccess?: () => Promise<void>
+  onEditSuccess?: () => Promise<void>
   primaryCardActions?: React.ReactNode
   showImagesSection?: boolean
   showAdvancedSection?: boolean
@@ -98,6 +103,18 @@ type LocationFormProps = {
 const GOOGLE_MAPS_LIBRARIES = ['places']
 const IMAGE_PREPARATION_CONCURRENCY = 3
 type ImageSelectionTarget = 'cover' | 'gallery'
+
+type ManualBlurTarget =
+  | {
+      imageId: string
+      kind: 'pending'
+    }
+  | {
+      editorImage: PendingLocationImageFile
+      expectedStorageKey: string
+      imageId: string
+      kind: 'persisted'
+    }
 
 type LocationFormFieldErrors = {
   title: string | null
@@ -629,6 +646,55 @@ function revokePreviewUrl(previewUrl: string) {
   URL.revokeObjectURL(previewUrl)
 }
 
+function getImageFileExtension(contentType: string) {
+  switch (contentType) {
+    case 'image/png':
+      return 'png'
+    case 'image/webp':
+      return 'webp'
+    case 'image/avif':
+      return 'avif'
+    default:
+      return 'jpg'
+  }
+}
+
+async function getImageFileDimensions(file: File) {
+  if (typeof window.createImageBitmap === 'function') {
+    const bitmap = await window.createImageBitmap(file, {
+      imageOrientation: 'from-image',
+    })
+
+    try {
+      return {
+        height: bitmap.height,
+        width: bitmap.width,
+      }
+    } finally {
+      bitmap.close()
+    }
+  }
+
+  const previewUrl = URL.createObjectURL(file)
+
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const nextImage = new Image()
+      nextImage.onload = () => resolve(nextImage)
+      nextImage.onerror = () =>
+        reject(new Error('No pudimos leer la imagen para editar.'))
+      nextImage.src = previewUrl
+    })
+
+    return {
+      height: image.naturalHeight,
+      width: image.naturalWidth,
+    }
+  } finally {
+    URL.revokeObjectURL(previewUrl)
+  }
+}
+
 function openDropboxChooser(
   dropbox: DropboxGlobal,
   target: ImageSelectionTarget,
@@ -658,6 +724,8 @@ function LocationForm({
   initialValues = defaultInitialValues,
   locationId,
   locationCode = null,
+  onCreateSuccess,
+  onEditSuccess,
   primaryCardActions,
   showImagesSection = mode === 'create',
   showAdvancedSection = mode === 'edit',
@@ -720,9 +788,10 @@ function LocationForm({
   const [isPreparingImages, setIsPreparingImages] = useState(false)
   const [processedImagesCount, setProcessedImagesCount] = useState(0)
   const [totalImagesToProcess, setTotalImagesToProcess] = useState(0)
-  const [manualBlurTargetImageId, setManualBlurTargetImageId] = useState<string | null>(null)
+  const [manualBlurTarget, setManualBlurTarget] = useState<ManualBlurTarget | null>(null)
   const [manualBlurErrorMessage, setManualBlurErrorMessage] = useState<string | null>(null)
   const [isApplyingManualBlur, setIsApplyingManualBlur] = useState(false)
+  const [manualBlurLoadingImageId, setManualBlurLoadingImageId] = useState<string | null>(null)
   const pendingImagesRef = useRef<PendingLocationImageFile[]>([])
   const [pendingDeletedPersistedImageIds, setPendingDeletedPersistedImageIds] =
     useState<string[]>([])
@@ -2290,12 +2359,82 @@ function markSaveProgressSuccess() {
   }
 
   function handleOpenManualBlur(imageId: string) {
-    if (isReadOnly) {
+    if (isReadOnly || manualBlurLoadingImageId !== null) {
       return
     }
 
     setManualBlurErrorMessage(null)
-    setManualBlurTargetImageId(imageId)
+    setManualBlurTarget({
+      imageId,
+      kind: 'pending',
+    })
+  }
+
+  async function handleOpenPersistedManualBlur(imageId: string) {
+    if (
+      isReadOnly ||
+      mode !== 'edit' ||
+      !locationId ||
+      manualBlurLoadingImageId !== null
+    ) {
+      return
+    }
+
+    const persistedImage = visiblePersistedImages.find((image) => image.id === imageId)
+
+    if (!persistedImage) {
+      setManualBlurErrorMessage('No pudimos encontrar la imagen a editar.')
+      return
+    }
+
+    setManualBlurErrorMessage(null)
+    setManualBlurLoadingImageId(imageId)
+
+    try {
+      const source = await downloadLocationImageSource({
+        imageId,
+        locationId,
+      })
+      const file = new File(
+        [source.blob],
+        `location-${imageId}.${getImageFileExtension(source.contentType)}`,
+        {
+          lastModified: Date.now(),
+          type: source.contentType,
+        },
+      )
+      const dimensions = await getImageFileDimensions(file)
+
+      if (!isMountedRef.current) {
+        return
+      }
+
+      setManualBlurTarget({
+        editorImage: {
+          errorMessage: null,
+          file,
+          height: dimensions.height,
+          id: imageId,
+          isCover: persistedImage.is_cover,
+          originalIndex: persistedImage.sort_order,
+          previewUrl: URL.createObjectURL(file),
+          selectionTarget: persistedImage.is_cover ? 'cover' : 'gallery',
+          status: 'pending',
+          width: dimensions.width,
+        },
+        expectedStorageKey: persistedImage.storage_key,
+        imageId,
+        kind: 'persisted',
+      })
+    } catch (error) {
+      setManualBlurErrorMessage(
+        error instanceof Error
+          ? error.message
+          : 'No pudimos preparar la imagen para blur manual.',
+      )
+    } finally {
+      setManualBlurLoadingImageId(null)
+    }
   }
 
   function handleCloseManualBlurModal() {
@@ -2303,12 +2442,19 @@ function markSaveProgressSuccess() {
       return
     }
 
-    setManualBlurTargetImageId(null)
+    if (manualBlurTarget?.kind === 'persisted') {
+      revokePreviewUrl(manualBlurTarget.editorImage.previewUrl)
+    }
+
+    setManualBlurTarget(null)
     setManualBlurErrorMessage(null)
   }
 
   function renderImageFeedback() {
-    if (imageValidationErrors.length === 0) {
+    const shouldShowManualBlurError =
+      manualBlurTarget === null && manualBlurErrorMessage !== null
+
+    if (imageValidationErrors.length === 0 && !shouldShowManualBlurError) {
       return null
     }
 
@@ -2321,6 +2467,11 @@ function markSaveProgressSuccess() {
                 <li key={error}>{error}</li>
               ))}
             </ul>
+          </div>
+        ) : null}
+        {shouldShowManualBlurError ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {manualBlurErrorMessage}
           </div>
         ) : null}
       </div>
@@ -2371,7 +2522,17 @@ function markSaveProgressSuccess() {
     imageId: string,
     strokes: BlurStroke[],
   ) {
-    const image = pendingImagesRef.current.find((pendingImage) => pendingImage.id === imageId)
+    const target = manualBlurTarget
+
+    if (!target || target.imageId !== imageId) {
+      setManualBlurErrorMessage('No pudimos encontrar la imagen a editar.')
+      return
+    }
+
+    const image =
+      target.kind === 'pending'
+        ? pendingImagesRef.current.find((pendingImage) => pendingImage.id === imageId)
+        : target.editorImage
 
     if (!image) {
       setManualBlurErrorMessage('No pudimos encontrar la imagen a editar.')
@@ -2383,6 +2544,37 @@ function markSaveProgressSuccess() {
       setManualBlurErrorMessage(null)
 
       const blurredFile = await applyBlurStrokesToImage(image.file, strokes)
+
+      if (target.kind === 'persisted') {
+        if (!locationId) {
+          throw new Error('No pudimos determinar la locación de esta imagen.')
+        }
+
+        const uploadedAsset = await uploadLocationImageAsset({
+          file: blurredFile,
+          locationId,
+        })
+
+        await replaceLocationImage({
+          expectedStorageKey: target.expectedStorageKey,
+          height: image.height,
+          imageId,
+          locationId,
+          newCloudflareImageId: uploadedAsset.cloudflareImageId,
+          width: image.width,
+        })
+
+        try {
+          await locationImages.refresh()
+        } catch (refreshError) {
+          console.error('No pudimos refrescar las imágenes de la locación.', refreshError)
+        }
+
+        revokePreviewUrl(target.editorImage.previewUrl)
+        setManualBlurTarget(null)
+        return
+      }
+
       const nextPreviewUrl = URL.createObjectURL(blurredFile)
 
       setPendingImages((currentImages) =>
@@ -2403,7 +2595,7 @@ function markSaveProgressSuccess() {
         }),
       )
 
-      setManualBlurTargetImageId(null)
+      setManualBlurTarget(null)
     } catch (error) {
       setManualBlurErrorMessage(
         error instanceof Error
@@ -2735,6 +2927,11 @@ function markSaveProgressSuccess() {
         updateStageStatus('completed', 'done')
         markSaveProgressSuccess()
         await wait(SAVE_SUCCESS_DELAY_MS)
+        if (onEditSuccess) {
+          await onEditSuccess()
+          return
+        }
+
         navigate(routePaths.locations)
       } else {
         const createdLocationId = await createLocation(payload, {
@@ -2768,6 +2965,11 @@ function markSaveProgressSuccess() {
         updateStageStatus('completed', 'done')
         markSaveProgressSuccess()
         await wait(SAVE_SUCCESS_DELAY_MS)
+        if (onCreateSuccess) {
+          await onCreateSuccess()
+          return
+        }
+
         navigate(routePaths.locations)
       }
     } catch (error) {
@@ -2864,17 +3066,17 @@ function markSaveProgressSuccess() {
           target={imageSelectionTarget}
         />
       ) : null}
-      {!isReadOnly && manualBlurTargetImageId !== null ? (
+      {!isReadOnly && manualBlurTarget !== null ? (
         <LocationManualBlurModal
-          key={manualBlurTargetImageId}
+          key={manualBlurTarget.imageId}
           errorMessage={manualBlurErrorMessage}
           image={
-            manualBlurTargetImageId
-              ? pendingImages.find((image) => image.id === manualBlurTargetImageId) ?? null
-              : null
+            manualBlurTarget.kind === 'pending'
+              ? pendingImages.find((image) => image.id === manualBlurTarget.imageId) ?? null
+              : manualBlurTarget.editorImage
           }
           isApplying={isApplyingManualBlur}
-          isOpen={manualBlurTargetImageId !== null}
+          isOpen={manualBlurTarget !== null}
           onApply={handleApplyManualBlur}
           onClose={handleCloseManualBlurModal}
         />
@@ -3253,6 +3455,7 @@ function markSaveProgressSuccess() {
                   <LocationImagesGrid
                     images={[pendingCoverImage]}
                     isLocked={isSubmitting}
+                    manualBlurLoadingImageId={manualBlurLoadingImageId}
                     mode="pending"
                     onManualBlur={handleOpenManualBlur}
                     onRemove={handleRemovePendingImage}
@@ -3276,7 +3479,9 @@ function markSaveProgressSuccess() {
                       />
                     }
                     isLocked={isSubmitting}
+                    manualBlurLoadingImageId={manualBlurLoadingImageId}
                     mode="persisted"
+                    onManualBlur={(imageId) => void handleOpenPersistedManualBlur(imageId)}
                     onRemove={(imageId) => void handleDeletePersistedImage(imageId)}
                     showCount={false}
                     showGallery={false}
@@ -3522,8 +3727,10 @@ function markSaveProgressSuccess() {
                 <LocationImagesGrid
                   images={combinedEditGalleryImages}
                   isLocked={isSubmitting}
+                  manualBlurLoadingImageId={manualBlurLoadingImageId}
                   mode="mixed"
                   onManualBlurPending={handleOpenManualBlur}
+                  onManualBlurPersisted={(imageId) => void handleOpenPersistedManualBlur(imageId)}
                   onRemovePending={handleRemovePendingImage}
                   onRemovePersisted={(imageId) => void handleDeletePersistedImage(imageId)}
                   showCount={false}

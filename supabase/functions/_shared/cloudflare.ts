@@ -31,6 +31,11 @@ export type CloudflareImageDetails = {
   height?: number
 }
 
+export type CloudflareImageBlob = {
+  blob: Blob
+  contentType: string
+}
+
 function getCloudflareApiBaseUrl() {
   return `https://api.cloudflare.com/client/v4/accounts/${getRequiredEnv('CLOUDFLARE_ACCOUNT_ID')}/images`
 }
@@ -212,6 +217,37 @@ export async function getCloudflareImageDetails(cloudflareImageId: string) {
       method: 'GET',
     },
   )
+}
+
+export async function getCloudflareImageBlob(
+  cloudflareImageId: string,
+): Promise<CloudflareImageBlob> {
+  const url = `${getCloudflareApiBaseUrl()}/v1/${encodeURIComponent(cloudflareImageId)}/blob`
+  let response: Response
+
+  try {
+    response = await fetch(url, {
+      headers: getCloudflareHeaders(),
+      method: 'GET',
+    })
+  } catch (error) {
+    throw new HttpError(502, 'Could not reach Cloudflare Images API.', {
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      path: `/v1/${cloudflareImageId}/blob`,
+    })
+  }
+
+  if (!response.ok) {
+    throw new HttpError(502, 'Could not download the Cloudflare image source.', {
+      upstreamStatus: response.status,
+      upstreamStatusText: response.statusText,
+    })
+  }
+
+  return {
+    blob: await response.blob(),
+    contentType: response.headers.get('content-type')?.trim() || 'image/jpeg',
+  }
 }
 
 export async function deleteCloudflareImage(cloudflareImageId: string) {

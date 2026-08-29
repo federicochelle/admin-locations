@@ -81,6 +81,25 @@ export type UploadLocationImageResult = {
   imageId: string
 }
 
+export type LocationImageSourceInput = {
+  imageId: string
+  locationId: string
+}
+
+export type LocationImageSourceResult = {
+  contentType: string
+  blob: Blob
+}
+
+export type ReplaceLocationImageInput = {
+  expectedStorageKey: string
+  height: number
+  imageId: string
+  locationId: string
+  newCloudflareImageId: string
+  width: number
+}
+
 export type DeleteLocationImageInput = {
   locationId: string
   imageId: string

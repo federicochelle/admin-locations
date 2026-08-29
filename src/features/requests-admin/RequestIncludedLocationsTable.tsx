@@ -4,6 +4,7 @@ import {
 } from '../../app/router/route-paths'
 import Card from '../../components/ui/Card'
 import EmptyState from '../../components/ui/EmptyState'
+import { useAdminFeedback } from '../../components/ui/admin-feedback/useAdminFeedback'
 import { getOwnerWhatsappDigits } from '../../lib/phone'
 import {
   deleteReservation,
@@ -38,11 +39,6 @@ type ReserveFormValues = {
 type PendingReservationSelection = {
   location: AdminRequestLocation
 }
-
-type ToastState = {
-  message: string
-  tone: 'error' | 'success'
-} | null
 
 const REQUEST_PROJECT_LOCATION_STATUS_OPTIONS: Array<{
   label: string
@@ -200,6 +196,27 @@ function CoverPlaceholder() {
   )
 }
 
+function InlineSpinner() {
+  return (
+    <span
+      aria-hidden="true"
+      className="pointer-events-none absolute -left-6 top-1/2 -translate-y-1/2 text-slate-500"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="h-4 w-4 animate-spin"
+      >
+        <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+      </svg>
+    </span>
+  )
+}
+
 function ReserveLocationModal({
   errorMessage,
   initialValues,
@@ -312,31 +329,6 @@ function ReserveLocationModal({
   )
 }
 
-function Toast({
-  toast,
-}: {
-  toast: ToastState
-}) {
-  if (!toast) {
-    return null
-  }
-
-  return (
-    <div className="fixed right-4 top-4 z-[60] max-w-sm">
-      <div
-        className={[
-          'rounded-2xl border px-4 py-3 text-sm shadow-lg backdrop-blur-sm',
-          toast.tone === 'success'
-            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-            : 'border-red-200 bg-red-50 text-red-700',
-        ].join(' ')}
-      >
-        {toast.message}
-      </div>
-    </div>
-  )
-}
-
 function RequestIncludedLocationsTable({
   locations,
   product,
@@ -355,25 +347,11 @@ function RequestIncludedLocationsTable({
   const [isCreatingReservation, setIsCreatingReservation] = useState(false)
   const [reservationFormError, setReservationFormError] = useState<string | null>(null)
   const [activeStatusUpdateId, setActiveStatusUpdateId] = useState<string | null>(null)
-  const [toast, setToast] = useState<ToastState>(null)
+  const { toast } = useAdminFeedback()
 
   useEffect(() => {
     setDisplayLocations(locations)
   }, [locations])
-
-  useEffect(() => {
-    if (!toast) {
-      return
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setToast(null)
-    }, 3000)
-
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [toast])
 
   function getReserveModalInitialValues(location: AdminRequestLocation): ReserveFormValues {
     if (location.reservationStartsAt || location.reservationEndsAt) {
@@ -412,9 +390,9 @@ function RequestIncludedLocationsTable({
 
       await onReservationCreated()
       setPendingReservationSelection(null)
-      setToast({
-        message: result.syncWarning ?? 'Reserva confirmada correctamente.',
-        tone: result.syncWarning ? 'error' : 'success',
+      toast({
+        variant: result.syncWarning ? 'warning' : 'success',
+        title: result.syncWarning ?? 'Reserva confirmada correctamente.',
       })
     } catch (error) {
       setReservationFormError(
@@ -467,9 +445,9 @@ function RequestIncludedLocationsTable({
           status: 'pending',
         })
         await onReservationCreated()
-        setToast({
-          message: 'Estado actualizado correctamente.',
-          tone: 'success',
+        toast({
+          variant: 'success',
+          title: 'Estado actualizado correctamente.',
         })
       } catch (error) {
         await onReservationCreated()
@@ -484,12 +462,12 @@ function RequestIncludedLocationsTable({
               : currentLocation,
           ),
         )
-        setToast({
-          message:
+        toast({
+          variant: 'error',
+          title:
             error instanceof Error && error.message.trim().length > 0
               ? error.message
               : 'No pudimos actualizar la reserva asociada a esta locación.',
-          tone: 'error',
         })
       } finally {
         setActiveStatusUpdateId(null)
@@ -520,9 +498,9 @@ function RequestIncludedLocationsTable({
             status: 'cancelled',
           })
           await onReservationCreated()
-          setToast({
-            message: 'Reserva cancelada correctamente.',
-            tone: 'success',
+          toast({
+            variant: 'success',
+            title: 'Reserva cancelada correctamente.',
           })
         } catch (error) {
           setDisplayLocations((currentLocations) =>
@@ -536,12 +514,12 @@ function RequestIncludedLocationsTable({
                 : currentLocation,
             ),
           )
-          setToast({
-            message:
+          toast({
+            variant: 'error',
+            title:
               error instanceof Error && error.message.trim().length > 0
                 ? error.message
                 : 'No pudimos cancelar la reserva.',
-            tone: 'error',
           })
         } finally {
           setActiveStatusUpdateId(null)
@@ -582,9 +560,9 @@ function RequestIncludedLocationsTable({
             : currentLocation,
         ),
       )
-      setToast({
-        message: 'Estado actualizado correctamente.',
-        tone: 'success',
+      toast({
+        variant: 'success',
+        title: 'Estado actualizado correctamente.',
       })
     } catch (error) {
       setDisplayLocations((currentLocations) =>
@@ -597,12 +575,12 @@ function RequestIncludedLocationsTable({
             : currentLocation,
         ),
       )
-      setToast({
-        message:
+      toast({
+        variant: 'error',
+        title:
           error instanceof Error && error.message.trim().length > 0
             ? error.message
             : 'No pudimos actualizar el estado de la locación.',
-        tone: 'error',
       })
     } finally {
       setActiveStatusUpdateId(null)
@@ -611,8 +589,6 @@ function RequestIncludedLocationsTable({
 
   return (
     <>
-      <Toast toast={toast} />
-
       {pendingReservationSelection ? (
         <ReserveLocationModal
           errorMessage={reservationFormError}
@@ -740,7 +716,8 @@ function RequestIncludedLocationsTable({
                         </div>
                       </td>
                       <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
-                        <div className="flex min-w-[140px] items-center gap-2">
+                        <div className="relative min-w-[140px]">
+                          {isUpdatingStatus ? <InlineSpinner /> : null}
                           <select
                             value={location.requestProjectLocationStatus}
                             onChange={(event) =>
@@ -751,7 +728,8 @@ function RequestIncludedLocationsTable({
                             }
                             disabled={isUpdatingStatus}
                             className={[
-                              'min-w-[140px] rounded-xl pl-3 pr-1 py-2 text-sm outline-none transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500',
+                              'min-w-[140px] rounded-xl pr-1 py-2 text-sm outline-none transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500',
+                              'pl-3',
                               getRequestProjectLocationStatusSelectClassName(
                                 location.requestProjectLocationStatus,
                               ),
@@ -759,15 +737,10 @@ function RequestIncludedLocationsTable({
                           >
                             {REQUEST_PROJECT_LOCATION_STATUS_OPTIONS.map((option) => (
                               <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
+                              {option.label}
+                            </option>
+                          ))}
                           </select>
-                          {isUpdatingStatus ? (
-                            <span className="text-xs font-medium text-slate-500">
-                              Guardando...
-                            </span>
-                          ) : null}
                         </div>
                       </td>
                     </tr>

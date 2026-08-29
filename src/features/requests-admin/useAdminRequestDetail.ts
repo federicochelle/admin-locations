@@ -24,7 +24,7 @@ type UseAdminRequestDetailResult = {
   versionErrorMessage: string | null
   deleteErrorMessage: string | null
   reload: () => Promise<void>
-  save: (status: LocationRequestStatus) => Promise<void>
+  save: (status: LocationRequestStatus) => Promise<boolean>
   selectVersion: (requestProjectVersionId: string) => Promise<void>
   getDeleteImpact: () => Promise<number>
   remove: () => Promise<boolean>
@@ -96,7 +96,7 @@ export function useAdminRequestDetail(
 
   async function save(status: LocationRequestStatus) {
     if (!request) {
-      return
+      return false
     }
 
     try {
@@ -117,10 +117,12 @@ export function useAdminRequestDetail(
           : currentRequest,
       )
       await refreshCounts()
+      return true
     } catch (error) {
       setSaveErrorMessage(
         getErrorMessage(error, 'No pudimos guardar los cambios de la solicitud.'),
       )
+      return false
     } finally {
       setIsSaving(false)
     }
