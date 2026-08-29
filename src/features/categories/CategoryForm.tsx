@@ -14,6 +14,7 @@ import {
   uploadCategoryImage,
 } from './category-images.service'
 import {
+  normalizeCategoryLocationCodePrefixDisplayInput,
   normalizeCategoryLocationCodePrefixInput,
 } from './location-code-prefix'
 import useAuth from '../auth/useAuth'
@@ -615,7 +616,7 @@ function CategoryForm({
       if (name === 'location_code_prefix') {
         return {
           ...currentValues,
-          location_code_prefix: normalizeCategoryLocationCodePrefixInput(value),
+          location_code_prefix: normalizeCategoryLocationCodePrefixDisplayInput(value),
         }
       }
 
@@ -1087,7 +1088,7 @@ function CategoryForm({
         <div className="max-w-xl space-y-6">
           <div>
             <FieldLabel htmlFor="name" required>
-              Nombre
+              Nombre categoría
             </FieldLabel>
             <input
               id="name"
@@ -1095,14 +1096,14 @@ function CategoryForm({
               className={inputClassName()}
               value={values.name}
               onChange={handleTextChange}
-              placeholder="Castillos"
+              placeholder="Ej: Castillos (plural)"
               required
             />
           </div>
 
           <div>
             <FieldLabel htmlFor="location_code_prefix" required>
-              Prefijo de código
+              Nombre locación
             </FieldLabel>
             <input
               id="location_code_prefix"
@@ -1110,7 +1111,7 @@ function CategoryForm({
               className={inputClassName()}
               value={values.location_code_prefix}
               onChange={handleTextChange}
-              placeholder="Castillo"
+              placeholder="Ej: Castillo (singular)"
               required
             />
           </div>
