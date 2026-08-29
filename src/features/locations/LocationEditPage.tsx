@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import {
   getCategoryEditPath,
@@ -7,6 +7,7 @@ import {
   routePaths,
 } from '../../app/router/route-paths'
 import Card from '../../components/ui/Card'
+import { useAdminFeedback } from '../../components/ui/admin-feedback/useAdminFeedback'
 import PageContainer from '../../components/ui/PageContainer'
 import LocationForm, { type LocationFormMode } from './LocationForm'
 import { getLocationById } from './locations.service'
@@ -82,7 +83,9 @@ function isMissingLocationError(error: unknown) {
 
 function LocationEditPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const routerLocation = useLocation()
+  const { alert } = useAdminFeedback()
   const [initialValues, setInitialValues] = useState<LocationFormValues | null>(null)
   const [loadedLocationId, setLoadedLocationId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -213,6 +216,20 @@ function LocationEditPage() {
 
   useLayoutHeader(headerConfig)
 
+  async function handleEditSuccess() {
+    await alert({
+      variant: 'success',
+      title: 'Locación editada',
+      hideProgressBar: true,
+      hideProgressPercentage: true,
+      iconVariant: 'success',
+      progressPercentage: 100,
+      closeLabel: 'Ver locaciones',
+    })
+
+    navigate(routePaths.locations)
+  }
+
   if (!id) {
     return (
       <PageContainer
@@ -268,6 +285,7 @@ function LocationEditPage() {
             locationId={id}
             locationCode={locationCode}
             initialValues={initialValues}
+            onEditSuccess={handleEditSuccess}
             showImagesSection
             showAdvancedSection={false}
           />

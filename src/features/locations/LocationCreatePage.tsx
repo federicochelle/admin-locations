@@ -1,7 +1,9 @@
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useLocation } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import Card from '../../components/ui/Card'
+import { useAdminFeedback } from '../../components/ui/admin-feedback/useAdminFeedback'
 import PageContainer from '../../components/ui/PageContainer'
 import { routePaths } from '../../app/router/route-paths'
 import LocationForm from './LocationForm'
@@ -15,7 +17,9 @@ type ProposalLocationCreateState = {
 }
 
 function LocationCreatePage() {
+  const navigate = useNavigate()
   const routerLocation = useLocation()
+  const { alert } = useAdminFeedback()
   const navigationState = routerLocation.state as ProposalLocationCreateState | null
   const proposalPrefill =
     navigationState?.source === 'proposal-submission' ? navigationState : null
@@ -36,6 +40,20 @@ function LocationCreatePage() {
 
   useLayoutHeader(headerConfig)
 
+  async function handleCreateSuccess() {
+    await alert({
+      variant: 'success',
+      title: 'Locación creada',
+      hideProgressBar: true,
+      hideProgressPercentage: true,
+      iconVariant: 'success',
+      progressPercentage: 100,
+      closeLabel: 'Ver locaciones',
+    })
+
+    navigate(routePaths.locations)
+  }
+
   return (
     <PageContainer
       title="Nueva locación"
@@ -47,7 +65,10 @@ function LocationCreatePage() {
       hideHeader
     >
       <Card className="border-0 bg-[radial-gradient(circle_at_top_left,_rgba(184,146,74,0.10),_transparent_24%),linear-gradient(180deg,_#111111_0%,_#151515_52%,_#1a1a1a_100%)] p-6 shadow-none backdrop-blur-0">
-        <LocationForm initialValues={proposalPrefill?.initialValues} />
+        <LocationForm
+          initialValues={proposalPrefill?.initialValues}
+          onCreateSuccess={handleCreateSuccess}
+        />
       </Card>
     </PageContainer>
   )

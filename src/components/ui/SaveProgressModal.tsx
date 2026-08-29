@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import Button from './Button'
+import AdminFeedbackIcon from './admin-feedback/AdminFeedbackIcon'
 
 export type SaveProgressModalAction = {
   label: string
@@ -11,7 +12,10 @@ export type SaveProgressModalAction = {
 type SaveProgressModalProps = {
   actions?: SaveProgressModalAction[]
   errorMessage?: string | null
-  message: string
+  hideProgressBar?: boolean
+  hidePercentage?: boolean
+  iconVariant?: 'success'
+  message?: string
   percentage: number
   title: string
 }
@@ -19,6 +23,9 @@ type SaveProgressModalProps = {
 function SaveProgressModal({
   actions = [],
   errorMessage = null,
+  hideProgressBar = false,
+  hidePercentage = false,
+  iconVariant,
   message,
   percentage,
   title,
@@ -48,7 +55,13 @@ function SaveProgressModal({
         aria-labelledby="save-progress-modal-title"
         className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl"
       >
-        <div className="space-y-5">
+        <div className="space-y-5 text-center">
+          {iconVariant ? (
+            <span className="mx-auto inline-flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+              <AdminFeedbackIcon className="h-6 w-6" variant={iconVariant} />
+            </span>
+          ) : null}
+
           <div>
             <h2
               id="save-progress-modal-title"
@@ -59,21 +72,27 @@ function SaveProgressModal({
           </div>
 
           <div className="space-y-3">
-            <div className="h-3 overflow-hidden rounded-full bg-slate-200">
-              <div
-                className={[
-                  'h-full rounded-full transition-[width] duration-300 ease-out',
-                  errorMessage ? 'bg-red-500' : 'bg-slate-900',
-                ].join(' ')}
-                style={{ width: `${percentage}%` }}
-              />
-            </div>
+            {!hideProgressBar ? (
+              <div className="h-3 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className={[
+                    'h-full rounded-full transition-[width] duration-300 ease-out',
+                    errorMessage ? 'bg-red-500' : 'bg-slate-900',
+                  ].join(' ')}
+                  style={{ width: `${percentage}%` }}
+                />
+              </div>
+            ) : null}
 
-            <p className="text-3xl font-semibold tracking-tight text-slate-950">
-              {percentage}%
-            </p>
+            {!hidePercentage ? (
+              <p className="text-3xl font-semibold tracking-tight text-slate-950">
+                {percentage}%
+              </p>
+            ) : null}
 
-            <p className="text-sm leading-6 text-slate-600">{message}</p>
+            {message ? (
+              <p className="text-sm leading-6 text-slate-600">{message}</p>
+            ) : null}
           </div>
 
           {errorMessage ? (
@@ -83,7 +102,7 @@ function SaveProgressModal({
           ) : null}
 
           {actions.length > 0 ? (
-            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <div className="flex flex-col-reverse items-center gap-3 sm:flex-row sm:justify-center">
               {actions.map((action) => (
                 <Button
                   key={action.label}

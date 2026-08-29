@@ -2,10 +2,10 @@ import { useMemo } from 'react'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
+import { useAdminFeedback } from '../../components/ui/admin-feedback/useAdminFeedback'
 import PageContainer from '../../components/ui/PageContainer'
 import useAuth from '../auth/useAuth'
 import { createActivityLog } from '../activity/activity-logs.service'
-import LocationDeleteProgressModal from './LocationDeleteProgressModal'
 import LocationsTable from './LocationsTable'
 import type { LocationListItem } from './locations.types'
 import { useLocations } from './useLocations'
@@ -24,6 +24,7 @@ function formatLocationIdentifier(location: Pick<LocationListItem, 'locationCode
 
 function LocationsPage() {
   const { profile } = useAuth()
+  const { alert, confirm, withLoading } = useAdminFeedback()
   const {
     actionErrorMessage,
     activeActionKey,
@@ -43,9 +44,13 @@ function LocationsPage() {
   } = useLocations()
 
   async function handleDelete(location: LocationListItem) {
-    const shouldDelete = window.confirm(
-      `¿Seguro que querés eliminar la locación "${formatLocationIdentifier(location)}"?\n\nEsta acción no se puede deshacer.`,
-    )
+    const shouldDelete = await confirm({
+      variant: 'danger',
+      title: 'Eliminar locación',
+      description: `¿Seguro que querés eliminar la locación "${formatLocationIdentifier(location)}"?`,
+      confirmLabel: 'Eliminar locación',
+      cancelLabel: 'Cancelar',
+    })
 
     if (!shouldDelete) {
       return
@@ -71,7 +76,26 @@ function LocationsPage() {
       console.warn('No se registró activity_log para delete de location porque falta actorProfileId.')
     }
 
-    await remove(location.id)
+    await withLoading({
+      title: 'Eliminar locación',
+      description: 'Estamos procesando la eliminación de la locación.',
+      progress: {
+        enabled: true,
+      },
+      action: async () => {
+        await remove(location.id)
+      },
+    })
+
+    await alert({
+      variant: 'success',
+      title: 'Locación eliminada',
+      hideProgressBar: true,
+      hideProgressPercentage: true,
+      iconVariant: 'success',
+      progressPercentage: 100,
+      closeLabel: 'Entendido',
+    })
   }
 
   const headerConfig = useMemo(
@@ -90,10 +114,6 @@ function LocationsPage() {
       description="Espacio principal para administrar el inventario de locaciones audiovisuales."
       hideHeader
     >
-      <LocationDeleteProgressModal
-        isOpen={activeActionKey?.startsWith('delete:') ?? false}
-      />
-
       {isLoading ? (
         <Card>
           <div className="flex min-h-48 items-center justify-center">
