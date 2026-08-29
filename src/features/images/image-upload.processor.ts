@@ -121,6 +121,42 @@ function calculateTargetDimensions(width: number, height: number) {
   }
 }
 
+async function readImageFileDimensions(file: File) {
+  if (typeof window.createImageBitmap === 'function') {
+    const bitmap = await window.createImageBitmap(file, {
+      imageOrientation: 'from-image',
+    })
+
+    try {
+      return {
+        height: bitmap.height,
+        width: bitmap.width,
+      }
+    } finally {
+      bitmap.close()
+    }
+  }
+
+  const objectUrl = URL.createObjectURL(file)
+
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const nextImage = new Image()
+      nextImage.onload = () => resolve(nextImage)
+      nextImage.onerror = () =>
+        reject(new Error('No pudimos leer la imagen seleccionada.'))
+      nextImage.src = objectUrl
+    })
+
+    return {
+      height: image.naturalHeight,
+      width: image.naturalWidth,
+    }
+  } finally {
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
 function canvasToBlob(
   canvas: HTMLCanvasElement,
   quality: number,
@@ -318,4 +354,80 @@ export async function prepareImageUploadFile(
   }
 
   return result
+}
+
+export async function prepareProductionCompanyLogoFile(
+  file: File,
+): Promise<PrepareImageUploadResult> {
+  assertSupportedImageFile(file)
+
+  const totalStartedAt = performance.now()
+  const normalizedInputFile = normalizeImageFileType(file)
+  const isHeic = isHeicImageFile(normalizedInputFile)
+
+  if (isHeic) {
+    console.groupCollapsed(`[HEIC_PERF] ${normalizedInputFile.name}`)
+    console.log('[HEIC_PERF] start', {
+      fileName: normalizedInputFile.name,
+      mimeType: normalizedInputFile.type,
+      originalSizeMb: bytesToMb(normalizedInputFile.size),
+    })
+  }
+
+  const heicConversionResult = isHeic
+    ? await convertHeicImageFile(normalizedInputFile)
+    : null
+  const preparedFile = heicConversionResult
+    ? heicConversionResult.file
+    : normalizedInputFile
+
+  if (heicConversionResult) {
+    console.log('[HEIC_PERF] conversion', {
+      decodeMs: Number(heicConversionResult.decodeMs.toFixed(2)),
+      durationMs: Number(heicConversionResult.totalMs.toFixed(2)),
+      inputDimensions: heicConversionResult.inputDimensions,
+      outputDimensions: heicConversionResult.outputDimensions,
+      resultMimeType: heicConversionResult.convertedMimeType,
+      resultSizeMb: bytesToMb(heicConversionResult.convertedSize),
+      resizeEncodeMs: Number(heicConversionResult.resizeEncodeMs.toFixed(2)),
+    })
+  }
+
+  if (preparedFile.size > MAX_IMAGE_SIZE_BYTES) {
+    if (isHeic) {
+      console.groupEnd()
+    }
+
+    throw new Error(
+      `${file.name}: sigue superando el máximo de 10MB después de procesar.`,
+    )
+  }
+
+  const outputDimensions = heicConversionResult
+    ? heicConversionResult.outputDimensions
+    : await readImageFileDimensions(preparedFile)
+
+  return {
+    file: preparedFile,
+    outputDimensions,
+    wasOptimized: Boolean(heicConversionResult),
+    originalSize: normalizedInputFile.size,
+    optimizedSize: preparedFile.size,
+    heicPerf: heicConversionResult
+      ? {
+          conversionMs: heicConversionResult.totalMs,
+          convertedMimeType: heicConversionResult.convertedMimeType,
+          convertedSize: heicConversionResult.convertedSize,
+          decodeMs: heicConversionResult.decodeMs,
+          inputDimensions: heicConversionResult.inputDimensions,
+          originalMimeType: normalizedInputFile.type,
+          originalSize: normalizedInputFile.size,
+          outputDimensions: heicConversionResult.outputDimensions,
+          resizeEncodeMs: heicConversionResult.resizeEncodeMs,
+          startedAt: totalStartedAt,
+          totalMs: performance.now() - totalStartedAt,
+        }
+      : undefined,
+    wasHeicConverted: Boolean(heicConversionResult),
+  }
 }

@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
+import { useAdminFeedback } from '../../components/ui/admin-feedback/useAdminFeedback'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import EmptyState from '../../components/ui/EmptyState'
 import PageContainer from '../../components/ui/PageContainer'
 import {
   createProductionCompany,
+  deleteProductionCompany,
   updateProductionCompany,
   uploadProductionCompanyLogo,
 } from '../production-companies/production-companies.service'
@@ -47,6 +49,7 @@ function TabButton({
 }
 
 function UsersPage() {
+  const { alert, confirm, showError, withLoading } = useAdminFeedback()
   const [activeTab, setActiveTab] = useState<UsersTab>('users')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create')
@@ -165,6 +168,9 @@ function UsersPage() {
                 ? error.message
                 : 'No pudimos subir el logo.'
             }`,
+            {
+              cause: error,
+            },
           )
         }
       }
@@ -180,6 +186,60 @@ function UsersPage() {
       )
     } finally {
       setIsSavingProductionCompany(false)
+    }
+  }
+
+  async function handleDeleteCompany(company: ProductionCompanyListItem) {
+    const shouldDelete = await confirm({
+      variant: 'danger',
+      title: 'Eliminar productora',
+      description: `¿Seguro que querés eliminar la productora "${company.name}"?`,
+      confirmLabel: 'Eliminar productora',
+      cancelLabel: 'Cancelar',
+    })
+
+    if (!shouldDelete) {
+      return
+    }
+
+    try {
+      setProductionCompanyActionError(null)
+
+      await withLoading({
+        title: 'Eliminar productora',
+        description: 'Estamos procesando la eliminación de la productora.',
+        progress: {
+          enabled: true,
+        },
+        action: async () => {
+          await deleteProductionCompany(company.id)
+          await reloadProductionCompanies()
+        },
+      })
+
+      if (selectedCompany?.id === company.id) {
+        setSelectedCompany(null)
+        setIsModalOpen(false)
+      }
+
+      await alert({
+        variant: 'success',
+        title: 'Productora eliminada',
+        hideProgressBar: true,
+        hideProgressPercentage: true,
+        iconVariant: 'success',
+        progressPercentage: 100,
+        closeLabel: 'Entendido',
+      })
+    } catch (error) {
+      await showError({
+        title: 'No pudimos eliminar la productora',
+        description:
+          error instanceof Error && error.message.trim()
+            ? error.message
+            : 'No pudimos eliminar la productora.',
+        closeLabel: 'Entendido',
+      })
     }
   }
 
@@ -283,6 +343,9 @@ function UsersPage() {
               headerCenter={sectionToggle}
               isSaving={isSavingProductionCompany}
               onCreate={handleOpenCreateCompany}
+              onDelete={(company) => {
+                void handleDeleteCompany(company)
+              }}
               onEdit={handleOpenEditCompany}
             />
           )}
