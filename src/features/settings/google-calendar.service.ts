@@ -3,6 +3,7 @@ import {
   FunctionsHttpError,
   FunctionsRelayError,
   getSupabaseClient,
+  getSupabaseSessionAccessToken,
 } from '../../lib/supabase'
 
 export type GoogleCalendarConnectionStatus = {
@@ -55,9 +56,13 @@ function getErrorMessage(error: unknown, fallbackMessage: string) {
 
 export async function getGoogleCalendarConnectionStatus() {
   const supabase = getSupabaseClient()
+  const accessToken = await getSupabaseSessionAccessToken()
   const { data, error } = await supabase.functions.invoke<GoogleCalendarStatusResult>(
     'google-calendar-status',
     {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
       body: {},
     },
   )
@@ -86,9 +91,13 @@ export async function getGoogleCalendarConnectionStatus() {
 
 export async function getGoogleCalendarAuthorizationUrl() {
   const supabase = getSupabaseClient()
+  const accessToken = await getSupabaseSessionAccessToken()
   const { data, error } = await supabase.functions.invoke<GoogleCalendarConnectResult>(
     'google-calendar-connect',
     {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
       body: {},
     },
   )
