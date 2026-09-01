@@ -3,6 +3,7 @@ import {
   FunctionsHttpError,
   FunctionsRelayError,
   getSupabaseClient,
+  getSupabaseSessionAccessToken,
 } from '../../lib/supabase'
 import {
   updateRequestProjectLocationStatus,
@@ -350,9 +351,13 @@ async function syncReservationWithGoogleCalendar(
   options: GoogleCalendarSyncOptions = {},
 ): Promise<string | null> {
   const supabase = getSupabaseClient()
+  const accessToken = await getSupabaseSessionAccessToken()
   const { throwOnError = false } = options
 
   const { error } = await supabase.functions.invoke('google-calendar-sync-reservation', {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
     body: {
       ...(input.action ? { action: input.action } : {}),
       reservationId: input.reservationId,
