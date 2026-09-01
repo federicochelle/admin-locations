@@ -31,6 +31,23 @@ export function getSupabaseClient() {
   return supabaseClient
 }
 
+export async function getSupabaseSessionAccessToken(): Promise<string> {
+  const supabase = getSupabaseClient()
+  const { data, error } = await supabase.auth.getSession()
+
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const accessToken = data.session?.access_token
+
+  if (!accessToken) {
+    throw new Error('No encontramos una sesión de administrador activa.')
+  }
+
+  return accessToken
+}
+
 export {
   FunctionsFetchError,
   FunctionsHttpError,
