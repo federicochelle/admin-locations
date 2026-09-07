@@ -1,3 +1,4 @@
+import VersionRecoveryProvider from '../VersionRecoveryProvider'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import Header from '../../components/navigation/Header'
 import Sidebar from '../../components/navigation/Sidebar'
@@ -40,6 +41,7 @@ function AdminLayout() {
     <LayoutHeaderProvider>
       <PendingNavCountsProvider>
         <AdminFeedbackProvider>
+          <VersionRecoveryProvider>
           <div className="min-h-screen bg-black text-slate-900">
             <Sidebar />
             <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(184,146,74,0.10),_transparent_24%),linear-gradient(180deg,_#111111_0%,_#151515_52%,_#1a1a1a_100%)] md:ml-72">
@@ -49,6 +51,7 @@ function AdminLayout() {
               </main>
             </div>
           </div>
+        </VersionRecoveryProvider>
         </AdminFeedbackProvider>
       </PendingNavCountsProvider>
     </LayoutHeaderProvider>

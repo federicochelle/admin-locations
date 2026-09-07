@@ -1,3 +1,4 @@
+import { useUnsavedCriticalState } from '../../app/useUnsavedCriticalState'
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
@@ -100,6 +101,7 @@ function UserDetailPage() {
   const [selectedRequestStatus, setSelectedRequestStatus] = useState<'all' | LocationRequestStatus>('all')
   const [pendingProductionCompanyId, setPendingProductionCompanyId] = useState<string | null>(null)
   const [isSavingProductionCompanyAssociation, setIsSavingProductionCompanyAssociation] = useState(false)
+  useUnsavedCriticalState(null, { pending: isSavingProductionCompanyAssociation })
   const {
     user,
     isLoading,
