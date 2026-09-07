@@ -1,3 +1,4 @@
+import { annotateAdminError, markExpectedAdminError } from '../../lib/admin-error-reporting'
 import { optimizeLocationImageFile } from '../locations/location-image-optimizer'
 import {
   assertSupportedImageFile,
@@ -266,12 +267,12 @@ async function convertHeicImageFile(file: File): Promise<HeicConversionResult> {
   } catch (error) {
     logHeicConversionError(file, error)
 
-    throw new Error(
+    throw annotateAdminError(new Error(
       `${file.name}: no pudimos convertir la imagen HEIC/HEIF automáticamente.`,
       {
         cause: error,
       },
-    )
+    ), { stage: 'images.convert', provider: 'browser' })
   }
 }
 
@@ -327,9 +328,9 @@ export async function prepareImageUploadFile(
       console.groupEnd()
     }
 
-    throw new Error(
+    throw markExpectedAdminError(new Error(
       `${file.name}: sigue superando el máximo de 10MB después de optimizar.`,
-    )
+    ))
   }
 
   const result = {
@@ -398,9 +399,9 @@ export async function prepareProductionCompanyLogoFile(
       console.groupEnd()
     }
 
-    throw new Error(
+    throw markExpectedAdminError(new Error(
       `${file.name}: sigue superando el máximo de 10MB después de procesar.`,
-    )
+    ))
   }
 
   const outputDimensions = heicConversionResult

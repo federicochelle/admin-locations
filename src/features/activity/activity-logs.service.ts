@@ -1,3 +1,4 @@
+import { normalizeAdminError } from '../../lib/admin-error-reporting'
 import { getSupabaseClient } from '../../lib/supabase'
 
 export type ActivityLogAction = 'created' | 'updated' | 'deleted'
@@ -145,7 +146,7 @@ export async function createActivityLog({
   })
 
   if (error) {
-    throw new Error(error.message)
+    throw normalizeAdminError(error)
   }
 }
 

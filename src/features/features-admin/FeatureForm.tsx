@@ -1,3 +1,4 @@
+import { useUnsavedCriticalState } from '../../app/useUnsavedCriticalState'
 import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import Button from '../../components/ui/Button'
@@ -73,6 +74,7 @@ function FeatureForm({
   const [values, setValues] = useState<FeatureFormValues>(initialValues)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const protection = useUnsavedCriticalState(values, { enabled: true, pending: isSubmitting })
 
   function handleTextChange(
     event: React.ChangeEvent<
@@ -115,6 +117,7 @@ function FeatureForm({
         await createFeature(payload)
       }
 
+      protection.markSaved()
       navigate(routePaths.features)
     } catch (error) {
       const message =

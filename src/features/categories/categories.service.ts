@@ -1,3 +1,4 @@
+import { normalizeAdminError, reportAdminError } from '../../lib/admin-error-reporting'
 import { getSupabaseClient } from '../../lib/supabase'
 import { createActivityLog } from '../activity/activity-logs.service'
 import type {
@@ -307,7 +308,7 @@ export async function getCategoryFormOptions(): Promise<CategoryFormOptions> {
 
 export async function createCategory(
   payload: CategoryCreatePayload,
-  options?: { actorProfileId?: string | null },
+  options?: { actorProfileId?: string | null; correlationId?: string },
 ): Promise<string> {
   const supabase = getSupabaseClient()
 
@@ -318,7 +319,7 @@ export async function createCategory(
     .single()
 
   if (error) {
-    throw new Error(getCategoryFriendlyErrorMessage(error))
+    throw normalizeAdminError(error, getCategoryFriendlyErrorMessage(error))
   }
 
   const categoryId = (data as CategoryIdRow).id
@@ -333,6 +334,7 @@ export async function createCategory(
         entityName: payload.name.trim(),
       })
     } catch (error) {
+      if (options?.correlationId) reportAdminError(error, { operation: 'location.category.create', stage: 'activity_log', provider: 'supabase', correlationId: options.correlationId, userFacing: false, outcome: 'partial', level: 'warning' })
       console.warn('No pudimos registrar activity_log para category.', error)
     }
   } else {

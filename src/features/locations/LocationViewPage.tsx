@@ -1,3 +1,4 @@
+import { createAdminCorrelationId, reportAdminError } from '../../lib/admin-error-reporting'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
@@ -210,6 +211,7 @@ function LocationViewPage() {
           return
         }
 
+        reportAdminError(error, { operation: 'location.load', stage: 'load', provider: 'supabase', resourceId: id, userFacing: true })
         console.error('No pudimos cargar la locación en LocationViewPage.', error)
 
         const message =
@@ -306,6 +308,7 @@ function LocationViewPage() {
       return
     }
 
+    const correlationId = createAdminCorrelationId()
     setDeleteErrorMessage(null)
     setIsDeleting(true)
 
@@ -323,6 +326,7 @@ function LocationViewPage() {
             entityName,
           })
         } catch (error) {
+          reportAdminError(error, { operation: 'location.delete', stage: 'activity_log', provider: 'supabase', resourceId: id, correlationId, level: 'warning', userFacing: false })
           console.warn('No pudimos registrar activity_log para delete de location.', error)
         }
       } else {
@@ -354,6 +358,7 @@ function LocationViewPage() {
 
       navigate(routePaths.locations)
     } catch (error) {
+      reportAdminError(error, { operation: 'location.delete', stage: 'request', provider: 'supabase', resourceId: id, correlationId, userFacing: true, outcome: 'unknown' })
       setDeleteErrorMessage(
         error instanceof Error
           ? error.message
