@@ -1,3 +1,4 @@
+import { createAdminCorrelationId, reportAdminError } from '../../lib/admin-error-reporting'
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
@@ -126,6 +127,7 @@ function OwnerEditPage() {
       return
     }
 
+    const correlationId = createAdminCorrelationId()
     try {
       setActiveLocationActionKey(`delete:${locationId}`)
       setLocationActionErrorMessage(null)
@@ -134,6 +136,7 @@ function OwnerEditPage() {
         currentLocations.filter((location) => location.id !== locationId),
       )
     } catch (error) {
+      reportAdminError(error, { operation: 'location.delete', stage: 'request', provider: 'supabase', resourceId: locationId, correlationId, userFacing: true, outcome: 'unknown' })
       const message =
         error instanceof Error
           ? error.message

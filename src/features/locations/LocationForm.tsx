@@ -1,3 +1,5 @@
+import { useUnsavedCriticalState } from '../../app/useUnsavedCriticalState'
+import { annotateAdminError, createAdminCorrelationId, reportAdminError, suppressAdminErrorReport, type AdminErrorContext } from '../../lib/admin-error-reporting'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { APIProvider } from '@vis.gl/react-google-maps'
@@ -820,6 +822,10 @@ function LocationForm({
     }
   }, [])
 
+  function reportLocationFailure(error: unknown, context: Partial<AdminErrorContext>) {
+    reportAdminError(error, { operation: mode === 'edit' ? 'location.update' : 'location.create', resourceId: locationId, userFacing: true, ...context })
+  }
+
   async function loadFormOptions() {
     try {
       setIsOptionsLoading(true)
@@ -833,6 +839,7 @@ function LocationForm({
           ? error.message
           : 'No pudimos cargar las opciones del formulario.'
 
+      reportAdminError(error, { operation: 'location.options', stage: 'options', provider: 'supabase', userFacing: true })
       setOptionsError(message)
     } finally {
       setIsOptionsLoading(false)
@@ -861,6 +868,7 @@ function LocationForm({
             ? error.message
             : 'No pudimos cargar las opciones del formulario.'
 
+        reportAdminError(error, { operation: 'location.options', stage: 'options', provider: 'supabase', userFacing: true })
         setOptionsError(message)
       })
       .finally(() => {
@@ -1050,6 +1058,16 @@ function LocationForm({
     ownerPhoneInput.length > 0 || values.owner_id === ''
       ? ownerPhoneInput
       : selectedOwnerPhone
+  const protection = useUnsavedCriticalState(values, {
+    enabled: !isReadOnly,
+    pending: isSubmitting || isPreparingImages || isDropboxImporting || isApplyingManualBlur ||
+      isCreatingOwner || isCreatingCategory || isCreatingZone ||
+      pendingImages.some(image => image.status !== 'done') || pendingDeletedPersistedImageIds.length > 0 ||
+      (!values.owner_id && Boolean(ownerInputValue.trim() || ownerPhoneValue.trim())) ||
+      (isOwnerModalOpen && Object.values(ownerCreateValues).some(value => value.trim().length > 0)) ||
+      (isCategoryModalOpen && Boolean(categoryCreateName.trim())) ||
+      (isZoneModalOpen && Boolean(zoneCreateName.trim())),
+  })
   const zoneInputValue =
     zoneSearchTerm.length > 0 || values.zone_id === ''
       ? zoneSearchTerm
@@ -1433,6 +1451,7 @@ function LocationForm({
       return
     }
 
+    const correlationId = createAdminCorrelationId()
     try {
       setIsCreatingCategory(true)
       setCategoryCreateError(null)
@@ -1446,6 +1465,7 @@ function LocationForm({
         active: true,
       }, {
         actorProfileId: profile?.id ?? null,
+        correlationId,
       })
       const nextOptions = await getLocationFormOptions()
 
@@ -1461,6 +1481,7 @@ function LocationForm({
       setCategoryCreateName('')
       setCategoryCreateLocationCodePrefix('')
     } catch (error) {
+      reportLocationFailure(error, { operation: 'location.category.create', stage: 'request', provider: 'supabase', correlationId })
       const message =
         error instanceof Error
           ? error.message
@@ -1493,6 +1514,7 @@ function LocationForm({
       return
     }
 
+    const correlationId = createAdminCorrelationId()
     try {
       setIsCreatingZone(true)
       setZoneCreateError(null)
@@ -1507,6 +1529,7 @@ function LocationForm({
         lng: null,
       }, {
         actorProfileId: profile?.id ?? null,
+        correlationId,
       })
       const nextOptions = await getLocationFormOptions()
 
@@ -1522,6 +1545,7 @@ function LocationForm({
       setIsZoneModalOpen(false)
       setZoneCreateName('')
     } catch (error) {
+      reportLocationFailure(error, { operation: 'location.zone.create', stage: 'request', provider: 'supabase', correlationId })
       const message =
         error instanceof Error
           ? error.message
@@ -1761,6 +1785,7 @@ function LocationForm({
       return
     }
 
+    const correlationId = createAdminCorrelationId()
     try {
       setIsCreatingOwner(true)
       setOwnerCreateError(null)
@@ -1769,6 +1794,7 @@ function LocationForm({
         buildOwnerQuickCreatePayload(ownerCreateValues),
         {
           actorProfileId: profile?.id ?? null,
+        correlationId,
         },
       )
       const nextOptions = await getLocationFormOptions()
@@ -1789,6 +1815,7 @@ function LocationForm({
       setIsOwnerModalOpen(false)
       setOwnerCreateValues(defaultOwnerQuickCreateValues)
     } catch (error) {
+      reportLocationFailure(error, { operation: 'location.owner.create', stage: 'request', provider: 'supabase', correlationId })
       const message =
         error instanceof Error
           ? error.message
@@ -1961,6 +1988,7 @@ function markSaveProgressSuccess() {
       .sort((leftImage, rightImage) => leftImage.originalIndex - rightImage.originalIndex)
 
     let transientPendingAnalysisImages: LocationAnalysisImageInput[]
+    const correlationId = createAdminCorrelationId()
     try {
       transientPendingAnalysisImages = await Promise.all(
         pendingImagesForAnalysis.map(async (image) => ({
@@ -1974,6 +2002,7 @@ function markSaveProgressSuccess() {
         })),
       )
     } catch (error) {
+      reportLocationFailure(error, { operation: 'location.analysis', stage: 'analysis', correlationId })
       const message =
         error instanceof Error
           ? error.message
@@ -2056,6 +2085,7 @@ function markSaveProgressSuccess() {
         suggestedTags: result.tagSlugs,
       })
     } catch (error) {
+      reportLocationFailure(error, { operation: 'location.analysis', stage: 'analysis', correlationId })
       const message =
         error instanceof Error
           ? error.message
@@ -2156,6 +2186,7 @@ function markSaveProgressSuccess() {
       return
     }
 
+    const correlationId = createAdminCorrelationId()
     const isCoverSelection = target === 'cover'
     const selectedFiles = isCoverSelection ? files.slice(0, 1) : files
     const totalFiles = selectedFiles.length
@@ -2264,6 +2295,9 @@ function markSaveProgressSuccess() {
               ? error.message
               : `${placeholder.file.name}: no pudimos optimizar la imagen seleccionada.`
 
+          if (isMountedRef.current && !removedPendingImageIdsRef.current.has(placeholder.id)) {
+            reportLocationFailure(error, { operation: 'location.image.prepare', resourceType: 'image', stage: 'images.prepare', provider: 'browser', correlationId, extraSafeContext: { image_count: totalFiles, image_index: placeholder.originalIndex, image_mime: placeholder.file.type, image_bytes: placeholder.file.size } })
+          }
           nextErrors.push(message)
 
           if (!isMountedRef.current || removedPendingImageIdsRef.current.has(placeholder.id)) {
@@ -2390,6 +2424,7 @@ function markSaveProgressSuccess() {
     setManualBlurErrorMessage(null)
     setManualBlurLoadingImageId(imageId)
 
+    const correlationId = createAdminCorrelationId()
     try {
       const source = await downloadLocationImageSource({
         imageId,
@@ -2427,6 +2462,7 @@ function markSaveProgressSuccess() {
         kind: 'persisted',
       })
     } catch (error) {
+      reportLocationFailure(error, { operation: 'location.image.replace', resourceType: 'image', stage: 'images.source', correlationId, provider: 'browser', outcome: 'unknown' })
       setManualBlurErrorMessage(
         error instanceof Error
           ? error.message
@@ -2539,6 +2575,7 @@ function markSaveProgressSuccess() {
       return
     }
 
+    const correlationId = createAdminCorrelationId()
     try {
       setIsApplyingManualBlur(true)
       setManualBlurErrorMessage(null)
@@ -2565,8 +2602,9 @@ function markSaveProgressSuccess() {
         })
 
         try {
-          await locationImages.refresh()
+          await locationImages.refresh({ operation: 'location.image.replace', correlationId, outcome: 'partial' })
         } catch (refreshError) {
+          reportLocationFailure(refreshError, { operation: 'location.image.replace', resourceType: 'image', stage: 'images.refresh', provider: 'supabase', correlationId, outcome: 'partial' })
           console.error('No pudimos refrescar las imágenes de la locación.', refreshError)
         }
 
@@ -2597,6 +2635,7 @@ function markSaveProgressSuccess() {
 
       setManualBlurTarget(null)
     } catch (error) {
+      reportLocationFailure(error, { operation: 'location.image.replace', resourceType: 'image', stage: 'images.blur', correlationId, provider: 'browser', outcome: 'unknown' })
       setManualBlurErrorMessage(
         error instanceof Error
           ? error.message
@@ -2607,7 +2646,7 @@ function markSaveProgressSuccess() {
     }
   }
 
-  async function runPendingImageDeletes(nextLocationId: string) {
+  async function runPendingImageDeletes(nextLocationId: string, observation: AdminErrorContext) {
     if (pendingDeletedPersistedImageIds.length === 0) {
       updateStageStatus('deleteImages', 'skipped')
       return
@@ -2634,7 +2673,7 @@ function markSaveProgressSuccess() {
 
         setEditDeleteErrorMessage(message)
         setSaveProgressError('deleteImages', message)
-        throw new Error(message, { cause: error })
+        throw annotateAdminError(error, { ...observation, stage: 'images.delete', outcome: 'partial' }, message)
       }
 
       updateSaveProgress((currentState) => ({
@@ -2646,7 +2685,7 @@ function markSaveProgressSuccess() {
     updateStageStatus('deleteImages', 'done')
   }
 
-  async function runPendingImageUploads(nextLocationId: string) {
+  async function runPendingImageUploads(nextLocationId: string, observation: AdminErrorContext) {
     if (pendingImages.length === 0) {
       updateStageStatus('uploadImages', 'skipped')
       return null
@@ -2749,6 +2788,7 @@ function markSaveProgressSuccess() {
         })
       } catch (error) {
         hasImageErrors = true
+        reportLocationFailure(error, { ...observation, resourceType: 'image', resourceId: nextLocationId, stage: 'images.upload', outcome: 'partial', extraSafeContext: { ...observation.extraSafeContext, image_count: uploads.length, image_index: image.originalIndex, image_mime: image.file.type, image_bytes: image.file.size, image_dimensions: { width: image.width, height: image.height }, timeout_ms: IMAGE_UPLOAD_TIMEOUT_MS } })
 
         const message =
           error instanceof Error
@@ -2814,7 +2854,7 @@ function markSaveProgressSuccess() {
     return null
   }
 
-  async function syncVisibleGallery() {
+  async function syncVisibleGallery(observation: AdminErrorContext) {
     const shouldSyncGallery =
       mode === 'edit' &&
       (pendingDeletedPersistedImageIds.length > 0 || pendingImages.length > 0)
@@ -2825,7 +2865,7 @@ function markSaveProgressSuccess() {
     }
 
     updateStageStatus('syncGallery', 'active')
-    await locationImages.refresh()
+    await locationImages.refresh({ ...observation, stage: 'images.refresh', provider: 'supabase' })
     updateStageStatus('syncGallery', 'done')
   }
 
@@ -2836,23 +2876,27 @@ function markSaveProgressSuccess() {
       return
     }
 
-    const nextFieldErrors = validateRequiredFields(values, {
-      ownerName: ownerInputValue,
-      ownerPhone: ownerPhoneValue,
-    })
-
-    setFieldErrors(nextFieldErrors)
-
-    if (hasFieldErrors(nextFieldErrors)) {
-      setSubmitError(null)
-      setValidationModalMessages(getValidationMessages(nextFieldErrors))
-      return
-    }
-
+    const observation: AdminErrorContext = { operation: mode === 'edit' ? 'location.update' : 'location.create', stage: 'payload', resourceId: locationId, correlationId: createAdminCorrelationId(), userFacing: true, outcome: 'failed' }
     let resolvedOwnerId = values.owner_id || null
     let createdOwnerName: string | null = null
 
     try {
+      observation.stage = 'validation'
+      const nextFieldErrors = validateRequiredFields(values, {
+        ownerName: ownerInputValue,
+        ownerPhone: ownerPhoneValue,
+      })
+
+      setFieldErrors(nextFieldErrors)
+
+      if (hasFieldErrors(nextFieldErrors)) {
+        setSubmitError(null)
+        setValidationModalMessages(getValidationMessages(nextFieldErrors))
+        return
+      }
+
+      observation.stage = 'payload'
+      protection.markIncomplete()
       setIsSubmitting(true)
       setSubmitError(null)
       setValidationModalMessages([])
@@ -2865,6 +2909,8 @@ function markSaveProgressSuccess() {
         const normalizedOwnerPhone = normalizeInlineOwnerValue(ownerPhoneValue)
 
         if (normalizedOwnerName.length > 0 && normalizedOwnerPhone.length > 0) {
+          observation.stage = 'owner.inline'
+          observation.provider = 'supabase'
           resolvedOwnerId = await createOwner(
             buildInlineOwnerCreatePayload({
               full_name: normalizedOwnerName,
@@ -2872,8 +2918,11 @@ function markSaveProgressSuccess() {
             }),
             {
               actorProfileId: profile?.id ?? null,
+              correlationId: observation.correlationId,
             },
           )
+          observation.outcome = 'partial'
+          observation.extraSafeContext = { confirmed_stages: ['owner.inline'] }
           createdOwnerName = normalizedOwnerName
           setValues((currentValues) => ({
             ...currentValues,
@@ -2884,6 +2933,7 @@ function markSaveProgressSuccess() {
         }
       }
 
+      observation.stage = 'payload'
       const payload = buildPayload(
         {
           ...values,
@@ -2902,13 +2952,17 @@ function markSaveProgressSuccess() {
 
         await updateLocation(locationId, payload, {
           actorProfileId: profile?.id ?? null,
+          correlationId: observation.correlationId,
         })
+        observation.resourceId = locationId
+        observation.outcome = 'partial'
+        observation.extraSafeContext = { confirmed_stages: ['location.update', 'relations.features', 'relations.tags'] }
         updateStageStatus('location', 'done')
 
-        await runPendingImageDeletes(locationId)
+        await runPendingImageDeletes(locationId, observation)
         setPendingDeletedPersistedImageIds([])
-        const uploadErrorMessage = await runPendingImageUploads(locationId)
-        await syncVisibleGallery()
+        const uploadErrorMessage = await runPendingImageUploads(locationId, observation)
+        await syncVisibleGallery(observation)
 
         setPendingImages((currentImages) => {
           currentImages.forEach((image) => {
@@ -2921,9 +2975,10 @@ function markSaveProgressSuccess() {
         })
 
         if (uploadErrorMessage) {
-          throw new Error(uploadErrorMessage)
+          throw suppressAdminErrorReport(new Error(uploadErrorMessage))
         }
 
+        if (!locationImages.hasRefreshError() && pendingImages.every(image => image.status === 'pending' || image.status === 'done')) protection.markSaved()
         updateStageStatus('completed', 'done')
         markSaveProgressSuccess()
         await wait(SAVE_SUCCESS_DELAY_MS)
@@ -2936,13 +2991,17 @@ function markSaveProgressSuccess() {
       } else {
         const createdLocationId = await createLocation(payload, {
           actorProfileId: profile?.id ?? null,
+          correlationId: observation.correlationId,
         })
+        observation.resourceId = createdLocationId
+        observation.outcome = 'partial'
+        observation.extraSafeContext = { confirmed_stages: ['location.insert', 'relations.features', 'relations.tags'] }
         updateStageStatus('location', 'done')
 
-        await runPendingImageDeletes(createdLocationId)
+        await runPendingImageDeletes(createdLocationId, observation)
         setPendingDeletedPersistedImageIds([])
 
-        const uploadErrorMessage = await runPendingImageUploads(createdLocationId)
+        const uploadErrorMessage = await runPendingImageUploads(createdLocationId, observation)
 
         setPendingImages((currentImages) => {
           currentImages.forEach((image) => {
@@ -2960,8 +3019,9 @@ function markSaveProgressSuccess() {
           return
         }
 
-        await syncVisibleGallery()
+        await syncVisibleGallery(observation)
 
+        if (!locationImages.hasRefreshError() && pendingImages.every(image => image.status === 'pending' || image.status === 'done')) protection.markSaved()
         updateStageStatus('completed', 'done')
         markSaveProgressSuccess()
         await wait(SAVE_SUCCESS_DELAY_MS)
@@ -2973,6 +3033,7 @@ function markSaveProgressSuccess() {
         navigate(routePaths.locations)
       }
     } catch (error) {
+      reportLocationFailure(error, observation)
       const defaultErrorMessage =
         createdOwnerName
           ? `El dueño "${createdOwnerName}" se creó correctamente, pero no pudimos guardar la locación.`

@@ -1,3 +1,5 @@
+import { annotateLocationDeleteFailure } from './location-edge-errors'
+import { annotateAdminError, normalizeAdminError, reportAdminError } from '../../lib/admin-error-reporting'
 import { getSupabaseClient } from '../../lib/supabase'
 import { createActivityLog } from '../activity/activity-logs.service'
 import type {
@@ -156,7 +158,7 @@ async function getUniqueLocationSlug(
   const { data, error } = await query
 
   if (error) {
-    throw new Error(error.message)
+    throw normalizeAdminError(error)
   }
 
   const rows = (data ?? []) as LocationSlugRow[]
@@ -331,7 +333,7 @@ async function replaceLocationRelations(input: {
     .eq('location_id', locationId)
 
   if (deleteRelationsError) {
-    throw new Error(deleteRelationsError.message)
+    throw normalizeAdminError(deleteRelationsError)
   }
 
   if (relationIds.length === 0) {
@@ -348,7 +350,7 @@ async function replaceLocationRelations(input: {
     .insert(relationRows)
 
   if (relationError) {
-    throw new Error(relationError.message)
+    throw normalizeAdminError(relationError)
   }
 }
 
@@ -361,7 +363,7 @@ export async function getLocations(): Promise<LocationListItem[]> {
     .order('title', { ascending: true })
 
   if (error) {
-    throw new Error(error.message)
+    throw normalizeAdminError(error)
   }
 
   const rows = (data ?? []) as SupabaseLocationRow[]
@@ -389,7 +391,7 @@ export async function getLocationsPage(
       .ilike('full_name', searchPattern)
 
     if (ownerError) {
-      throw new Error(ownerError.message)
+      throw normalizeAdminError(ownerError)
     }
 
     ownerIds = ((ownerData ?? []) as { id: string | null }[])
@@ -442,7 +444,7 @@ export async function getLocationsPage(
   const { data, error, count } = await query.range(from, to)
 
   if (error) {
-    throw new Error(error.message)
+    throw normalizeAdminError(error)
   }
 
   return {
@@ -463,7 +465,7 @@ export async function getLocationsByCategory(
     .order('title', { ascending: true })
 
   if (error) {
-    throw new Error(error.message)
+    throw normalizeAdminError(error)
   }
 
   const rows = (data ?? []) as SupabaseLocationRow[]
@@ -502,27 +504,27 @@ export async function getLocationFormOptions(): Promise<LocationFormOptions> {
     ])
 
   if (ownersResult.error) {
-    throw new Error(ownersResult.error.message)
+    throw normalizeAdminError(ownersResult.error)
   }
 
   if (categoriesResult.error) {
-    throw new Error(categoriesResult.error.message)
+    throw normalizeAdminError(categoriesResult.error)
   }
 
   if (departmentsResult.error) {
-    throw new Error(departmentsResult.error.message)
+    throw normalizeAdminError(departmentsResult.error)
   }
 
   if (zonesResult.error) {
-    throw new Error(zonesResult.error.message)
+    throw normalizeAdminError(zonesResult.error)
   }
 
   if (featuresResult.error) {
-    throw new Error(featuresResult.error.message)
+    throw normalizeAdminError(featuresResult.error)
   }
 
   if (tagsResult.error) {
-    throw new Error(tagsResult.error.message)
+    throw normalizeAdminError(tagsResult.error)
   }
 
   return {
@@ -550,75 +552,87 @@ export async function getLocationFormOptions(): Promise<LocationFormOptions> {
 
 export async function createLocation(
   payload: LocationCreatePayload,
-  options?: { actorProfileId?: string | null },
+  options?: { actorProfileId?: string | null; correlationId?: string },
 ): Promise<string> {
-  const supabase = getSupabaseClient()
-  const { selectedFeatureIds, selectedTagIds, ...rawLocationPayload } = payload
-  const locationPayload = normalizeLocationPayloadTitle(rawLocationPayload)
-  const uniqueSlug = await getUniqueLocationSlug(locationPayload.slug)
-  const { data, error } = await supabase
-    .from('locations')
-    .insert({
-      ...locationPayload,
-      slug: uniqueSlug,
-      location_code: null,
-    })
-    .select('id, location_code')
-    .single()
-
-  if (isLocationSlugUniqueError(error)) {
-    throw new Error(
-      'Ya existe una locación con un código similar. Intentá guardar nuevamente.',
-    )
-  }
-
-  if (isLocationCodeUniqueError(error)) {
-    throw new Error(
-      'No pudimos asignar un código único a la locación. Intentá guardar nuevamente.',
-    )
-  }
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  const createdRow = data as CreatedLocationRow
-  const locationId = createdRow.id
-  const generatedLocationCode = createdRow.location_code
-
-  await replaceLocationRelations({
-    locationId,
-    relationIds: selectedFeatureIds,
-    relationTable: 'location_features',
-    relationColumn: 'feature_id',
-  })
-
-  await replaceLocationRelations({
-    locationId,
-    relationIds: selectedTagIds,
-    relationTable: 'location_tags',
-    relationColumn: 'tag_id',
-  })
-
-  if (options?.actorProfileId) {
-    try {
-      const locationTitle = locationPayload.title.trim()
-
-      await createActivityLog({
-        actorProfileId: options.actorProfileId,
-        action: 'created',
-        entityType: 'location',
-        entityId: locationId,
-        entityName: generatedLocationCode ?? (locationTitle || 'Sin código'),
+  let stage = 'payload'
+  let observedLocationId: string | undefined = undefined
+  const confirmedStages: string[] = []
+  try {
+    const supabase = getSupabaseClient()
+    const { selectedFeatureIds, selectedTagIds, ...rawLocationPayload } = payload
+    const locationPayload = normalizeLocationPayloadTitle(rawLocationPayload)
+    stage = 'slug'
+    const uniqueSlug = await getUniqueLocationSlug(locationPayload.slug)
+    stage = 'location.insert'
+    const { data, error } = await supabase
+      .from('locations')
+      .insert({
+        ...locationPayload,
+        slug: uniqueSlug,
+        location_code: null,
       })
-    } catch (error) {
-      console.warn('No pudimos registrar activity_log para location.', error)
-    }
-  } else {
-    console.warn('No se registró activity_log para location porque falta actorProfileId.')
-  }
+      .select('id, location_code')
+      .single()
 
-  return locationId
+    if (isLocationSlugUniqueError(error)) {
+      throw normalizeAdminError(error, 'Ya existe una locación con un código similar. Intentá guardar nuevamente.')
+    }
+
+    if (isLocationCodeUniqueError(error)) {
+      throw normalizeAdminError(error, 'No pudimos asignar un código único a la locación. Intentá guardar nuevamente.')
+    }
+
+    if (error) {
+      throw normalizeAdminError(error)
+    }
+
+    const createdRow = data as CreatedLocationRow
+    const locationId = createdRow.id
+    observedLocationId = locationId
+    confirmedStages.push('location.insert')
+    const generatedLocationCode = createdRow.location_code
+
+    stage = 'relations.features'
+    await replaceLocationRelations({
+      locationId,
+      relationIds: selectedFeatureIds,
+      relationTable: 'location_features',
+      relationColumn: 'feature_id',
+    })
+
+    confirmedStages.push('relations.features')
+    stage = 'relations.tags'
+    await replaceLocationRelations({
+      locationId,
+      relationIds: selectedTagIds,
+      relationTable: 'location_tags',
+      relationColumn: 'tag_id',
+    })
+
+    confirmedStages.push('relations.tags')
+    if (options?.actorProfileId) {
+      try {
+        const locationTitle = locationPayload.title.trim()
+
+        await createActivityLog({
+          actorProfileId: options.actorProfileId,
+          action: 'created',
+          entityType: 'location',
+          entityId: locationId,
+          entityName: generatedLocationCode ?? (locationTitle || 'Sin código'),
+        })
+      } catch (error) {
+        reportAdminError(error, { operation: 'location.create', stage: 'activity_log', provider: 'supabase', resourceId: observedLocationId, correlationId: options?.correlationId, userFacing: false, outcome: 'partial', level: 'warning' })
+        console.warn('No pudimos registrar activity_log para location.', error)
+      }
+    } else {
+      console.warn('No se registró activity_log para location porque falta actorProfileId.')
+    }
+
+    return locationId
+  } catch (error) {
+    throw annotateAdminError(error, { operation: 'location.create', stage, provider: 'supabase', resourceId: observedLocationId, correlationId: options?.correlationId, outcome: confirmedStages.length ? 'partial' : (stage === 'payload' || stage === 'slug' || stage === 'load') ? 'failed' : 'unknown', extraSafeContext: { confirmed_stages: confirmedStages } })
+  }
 }
 
 export async function getLocationById(
@@ -665,7 +679,7 @@ export async function getLocationById(
     .single()
 
   if (error) {
-    throw new Error(error.message)
+    throw normalizeAdminError(error)
   }
 
   const row = data as SupabaseLocationEditableRow
@@ -706,100 +720,112 @@ export async function getLocationById(
 export async function updateLocation(
   id: string,
   payload: LocationUpdatePayload,
-  options?: { actorProfileId?: string | null },
+  options?: { actorProfileId?: string | null; correlationId?: string },
 ): Promise<string> {
-  const supabase = getSupabaseClient()
-  const { selectedFeatureIds, selectedTagIds, ...rawLocationPayload } = payload
-  const locationPayload = normalizeLocationPayloadTitle(rawLocationPayload)
-  const uniqueSlug = await getUniqueLocationSlug(locationPayload.slug, id)
-  const { data: currentLocationData, error: currentLocationError } = await supabase
-    .from('locations')
-    .select('category_id, location_code')
-    .eq('id', id)
-    .single()
+  let stage = 'payload'
+  const observedLocationId: string | undefined = id
+  const confirmedStages: string[] = []
+  try {
+    const supabase = getSupabaseClient()
+    const { selectedFeatureIds, selectedTagIds, ...rawLocationPayload } = payload
+    const locationPayload = normalizeLocationPayloadTitle(rawLocationPayload)
+    stage = 'slug'
+    const uniqueSlug = await getUniqueLocationSlug(locationPayload.slug, id)
+    stage = 'load'
+    const { data: currentLocationData, error: currentLocationError } = await supabase
+      .from('locations')
+      .select('category_id, location_code')
+      .eq('id', id)
+      .single()
 
-  if (currentLocationError) {
-    throw new Error(currentLocationError.message)
-  }
-
-  const currentCategoryId =
-    ((currentLocationData as { category_id: string | null } | null)?.category_id ??
-      null)
-  const currentLocationCode =
-    ((currentLocationData as { location_code: string | null } | null)?.location_code ??
-      null)
-  const nextCategoryId = locationPayload.category_id
-  const shouldRegenerateLocationCode = currentCategoryId !== nextCategoryId
-  const updatePayload = shouldRegenerateLocationCode
-    ? {
-        ...locationPayload,
-        slug: uniqueSlug,
-        location_code: null,
-      }
-    : {
-        ...locationPayload,
-        slug: uniqueSlug,
-      }
-
-  const { data, error } = await supabase
-    .from('locations')
-    .update(updatePayload)
-    .eq('id', id)
-    .select('id, location_code')
-    .single()
-
-  if (isLocationSlugUniqueError(error)) {
-    throw new Error(
-      'Ya existe una locación con un código similar. Intentá guardar nuevamente.',
-    )
-  }
-
-  if (isLocationCodeUniqueError(error)) {
-    throw new Error(
-      'No pudimos asignar un código único a la locación. Intentá guardar nuevamente.',
-    )
-  }
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  const updatedRow = data as CreatedLocationRow
-  const finalLocationCode = updatedRow.location_code ?? currentLocationCode
-
-  await replaceLocationRelations({
-    locationId: id,
-    relationIds: selectedFeatureIds,
-    relationTable: 'location_features',
-    relationColumn: 'feature_id',
-  })
-
-  await replaceLocationRelations({
-    locationId: id,
-    relationIds: selectedTagIds,
-    relationTable: 'location_tags',
-    relationColumn: 'tag_id',
-  })
-
-  if (options?.actorProfileId) {
-    try {
-      const locationTitle = locationPayload.title.trim()
-
-      await createActivityLog({
-        actorProfileId: options.actorProfileId,
-        action: 'updated',
-        entityType: 'location',
-        entityId: updatedRow.id,
-        entityName: finalLocationCode ?? (locationTitle || 'Sin código'),
-      })
-    } catch (error) {
-      console.warn('No pudimos registrar activity_log de edición para location.', error)
+    if (currentLocationError) {
+      throw normalizeAdminError(currentLocationError)
     }
-  } else {
-    console.warn('No se registró activity_log de edición para location porque falta actorProfileId.')
-  }
 
-  return updatedRow.id
+    const currentCategoryId =
+      ((currentLocationData as { category_id: string | null } | null)?.category_id ??
+        null)
+    const currentLocationCode =
+      ((currentLocationData as { location_code: string | null } | null)?.location_code ??
+        null)
+    const nextCategoryId = locationPayload.category_id
+    const shouldRegenerateLocationCode = currentCategoryId !== nextCategoryId
+    const updatePayload = shouldRegenerateLocationCode
+      ? {
+          ...locationPayload,
+          slug: uniqueSlug,
+          location_code: null,
+        }
+      : {
+          ...locationPayload,
+          slug: uniqueSlug,
+        }
+
+    stage = 'location.update'
+    const { data, error } = await supabase
+      .from('locations')
+      .update(updatePayload)
+      .eq('id', id)
+      .select('id, location_code')
+      .single()
+
+    if (isLocationSlugUniqueError(error)) {
+      throw normalizeAdminError(error, 'Ya existe una locación con un código similar. Intentá guardar nuevamente.')
+    }
+
+    if (isLocationCodeUniqueError(error)) {
+      throw normalizeAdminError(error, 'No pudimos asignar un código único a la locación. Intentá guardar nuevamente.')
+    }
+
+    if (error) {
+      throw normalizeAdminError(error)
+    }
+
+    const updatedRow = data as CreatedLocationRow
+    confirmedStages.push('location.update')
+    const finalLocationCode = updatedRow.location_code ?? currentLocationCode
+
+    stage = 'relations.features'
+    await replaceLocationRelations({
+      locationId: id,
+      relationIds: selectedFeatureIds,
+      relationTable: 'location_features',
+      relationColumn: 'feature_id',
+    })
+
+    confirmedStages.push('relations.features')
+    stage = 'relations.tags'
+    await replaceLocationRelations({
+      locationId: id,
+      relationIds: selectedTagIds,
+      relationTable: 'location_tags',
+      relationColumn: 'tag_id',
+    })
+
+    confirmedStages.push('relations.tags')
+    if (options?.actorProfileId) {
+      try {
+        const locationTitle = locationPayload.title.trim()
+
+        await createActivityLog({
+          actorProfileId: options.actorProfileId,
+          action: 'updated',
+          entityType: 'location',
+          entityId: updatedRow.id,
+          entityName: finalLocationCode ?? (locationTitle || 'Sin código'),
+        })
+      } catch (error) {
+        reportAdminError(error, { operation: 'location.update', stage: 'activity_log', provider: 'supabase', resourceId: observedLocationId, correlationId: options?.correlationId, userFacing: false, outcome: 'partial', level: 'warning' })
+        console.warn('No pudimos registrar activity_log de edición para location.', error)
+      }
+    } else {
+      console.warn('No se registró activity_log de edición para location porque falta actorProfileId.')
+    }
+
+    return updatedRow.id
+  } catch (error) {
+    throw annotateAdminError(error, { operation: 'location.update', stage, provider: 'supabase', resourceId: observedLocationId, correlationId: options?.correlationId, outcome: confirmedStages.length ? 'partial' : (stage === 'payload' || stage === 'slug' || stage === 'load') ? 'failed' : 'unknown', extraSafeContext: { confirmed_stages: confirmedStages } })
+  }
 }
 
 async function updateLocationStatus(
@@ -816,7 +842,7 @@ async function updateLocationStatus(
     .single()
 
   if (error) {
-    throw new Error(error.message)
+    throw normalizeAdminError(error)
   }
 
   return (data as CreatedLocationRow).id
@@ -849,7 +875,7 @@ export async function deleteLocation(id: string): Promise<string> {
   )
 
   if (error) {
-    throw new Error(error.message)
+    throw await annotateLocationDeleteFailure(error)
   }
 
   if (!data) {

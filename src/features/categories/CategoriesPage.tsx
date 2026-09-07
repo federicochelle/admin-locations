@@ -1,3 +1,4 @@
+import { createAdminCorrelationId, reportAdminError } from '../../lib/admin-error-reporting'
 import { useMemo, useState } from 'react'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import { routePaths } from '../../app/router/route-paths'
@@ -109,6 +110,7 @@ function CategoriesPage() {
       return
     }
 
+    const correlationId = createAdminCorrelationId()
     try {
       setLocationsActionKey(actionKey)
       setLocationsActionErrorMessage(null)
@@ -116,6 +118,7 @@ function CategoriesPage() {
       await action()
       await loadSelectedCategoryLocations(selectedCategory)
     } catch (error) {
+      reportAdminError(error, { operation: `location.${actionKey.split(':')[0]}`, resourceId: actionKey.split(':')[1], stage: 'request', provider: 'supabase', correlationId, userFacing: true, outcome: 'unknown' })
       const message =
         error instanceof Error
           ? error.message

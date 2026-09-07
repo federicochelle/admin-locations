@@ -1,3 +1,4 @@
+import { withAdminErrorStage } from '../../lib/admin-error-reporting'
 import { prepareImageUploadFile } from '../images/image-upload.processor'
 import { applyFaceBlurToImage } from './location-face-blur'
 import { detectLocationImageSensitiveContent } from './location-sensitive-content.service'
@@ -56,7 +57,7 @@ export async function preparePendingLocationImage(
   file: File,
   options: PreparePendingLocationImageOptions,
 ): Promise<PendingLocationImageFile> {
-  const prepareResult = await prepareImageUploadFile(file)
+  const prepareResult = await withAdminErrorStage({ stage: 'images.prepare', provider: 'browser' }, () => prepareImageUploadFile(file))
   const optimizedFile = prepareResult.file
 
   options.onStatusChange?.('Analizando rostros...')
@@ -64,10 +65,10 @@ export async function preparePendingLocationImage(
   let finalFile = optimizedFile
 
   try {
-    const detectionResult = await detectLocationImageSensitiveContent(optimizedFile)
+    const detectionResult = await withAdminErrorStage({ stage: 'images.detect', provider: 'google_vision' }, () => detectLocationImageSensitiveContent(optimizedFile))
 
     if (detectionResult.summary.faces > 0) {
-      finalFile = await applyFaceBlurToImage(optimizedFile, detectionResult.faces)
+      finalFile = await withAdminErrorStage({ stage: 'images.blur', provider: 'browser' }, () => applyFaceBlurToImage(optimizedFile, detectionResult.faces))
     }
   } catch (error) {
     throw new Error(

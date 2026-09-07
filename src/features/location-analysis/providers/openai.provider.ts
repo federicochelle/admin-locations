@@ -1,3 +1,4 @@
+import { normalizeAdminError } from '../../../lib/admin-error-reporting'
 import { getSupabaseClient } from '../../../lib/supabase'
 import type {
   LocationAnalysisFileImageInput,
@@ -190,7 +191,7 @@ export class OpenAIProvider implements LocationAnalysisProvider {
     )
 
     if (error) {
-      throw new Error(error.message)
+      throw normalizeAdminError(error)
     }
 
     return normalizeLocationAnalysisResponse(input, data)

@@ -1,3 +1,4 @@
+import { normalizeAdminError, reportAdminError } from '../../lib/admin-error-reporting'
 import { getSupabaseClient } from '../../lib/supabase'
 import { createActivityLog } from '../activity/activity-logs.service'
 import type {
@@ -240,7 +241,7 @@ export async function getOwnerById(id: string): Promise<OwnerEditableDetails> {
 
 export async function createOwner(
   payload: OwnerCreatePayload,
-  options?: { actorProfileId?: string | null },
+  options?: { actorProfileId?: string | null; correlationId?: string },
 ): Promise<string> {
   const supabase = getSupabaseClient()
 
@@ -251,7 +252,7 @@ export async function createOwner(
     .single()
 
   if (error) {
-    throw new Error(getOwnerFriendlyErrorMessage(error))
+    throw normalizeAdminError(error, getOwnerFriendlyErrorMessage(error))
   }
 
   const ownerId = (data as OwnerIdRow).id
@@ -266,6 +267,7 @@ export async function createOwner(
         entityName: payload.full_name.trim(),
       })
     } catch (error) {
+      if (options?.correlationId) reportAdminError(error, { operation: 'location.owner.create', stage: 'activity_log', provider: 'supabase', correlationId: options.correlationId, userFacing: false, outcome: 'partial', level: 'warning' })
       console.warn('No pudimos registrar activity_log para owner.', error)
     }
   } else {

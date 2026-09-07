@@ -1,3 +1,4 @@
+import { createAdminCorrelationId, reportAdminError } from '../../lib/admin-error-reporting'
 import { useMemo } from 'react'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import Button from '../../components/ui/Button'
@@ -56,6 +57,7 @@ function LocationsPage() {
       return
     }
 
+    const correlationId = createAdminCorrelationId()
     const locationCode = location.locationCode?.trim() ?? ''
     const locationTitle = location.title.trim()
     const entityName = locationCode || locationTitle || 'Sin código'
@@ -70,6 +72,7 @@ function LocationsPage() {
           entityName,
         })
       } catch (error) {
+        reportAdminError(error, { operation: 'location.delete', stage: 'activity_log', provider: 'supabase', resourceId: location.id, correlationId, outcome: 'failed', userFacing: false, level: 'warning' })
         console.warn('No pudimos registrar activity_log para delete de location.', error)
       }
     } else {
@@ -83,7 +86,7 @@ function LocationsPage() {
         enabled: true,
       },
       action: async () => {
-        await remove(location.id)
+        await remove(location.id, correlationId)
       },
     })
 

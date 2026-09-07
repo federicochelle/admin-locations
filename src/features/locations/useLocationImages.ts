@@ -1,23 +1,27 @@
-import { useEffect, useState } from 'react'
+import { reportAdminError, type AdminErrorContext } from '../../lib/admin-error-reporting'
+import { useEffect, useRef, useState } from 'react'
 import { getLocationImages } from './location-images.service'
 import type { LocationImageRecord } from './location-images.types'
 
 type UseLocationImagesResult = {
+  hasRefreshError: () => boolean
   images: LocationImageRecord[]
   isLoading: boolean
   errorMessage: string | null
-  loadImages: () => Promise<void>
-  refresh: () => Promise<void>
+  loadImages: (observation?: Partial<AdminErrorContext>) => Promise<void>
+  refresh: (observation?: Partial<AdminErrorContext>) => Promise<void>
 }
 
 export function useLocationImages(
   locationId: string | null | undefined,
 ): UseLocationImagesResult {
+  const refreshFailed = useRef(false)
   const [images, setImages] = useState<LocationImageRecord[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  async function loadImages() {
+  async function loadImages(observation?: Partial<AdminErrorContext>) {
+    refreshFailed.current = false
     if (!locationId) {
       setImages([])
       setErrorMessage(null)
@@ -32,6 +36,8 @@ export function useLocationImages(
       const nextImages = await getLocationImages(locationId)
       setImages(nextImages)
     } catch (error) {
+      refreshFailed.current = true
+      reportAdminError(error, { operation: 'location.image.load', resourceType: 'image', stage: 'images.refresh', provider: 'supabase', resourceId: locationId, userFacing: true, ...observation })
       const message =
         error instanceof Error
           ? error.message
@@ -71,6 +77,7 @@ export function useLocationImages(
           return
         }
 
+        reportAdminError(error, { operation: 'location.image.load', resourceType: 'image', stage: 'images.refresh', provider: 'supabase', resourceId: locationId, userFacing: true })
         const message =
           error instanceof Error
             ? error.message
@@ -90,6 +97,7 @@ export function useLocationImages(
   }, [locationId])
 
   return {
+    hasRefreshError: () => refreshFailed.current,
     images,
     isLoading,
     errorMessage,

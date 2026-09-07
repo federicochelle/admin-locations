@@ -38,7 +38,7 @@ async function getEdgeFunctionErrorMessage(
   fallbackMessage: string,
 ) {
   if (error instanceof FunctionsHttpError) {
-    const response = error.context
+    const response = error.context.clone()
 
     try {
       const payload = await response.json()

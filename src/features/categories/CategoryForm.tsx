@@ -1,3 +1,4 @@
+import { useUnsavedCriticalState } from '../../app/useUnsavedCriticalState'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import SaveProgressModal, {
@@ -398,6 +399,10 @@ function CategoryForm({
   const pendingImageSelectionIdRef = useRef(0)
   const retryCategoryIdRef = useRef<string | null>(mode === 'edit' ? categoryId ?? null : null)
   const isProcessingPendingImage = pendingImage?.status === 'processing'
+
+  const protection = useUnsavedCriticalState(values, {
+    pending: isSubmitting || Boolean(pendingImage) || shouldRemovePersistedImage || isDropboxImporting,
+  })
 
   async function loadFormOptions() {
     try {
@@ -925,6 +930,7 @@ function CategoryForm({
   }
 
   async function performSave() {
+    protection.markIncomplete()
     let failedStage: CategorySaveStageKey = 'category'
 
     try {
@@ -970,6 +976,7 @@ function CategoryForm({
 
       await syncCategoryImage(nextCategoryId)
 
+      if (!pendingImage || pendingImage.status === 'pending') protection.markSaved()
       updateSaveProgressStage('completed', 'done')
       markSaveProgressSuccess()
       await wait(SAVE_SUCCESS_DELAY_MS)

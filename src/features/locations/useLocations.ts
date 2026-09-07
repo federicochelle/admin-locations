@@ -1,3 +1,4 @@
+import { createAdminCorrelationId, reportAdminError } from '../../lib/admin-error-reporting'
 import { useEffect, useState } from 'react'
 import {
   archiveLocation,
@@ -32,7 +33,7 @@ type UseLocationsResult = {
   setSort: (key: LocationSortKey) => void
   archive: (id: string) => Promise<void>
   publish: (id: string) => Promise<void>
-  remove: (id: string) => Promise<void>
+  remove: (id: string, correlationId?: string) => Promise<void>
 }
 
 function getErrorMessage(error: unknown) {
@@ -92,6 +93,7 @@ export function useLocations(): UseLocationsResult {
       setLocations(result.locations)
       setTotalCount(result.totalCount)
     } catch (error) {
+      reportAdminError(error, { operation: 'location.list', stage: 'load', provider: 'supabase', userFacing: true })
       setErrorMessage(getErrorMessage(error))
     } finally {
       setIsLoading(false)
@@ -105,6 +107,7 @@ export function useLocations(): UseLocationsResult {
   async function runLocationAction(
     actionKey: string,
     action: () => Promise<string>,
+    correlationId = createAdminCorrelationId(),
   ) {
     try {
       setActiveActionKey(actionKey)
@@ -113,6 +116,7 @@ export function useLocations(): UseLocationsResult {
       await action()
       await loadLocations()
     } catch (error) {
+      reportAdminError(error, { operation: `location.${actionKey.split(':')[0]}`, stage: 'request', provider: 'supabase', resourceId: actionKey.split(':')[1], correlationId, outcome: 'unknown', userFacing: true })
       setActionErrorMessage(getErrorMessage(error))
     } finally {
       setActiveActionKey(null)
@@ -127,8 +131,8 @@ export function useLocations(): UseLocationsResult {
     await runLocationAction(`publish:${id}`, () => publishLocation(id))
   }
 
-  async function remove(id: string) {
-    await runLocationAction(`delete:${id}`, () => deleteLocation(id))
+  async function remove(id: string, correlationId?: string) {
+    await runLocationAction(`delete:${id}`, () => deleteLocation(id), correlationId)
   }
 
   function setSearchTerm(value: string) {
@@ -166,7 +170,8 @@ export function useLocations(): UseLocationsResult {
           return
         }
 
-        setErrorMessage(getErrorMessage(error))
+        reportAdminError(error, { operation: 'location.list', stage: 'load', provider: 'supabase', userFacing: true })
+      setErrorMessage(getErrorMessage(error))
       })
       .finally(() => {
         if (!isActive) {

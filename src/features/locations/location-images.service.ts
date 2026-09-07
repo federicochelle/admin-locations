@@ -1,3 +1,5 @@
+import { annotateLocationDeleteFailure } from './location-edge-errors'
+import { annotateAdminError, normalizeAdminError } from '../../lib/admin-error-reporting'
 import { getSupabaseClient } from '../../lib/supabase'
 import type {
   DeleteLocationImageInput,
@@ -92,25 +94,29 @@ export async function getLocationImageUploadUrl(
   input: LocationImageUploadUrlInput,
   signal?: AbortSignal,
 ): Promise<LocationImageUploadUrlResult> {
-  const supabase = getSupabaseClient()
+  try {
+    const supabase = getSupabaseClient()
 
-  const { data, error } = await supabase.functions.invoke<LocationImageUploadUrlResult>(
-    'location-image-upload-url',
-    {
-      body: input,
-      signal,
-    },
-  )
+    const { data, error } = await supabase.functions.invoke<LocationImageUploadUrlResult>(
+      'location-image-upload-url',
+      {
+        body: input,
+        signal,
+      },
+    )
 
-  if (error) {
-    throw new Error(error.message)
+    if (error) {
+      throw normalizeAdminError(error)
+    }
+
+    if (!data) {
+      throw new Error('No recibimos datos al solicitar la URL de upload.')
+    }
+
+    return data
+  } catch (error) {
+    throw annotateAdminError(error, { stage: 'images.upload_url', provider: 'supabase' })
   }
-
-  if (!data) {
-    throw new Error('No recibimos datos al solicitar la URL de upload.')
-  }
-
-  return data
 }
 
 export async function uploadImageFileToCloudflare(
@@ -118,168 +124,192 @@ export async function uploadImageFileToCloudflare(
   file: File,
   signal?: AbortSignal,
 ): Promise<CloudflareDirectUploadResponse> {
-  const formData = new FormData()
-  formData.set('file', file)
+  try {
+    const formData = new FormData()
+    formData.set('file', file)
 
-  const response = await fetch(uploadURL, {
-    body: formData,
-    method: 'POST',
-    signal,
-  })
+    const response = await fetch(uploadURL, {
+      body: formData,
+      method: 'POST',
+      signal,
+    })
 
-  const payload =
-    (await response.json().catch(() => null)) as CloudflareDirectUploadResponse | null
+    const payload =
+      (await response.json().catch(() => null)) as CloudflareDirectUploadResponse | null
 
-  if (!response.ok || !payload || payload.success === false) {
-    throw new Error(
-      payload
-        ? getCloudflareUploadErrorMessage(payload)
-        : 'No pudimos subir la imagen a Cloudflare.',
-    )
+    if (!response.ok || !payload || payload.success === false) {
+      throw annotateAdminError(new Error(
+        payload
+          ? getCloudflareUploadErrorMessage(payload)
+          : 'No pudimos subir la imagen a Cloudflare.',
+      ), { httpStatus: response.status })
+    }
+
+    return payload
+  } catch (error) {
+    throw annotateAdminError(error, { stage: 'images.upload', provider: 'cloudflare' })
   }
-
-  return payload
 }
 
 export async function finalizeLocationImageUpload(
   input: LocationImageFinalizeInput,
   signal?: AbortSignal,
 ): Promise<LocationImageRecord> {
-  const supabase = getSupabaseClient()
+  try {
+    const supabase = getSupabaseClient()
 
-  const { data, error } = await supabase.functions.invoke<LocationImageRecord>(
-    'location-image-finalize',
-    {
-      body: {
-        altText: toNullableString(input.altText),
-        caption: toNullableString(input.caption),
-        cloudflareImageId: input.cloudflareImageId,
-        height: input.height,
-        isCover: input.isCover,
-        locationId: input.locationId,
-        sortOrder: input.sortOrder,
-        width: input.width,
+    const { data, error } = await supabase.functions.invoke<LocationImageRecord>(
+      'location-image-finalize',
+      {
+        body: {
+          altText: toNullableString(input.altText),
+          caption: toNullableString(input.caption),
+          cloudflareImageId: input.cloudflareImageId,
+          height: input.height,
+          isCover: input.isCover,
+          locationId: input.locationId,
+          sortOrder: input.sortOrder,
+          width: input.width,
+        },
+        signal,
       },
-      signal,
-    },
-  )
+    )
 
-  if (error) {
-    throw new Error(error.message)
+    if (error) {
+      throw normalizeAdminError(error)
+    }
+
+    if (!data) {
+      throw new Error('No recibimos datos al finalizar la imagen.')
+    }
+
+    return data
+  } catch (error) {
+    throw annotateAdminError(error, { stage: 'images.finalize', provider: 'supabase' })
   }
-
-  if (!data) {
-    throw new Error('No recibimos datos al finalizar la imagen.')
-  }
-
-  return data
 }
 
 export async function getLocationImages(
   locationId: string,
 ): Promise<LocationImageRecord[]> {
-  const supabase = getSupabaseClient()
+  try {
+    const supabase = getSupabaseClient()
 
-  const { data, error } = await supabase
-    .from('location_images')
-    .select(
-      `
-        id,
-        location_id,
-        url,
-        storage_key,
-        alt_text,
-        caption,
-        sort_order,
-        is_cover,
-        width,
-        height,
-        created_at,
-        updated_at
-      `,
-    )
-    .eq('location_id', locationId)
-    .order('sort_order', { ascending: true })
+    const { data, error } = await supabase
+      .from('location_images')
+      .select(
+        `
+          id,
+          location_id,
+          url,
+          storage_key,
+          alt_text,
+          caption,
+          sort_order,
+          is_cover,
+          width,
+          height,
+          created_at,
+          updated_at
+        `,
+      )
+      .eq('location_id', locationId)
+      .order('sort_order', { ascending: true })
 
-  if (error) {
-    throw new Error(error.message)
+    if (error) {
+      throw normalizeAdminError(error)
+    }
+
+    return (data ?? []) as LocationImageRecord[]
+  } catch (error) {
+    throw annotateAdminError(error, { stage: 'images.refresh', provider: 'supabase' })
   }
-
-  return (data ?? []) as LocationImageRecord[]
 }
 
 export async function deleteLocationImage(
   input: DeleteLocationImageInput,
 ): Promise<DeleteLocationImageResult> {
-  const supabase = getSupabaseClient()
+  try {
+    const supabase = getSupabaseClient()
 
-  const { data, error } = await supabase.functions.invoke<DeleteLocationImageResult>(
-    'location-image-delete',
-    {
-      body: input,
-    },
-  )
+    const { data, error } = await supabase.functions.invoke<DeleteLocationImageResult>(
+      'location-image-delete',
+      {
+        body: input,
+      },
+    )
 
-  if (error) {
-    throw new Error(error.message)
+    if (error) {
+      throw await annotateLocationDeleteFailure(error)
+    }
+
+    if (!data) {
+      throw new Error('No recibimos datos al eliminar la imagen.')
+    }
+
+    return data
+  } catch (error) {
+    throw annotateAdminError(error, { stage: 'images.delete', provider: 'supabase' })
   }
-
-  if (!data) {
-    throw new Error('No recibimos datos al eliminar la imagen.')
-  }
-
-  return data
 }
 
 export async function downloadLocationImageSource(
   input: LocationImageSourceInput,
 ): Promise<LocationImageSourceResult> {
-  const supabase = getSupabaseClient()
+  try {
+    const supabase = getSupabaseClient()
 
-  const { data, error, response } = await supabase.functions.invoke<Blob>(
-    'location-image-source',
-    {
-      body: input,
-    },
-  )
+    const { data, error, response } = await supabase.functions.invoke<Blob>(
+      'location-image-source',
+      {
+        body: input,
+      },
+    )
 
-  if (error) {
-    throw new Error(error.message)
-  }
+    if (error) {
+      throw normalizeAdminError(error)
+    }
 
-  if (!(data instanceof Blob)) {
-    throw new Error('No recibimos los bytes de la imagen.')
-  }
+    if (!(data instanceof Blob)) {
+      throw new Error('No recibimos los bytes de la imagen.')
+    }
 
-  return {
-    blob: data,
-    contentType:
-      response?.headers.get('x-image-content-type')?.trim() ||
-      'image/jpeg',
+    return {
+      blob: data,
+      contentType:
+        response?.headers.get('x-image-content-type')?.trim() ||
+        'image/jpeg',
+    }
+  } catch (error) {
+    throw annotateAdminError(error, { stage: 'images.source', provider: 'supabase' })
   }
 }
 
 export async function replaceLocationImage(
   input: ReplaceLocationImageInput,
 ): Promise<LocationImageRecord> {
-  const supabase = getSupabaseClient()
+  try {
+    const supabase = getSupabaseClient()
 
-  const { data, error } = await supabase.functions.invoke<LocationImageRecord>(
-    'location-image-replace',
-    {
-      body: input,
-    },
-  )
+    const { data, error } = await supabase.functions.invoke<LocationImageRecord>(
+      'location-image-replace',
+      {
+        body: input,
+      },
+    )
 
-  if (error) {
-    throw new Error(error.message)
+    if (error) {
+      throw normalizeAdminError(error)
+    }
+
+    if (!data) {
+      throw new Error('No recibimos la imagen reemplazada.')
+    }
+
+    return data
+  } catch (error) {
+    throw annotateAdminError(error, { stage: 'images.replace', provider: 'supabase' })
   }
-
-  if (!data) {
-    throw new Error('No recibimos la imagen reemplazada.')
-  }
-
-  return data
 }
 
 export async function uploadLocationImageAsset(input: {
