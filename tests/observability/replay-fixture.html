@@ -1,0 +1,31 @@
+<!doctype html>
+<html><head><title>Replay privacy fixture</title></head><body>
+  <p data-token="private-token">Private Person private@example.com +59899123456 Private Address</p>
+  <form><input name="password" type="password" value="private-password"><input value="private-email@example.com"></form>
+  <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="private-media">
+  <a href="https://example.invalid/private-address?token=private-token">Private Link</a>
+  <div id="mutations"></div>
+  <script type="module">
+    import * as Sentry from '@sentry/react'
+    import { adminReplayOptions, createAdminReplayTransport } from '../../src/lib/admin-session-replay'
+    import { reportAdminError, sanitizeAdminSentryEvent } from '../../src/lib/admin-error-reporting'
+    window.envelopes = []
+    Sentry.init({
+      dsn: 'https://public@example.invalid/1',
+      sendDefaultPii: false,
+      integrations: [Sentry.replayIntegration(adminReplayOptions)],
+      replaysSessionSampleRate: 0,
+      replaysOnErrorSampleRate: 1.0,
+      beforeSend: sanitizeAdminSentryEvent,
+      transport: () => createAdminReplayTransport({
+        send: async envelope => { window.envelopes.push(envelope); return { statusCode: 200 } },
+        flush: async () => true,
+      }),
+    })
+    window.triggerHandledError = () => reportAdminError(new Error('private-error-token'), {
+      operation: 'location.options', stage: 'options', provider: 'supabase', userFacing: true,
+    })
+    window.flushReplay = async () => { await Sentry.flush(2000); await Sentry.getReplay().flush() }
+    window.fixtureReady = true
+  </script>
+</body></html>

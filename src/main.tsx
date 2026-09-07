@@ -1,5 +1,6 @@
 import { installVersionRecovery } from './lib/version-recovery'
 import { sanitizeAdminSentryEvent } from './lib/admin-error-reporting'
+import { adminReplayOptions, createAdminReplayTransport } from './lib/admin-session-replay'
 import * as Sentry from '@sentry/react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -15,6 +16,10 @@ Sentry.init({
   enabled: isSentryEnabled,
   environment: import.meta.env.MODE,
   sendDefaultPii: false,
+  integrations: isSentryEnabled ? [Sentry.replayIntegration(adminReplayOptions)] : [],
+  replaysSessionSampleRate: 0,
+  replaysOnErrorSampleRate: 1.0,
+  transport: options => createAdminReplayTransport(Sentry.makeFetchTransport(options)),
   release: import.meta.env.VITE_APP_RELEASE?.trim() || undefined,
   beforeSend: sanitizeAdminSentryEvent,
 })

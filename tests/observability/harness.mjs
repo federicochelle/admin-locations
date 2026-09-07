@@ -14,7 +14,7 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
   const requests = []
   const context = vm.createContext({
     Error, TypeError, RangeError, DOMException, Response, Request, Headers,
-    Blob, File, FormData, AbortController, URL, crypto, setTimeout, clearTimeout,
+    Blob, File, FormData, AbortController, URL, TextEncoder, crypto, setTimeout, clearTimeout,
     console: { warn() {}, error() {} },
     fetch: fetch ?? (() => { throw new Error('Unexpected fetch in test') }),
   })

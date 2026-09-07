@@ -201,6 +201,10 @@ export function sanitizeAdminSentryEvent(event: Sentry.ErrorEvent): Sentry.Error
       level: event.level, environment: event.environment, release: event.release,
       // Automatic events retain automatic grouping without being labelled locations.
       ...(sourceTags.operation ? { ...scope, fingerprint: ['{{ default }}', scope.tags.operation, scope.tags.stage, scope.tags.supabase_code ?? scope.tags.http_status ?? 'unknown'] } : {}),
+      // Replay 10.73 adds this tag before beforeSend, including global errors.
+      ...(typeof sourceTags.replayId === 'string' && /^[a-f0-9]{32}$/.test(sourceTags.replayId)
+        ? { tags: { ...(sourceTags.operation ? scope.tags : {}), replayId: sourceTags.replayId } }
+        : {}),
       message: event.message ? 'Admin operation invariant' : undefined,
       exception: event.exception ? { values: event.exception.values?.map(value => ({
         type: ['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'AbortError', 'TimeoutError', 'FunctionsHttpError', 'FunctionsFetchError', 'FunctionsRelayError'].includes(value.type ?? '') ? value.type : 'Error',
