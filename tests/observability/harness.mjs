@@ -90,19 +90,23 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
     }
     visit(ast)
     if (declarations.length !== 4) throw new Error('Expected actual LocationForm handlers')
-    const state = { pending: [], submitError: null, navigation: [], validations: [] }
+    const state = { pending: [], submitError: null, navigation: [], validations: [], submitting: false, progress: null }
     const noop = () => {}
     Object.assign(context, reporting, {
-      mode: 'create', isReadOnly: false, locationId: undefined,
+      mode: 'create', isReadOnly: false, locationId: undefined, createdLocationIdRef: { current: null },
       values: { owner_id: 'existing-owner' }, ownerInputValue: '', ownerPhoneValue: '',
       profile: { id: 'actor' }, initialValues: {},
       validateRequiredFields: () => ({}), hasFieldErrors: errors => Boolean(errors.title),
       getValidationMessages: errors => Object.values(errors), setFieldErrors: noop,
       setSubmitError: value => { state.submitError = value },
       setValidationModalMessages: value => { state.validations = value },
-      setIsSubmitting: noop, setEditDeleteErrorMessage: noop, openSaveProgress: noop,
-      updateStageStatus: noop, markSaveProgressSuccess: noop, setSaveProgress: noop,
-      updateSaveProgress: noop, setSaveProgressError: noop,
+      setIsSubmitting: value => { state.submitting = value }, setEditDeleteErrorMessage: noop,
+      openSaveProgress: () => { state.progress = { stages: [], errorMessage: null } },
+      updateStageStatus: noop,
+      markSaveProgressSuccess: () => { state.progress.successMessage = 'saved' },
+      setSaveProgress: value => { state.progress = value },
+      updateSaveProgress: updater => { if (state.progress) state.progress = updater(state.progress) },
+      setSaveProgressError: (_stage, message) => { state.progress.errorMessage = message },
       buildPayload: value => value, createLocation: async () => locationId,
       updateLocation: async () => locationId,
       pendingDeletedPersistedImageIds: [], visiblePersistedImages: [], pendingImages: state.pending,

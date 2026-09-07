@@ -103,7 +103,7 @@ function safeExtras(input?: Record<string, unknown>): Record<string, unknown> {
   const safe: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(input ?? {})) {
     if (['current_release', 'available_release'].includes(key) && typeof value === 'string' && /^(?:[a-f0-9]{7,64}|local-[a-f0-9]{7,64}|development)$/.test(value)) safe[key] = value
-    if (['retry_consumed', 'dirty_state'].includes(key) && typeof value === 'boolean') safe[key] = value
+    if (['retry_consumed', 'dirty_state', 'fallback_used'].includes(key) && typeof value === 'boolean') safe[key] = value
     if (key === 'source' && (value === 'chunk' || value === 'focus')) safe[key] = value
     if (key === 'asset_type' && (value === 'dynamic_import' || value === 'none')) safe[key] = value
     if (key === 'recovery' && typeof value === 'string' && ['chunk_error', 'version_check', 'reload', 'blocked_dirty_state', 'failed_after_reload'].includes(value)) safe[key] = value
