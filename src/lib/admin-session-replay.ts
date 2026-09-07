@@ -5,20 +5,33 @@ type Envelope = Parameters<Transport['send']>[0]
 type ReplayEnvelope = Extract<Envelope, [unknown, [unknown, unknown]]>
 type ReplayEvent = ReplayEnvelope[1][0][1]
 
+const privateSelectors = [
+  '.sentry-block', '[data-sentry-block]', '.sentry-mask', '[data-sentry-mask]',
+  '[data-private]', '[data-sensitive]', '[data-secret]',
+  'input[type="password"]', '[autocomplete="current-password"]', '[autocomplete="new-password"]',
+  ...['password', 'passwd', 'token', 'secret', 'credential', 'authorization', 'cookie', 'api_key', 'apikey', 'api-key'].flatMap(name => [
+    `input[name*="${name}" i]`, `input[id*="${name}" i]`,
+    `textarea[name*="${name}" i]`, `textarea[id*="${name}" i]`,
+  ]),
+]
+
 export const adminReplayOptions = {
-  maskAllText: true,
-  maskAllInputs: true,
-  blockAllMedia: true,
-  block: ['form', 'input', 'textarea', 'select', '[contenteditable]', '[role="dialog"]', '[role="alertdialog"]', 'canvas', 'iframe'],
+  maskAllText: false,
+  maskAllInputs: false,
+  blockAllMedia: false,
+  maskAttributes: [],
+  mask: privateSelectors,
+  block: privateSelectors,
+  ignore: privateSelectors,
   unmask: [],
   unblock: [],
-  maskFn: () => '[masked]',
   networkDetailAllowUrls: [],
   networkCaptureBodies: false,
   networkRequestHeaders: [],
   networkResponseHeaders: [],
-  // Drop console, network, navigation and DOM breadcrumbs, including selectors.
-  beforeAddRecordingEvent: () => null,
+  // Console/network payloads may contain credentials; retain visual/navigation events.
+  beforeAddRecordingEvent: event => event.data.tag === 'breadcrumb' &&
+    ['console', 'fetch', 'xhr'].includes(event.data.payload.category) ? null : event,
   // Keep the final privacy filter able to inspect rrweb metadata (not covered by
   // beforeAddRecordingEvent). The SDK supports uncompressed recordings.
   useCompression: false,
@@ -30,31 +43,25 @@ function object(value: unknown): value is JsonObject {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-// Strict structural replay: no DOM attributes/text/CSS may carry customer data.
-// Forms/media are already blocked by rrweb; this also covers dynamic attributes,
-// signed links, inline CSS URLs and private content outside a form.
+// Preserve DOM text, styles, classes, media and layout; redact only secret fields.
+const secretKey = /(?:password|passwd|token|secret|credential|authorization|cookie|api[-_]?key|signature)/i
+
+function scrubSecrets(text: string): string {
+  return text
+    .replace(/(https?:\/\/)[^/@\s]+:[^/@\s]+@/gi, '$1[redacted]@')
+    .replace(/\bBearer\s+[a-z0-9._~+\/=-]+/gi, 'Bearer [redacted]')
+    .replace(/\bBasic\s+[a-z0-9+\/=]+/gi, 'Basic [redacted]')
+    .replace(/\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/g, '[redacted]')
+    .replace(/((?:[\w-]*(?:password|passwd|token|secret|credential|authorization|cookie|api[-_]?key|signature)[\w-]*)["']?\s*(?:=|:|%3[dDaA])\s*["']?)[^\s&;#"'<>]+/gi, '$1[redacted]')
+}
+
 function scrubRecording(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(scrubRecording)
-  if (!object(value)) return typeof value === 'string' ? '[masked]' : value
-  const result: JsonObject = {}
-  for (const [key, entry] of Object.entries(value)) {
-    if (value.type === 1 && key === 'name') result[key] = 'html'
-    else if (value.type === 1 && (key === 'publicId' || key === 'systemId')) result[key] = ''
-    else if (key === 'href') result[key] = 'https://admin.invalid/'
-    else if (key === 'tagName') result[key] = typeof entry === 'string' && /^[a-z][a-z0-9-]*$/.test(entry) ? entry : 'div'
-    else if (key === 'attributes' && !Array.isArray(entry)) {
-      const attributes: JsonObject = {}
-      if (object(entry)) {
-        for (const name of ['width', 'height', 'rr_width', 'rr_height', 'colspan', 'rowspan']) {
-          const dimension = entry[name]
-          if (typeof dimension === 'string' && /^\d{1,5}(?:px)?$/.test(dimension)) attributes[name] = dimension
-        }
-        if (entry.class === 'sentry-block') attributes.class = 'sentry-block'
-      }
-      result[key] = attributes
-    } else result[key] = scrubRecording(entry)
-  }
-  return result
+  if (typeof value === 'string') return scrubSecrets(value)
+  if (!object(value)) return value
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [
+    key, secretKey.test(key) && entry !== null ? '[redacted]' : scrubRecording(entry),
+  ]))
 }
 
 function scrubReplayMetadata(value: unknown): ReplayEvent {
@@ -70,6 +77,8 @@ function scrubReplayMetadata(value: unknown): ReplayEvent {
   }
   result.error_ids = Array.isArray(value.error_ids)
     ? value.error_ids.filter(id => typeof id === 'string' && /^[a-f0-9]{32}$/.test(id)) : []
+  result.urls = Array.isArray(value.urls) ? value.urls.filter((url): url is string => typeof url === 'string').map(scrubSecrets) : []
+  result.segment_names = Array.isArray(value.segment_names) ? value.segment_names.filter((name): name is string => typeof name === 'string').map(scrubSecrets) : []
   result.platform = 'javascript'
   if (typeof value.release === 'string' && /^(?:[a-f0-9]{7,64}|local-[a-f0-9]{7,64})$/.test(value.release)) result.release = value.release
   if (typeof value.environment === 'string' && ['production', 'development', 'test', 'staging', 'preview'].includes(value.environment)) result.environment = value.environment
