@@ -1,3 +1,4 @@
+import { useUnsavedCriticalState } from '../../app/useUnsavedCriticalState'
 import { useState } from 'react'
 import ReservationForm from './ReservationForm'
 import {
@@ -63,6 +64,8 @@ function ReservationDialog({
     () => getInitialValues(reservation, initialValues),
   )
 
+  const protection = useUnsavedCriticalState(values, { enabled: isOpen, pending: isSubmitting })
+
   if (!isOpen) {
     return null
   }
@@ -83,6 +86,7 @@ function ReservationDialog({
     const wasSuccessful = await onSubmit(values)
 
     if (wasSuccessful) {
+      protection.markSaved()
       onClose()
     }
   }

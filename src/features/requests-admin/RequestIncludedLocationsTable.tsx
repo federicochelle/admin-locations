@@ -1,3 +1,4 @@
+import { useUnsavedCriticalState } from '../../app/useUnsavedCriticalState'
 import { useEffect, useState } from 'react'
 import {
   getLocationDetailPath,
@@ -233,6 +234,7 @@ function ReserveLocationModal({
   onSubmit: (input: ReserveFormValues) => Promise<void>
 }) {
   const [values, setValues] = useState<ReserveFormValues>(initialValues)
+  useUnsavedCriticalState(values, { baseline: initialValues, pending: isSubmitting })
   const formattedLocationCode = getFormattedLocationCode(location.locationCode)
 
   useEffect(() => {
