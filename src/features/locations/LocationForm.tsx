@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { APIProvider } from '@vis.gl/react-google-maps'
 import Button from '../../components/ui/Button'
 import PhoneInputField from '../../components/ui/PhoneInputField'
-import { getLocationEditPath, routePaths } from '../../app/router/route-paths'
+import { routePaths } from '../../app/router/route-paths'
 import useAuth from '../auth/useAuth'
 import { getGoogleMapsApiKey } from '../../lib/env'
 import {
@@ -741,6 +741,7 @@ function LocationForm({
   const [optionsError, setOptionsError] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const createdLocationIdRef = useRef<string | null>(null)
   const [analysisState, setAnalysisState] =
     useState<LocationAnalysisState>(defaultAnalysisState)
   const [saveProgress, setSaveProgress] = useState<LocationSaveProgressState | null>(
@@ -2711,6 +2712,10 @@ function markSaveProgressSuccess() {
         sortOrder: persistedSortOrderBase + image.originalIndex,
       }))
 
+    if (pendingImages.some(image => image.status !== 'done' && !uploads.some(upload => upload.image.id === image.id))) {
+      throw new Error('Hay imágenes que no se pudieron procesar. Quitalas o volvé a cargarlas antes de guardar.')
+    }
+
     if (uploads.length === 0) {
       updateStageStatus('uploadImages', 'skipped')
       return null
@@ -2844,7 +2849,7 @@ function markSaveProgressSuccess() {
       const message =
         mode === 'edit'
           ? 'Los cambios de la locacion fueron guardados, pero algunas imagenes no se pudieron subir. Revisalas y volve a intentar.'
-          : 'La locacion fue creada, pero algunas imagenes no se pudieron subir. Podes completarlas desde edicion.'
+          : 'La locacion fue creada, pero algunas imagenes no se pudieron subir. Revisalas y volve a intentar.'
 
       setSaveProgressError('uploadImages', message)
       return message
@@ -2866,6 +2871,9 @@ function markSaveProgressSuccess() {
 
     updateStageStatus('syncGallery', 'active')
     await locationImages.refresh({ ...observation, stage: 'images.refresh', provider: 'supabase' })
+    if (locationImages.hasRefreshError()) {
+      throw suppressAdminErrorReport(new Error('Los cambios se guardaron, pero no pudimos actualizar la galería. Volvé a intentar.'))
+    }
     updateStageStatus('syncGallery', 'done')
   }
 
@@ -2978,10 +2986,11 @@ function markSaveProgressSuccess() {
           throw suppressAdminErrorReport(new Error(uploadErrorMessage))
         }
 
-        if (!locationImages.hasRefreshError() && pendingImages.every(image => image.status === 'pending' || image.status === 'done')) protection.markSaved()
+        protection.markSaved()
         updateStageStatus('completed', 'done')
         markSaveProgressSuccess()
         await wait(SAVE_SUCCESS_DELAY_MS)
+        setSaveProgress(null)
         if (onEditSuccess) {
           await onEditSuccess()
           return
@@ -2989,10 +2998,18 @@ function markSaveProgressSuccess() {
 
         navigate(routePaths.locations)
       } else {
-        const createdLocationId = await createLocation(payload, {
+        // Retain a partially created location so retries do not create duplicates.
+        const createdLocationId = createdLocationIdRef.current ?? await createLocation(payload, {
           actorProfileId: profile?.id ?? null,
           correlationId: observation.correlationId,
         })
+        if (createdLocationIdRef.current) {
+          await updateLocation(createdLocationId, payload, {
+            actorProfileId: profile?.id ?? null,
+            correlationId: observation.correlationId,
+          })
+        }
+        createdLocationIdRef.current = createdLocationId
         observation.resourceId = createdLocationId
         observation.outcome = 'partial'
         observation.extraSafeContext = { confirmed_stages: ['location.insert', 'relations.features', 'relations.tags'] }
@@ -3014,17 +3031,16 @@ function markSaveProgressSuccess() {
         })
 
         if (uploadErrorMessage) {
-          await wait(SAVE_SUCCESS_DELAY_MS)
-          navigate(getLocationEditPath(createdLocationId))
-          return
+          throw suppressAdminErrorReport(new Error(uploadErrorMessage))
         }
 
         await syncVisibleGallery(observation)
 
-        if (!locationImages.hasRefreshError() && pendingImages.every(image => image.status === 'pending' || image.status === 'done')) protection.markSaved()
+        protection.markSaved()
         updateStageStatus('completed', 'done')
         markSaveProgressSuccess()
         await wait(SAVE_SUCCESS_DELAY_MS)
+        setSaveProgress(null)
         if (onCreateSuccess) {
           await onCreateSuccess()
           return
@@ -3065,8 +3081,8 @@ function markSaveProgressSuccess() {
             },
       )
       await wait(SAVE_SUCCESS_DELAY_MS)
-      setSaveProgress(null)
     } finally {
+      setSaveProgress(null)
       setIsSubmitting(false)
     }
   }
@@ -3485,6 +3501,7 @@ function markSaveProgressSuccess() {
                     />
                   }
                   isLocked={isSubmitting}
+                  manualBlurLoadingImageId={manualBlurLoadingImageId}
                   mode="pending"
                   onManualBlur={handleOpenManualBlur}
                   onRemove={handleRemovePendingImage}
@@ -3752,6 +3769,7 @@ function markSaveProgressSuccess() {
                 <LocationImagesGrid
                   images={pendingGalleryImages}
                   isLocked={isSubmitting}
+                  manualBlurLoadingImageId={manualBlurLoadingImageId}
                   mode="pending"
                   onManualBlur={handleOpenManualBlur}
                   onRemove={handleRemovePendingImage}
