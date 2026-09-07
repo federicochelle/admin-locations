@@ -45,7 +45,7 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
   }
   const mocks = new Map([
     ['@sentry/react', sentry],
-    ['react', { useState: initial => [initial, () => {}], useEffect() {} }],
+    ['react', { useState: initial => [initial, () => {}], useEffect() {}, useRef: value => ({ current: value }) }],
     [path.join(root, 'src/features/images/image-upload.processor'), { prepareImageUploadFile: prepare ?? (async file => ({ file, outputDimensions: { width: 10, height: 20 } })) }],
     [path.join(root, 'src/features/locations/location-sensitive-content.service'), { detectLocationImageSensitiveContent: detect ?? (async () => ({ summary: { faces: 0 }, faces: [] })) }],
     [path.join(root, 'src/features/locations/location-face-blur'), { applyFaceBlurToImage: blur ?? (async file => file) }],
@@ -67,7 +67,7 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
     const filename = key.endsWith('.ts') ? key : key + '.ts'
     const source = await fs.readFile(filename, 'utf8')
     const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.ESNext } }).outputText
-    const mod = new vm.SourceTextModule(output, { context, identifier: filename })
+    const mod = new vm.SourceTextModule(output, { context, identifier: filename, initializeImportMeta(meta) { meta.env = { VITE_APP_RELEASE: 'aaaaaaaa' } } })
     cache.set(key, mod)
     await mod.link((child, ref) => load(child, ref.identifier))
     return mod
@@ -110,7 +110,8 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
       setPendingImages: updater => { state.pending = updater(state.pending) },
       updatePendingImage: (id, changes) => Object.assign(state.pending.find(image => image.id === id), changes),
       revokePreviewUrl: noop,
-      locationImages: { refresh: async () => {} },
+      locationImages: { refresh: async () => {}, hasRefreshError: () => false },
+      protection: { markSaved() {}, markIncomplete() {} },
       wait: async () => {}, SAVE_SUCCESS_DELAY_MS: 0,
       IMAGE_UPLOAD_TIMEOUT_MS: 90000, IMAGE_UPLOAD_CONCURRENCY: 3,
       IMAGE_UPLOAD_TIMEOUT_ERROR_MESSAGE: 'Upload timeout',

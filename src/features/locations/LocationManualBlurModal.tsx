@@ -1,3 +1,4 @@
+import { useUnsavedCriticalState } from '../../app/useUnsavedCriticalState'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PendingLocationImageFile } from './location-images.types'
@@ -233,6 +234,8 @@ function LocationManualBlurModal({
     x: 0,
     y: 0,
   })
+
+  useUnsavedCriticalState(null, { enabled: isOpen, pending: strokes.length > 0 || hasDraftStroke || isApplying })
 
   const renderPreview = useCallback(() => {
     const canvas = canvasRef.current

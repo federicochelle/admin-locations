@@ -1,3 +1,4 @@
+import { useUnsavedCriticalState } from '../../app/useUnsavedCriticalState'
 import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import Button from '../../components/ui/Button'
@@ -116,6 +117,8 @@ function ProductionCompanyModal({
       }
     }
   }, [pendingLogo])
+
+  useUnsavedCriticalState(values, { baseline: { name: company?.name ?? '' }, enabled: isOpen, pending: Boolean(pendingLogo) || isSubmitting })
 
   const visibleLogoUrl = pendingLogo?.previewUrl ?? company?.logoUrl ?? null
 

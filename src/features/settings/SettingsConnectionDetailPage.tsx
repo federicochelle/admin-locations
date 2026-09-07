@@ -1,3 +1,4 @@
+import { useUnsavedCriticalState } from '../../app/useUnsavedCriticalState'
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
@@ -211,6 +212,7 @@ function SettingsConnectionDetailPage({
   const [isSaving, setIsSaving] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
+  useUnsavedCriticalState(formValues, { baseline: detail ? mapDetailToFormValues(detail) : null, enabled: isEditing || isSaving, pending: isSaving })
 
   const headerConfig = useMemo(
     () => ({

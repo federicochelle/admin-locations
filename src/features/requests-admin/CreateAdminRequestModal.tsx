@@ -1,3 +1,4 @@
+import { useUnsavedCriticalState } from '../../app/useUnsavedCriticalState'
 import { useEffect, useMemo, useState } from 'react'
 import Button from '../../components/ui/Button'
 import type { AdminManualRequestLocationOption } from './admin-location-requests.types'
@@ -62,6 +63,7 @@ function CreateAdminRequestModal({
   onSubmit,
 }: CreateAdminRequestModalProps) {
   const [values, setValues] = useState<CreateAdminRequestFormValues>(() => getInitialValues())
+  const protection = useUnsavedCriticalState(values, { enabled: isOpen, pending: isSubmitting })
   const [locationSearch, setLocationSearch] = useState('')
 
   useEffect(() => {
@@ -114,6 +116,7 @@ function CreateAdminRequestModal({
     const wasSuccessful = await onSubmit(values)
 
     if (wasSuccessful) {
+      protection.markSaved()
       onClose()
     }
   }
