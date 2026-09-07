@@ -1,3 +1,5 @@
+import { installVersionRecovery } from './lib/version-recovery'
+import { sanitizeAdminSentryEvent } from './lib/admin-error-reporting'
 import * as Sentry from '@sentry/react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -13,7 +15,12 @@ Sentry.init({
   enabled: isSentryEnabled,
   environment: import.meta.env.MODE,
   sendDefaultPii: false,
+  release: import.meta.env.VITE_APP_RELEASE?.trim() || undefined,
+  beforeSend: sanitizeAdminSentryEvent,
 })
+
+const uninstallVersionRecovery = installVersionRecovery()
+if (import.meta.hot) import.meta.hot.dispose(uninstallVersionRecovery)
 
 createRoot(document.getElementById('root')!, {
   onCaughtError: Sentry.reactErrorHandler(),

@@ -1,3 +1,4 @@
+import { reportAdminError } from '../../lib/admin-error-reporting'
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
@@ -137,6 +138,7 @@ function LocationEditPage() {
           return
         }
 
+        reportAdminError(error, { operation: 'location.load', stage: 'load', provider: 'supabase', resourceId: id, userFacing: true })
         console.error('No pudimos cargar la locación en LocationEditPage.', error)
 
         const message =

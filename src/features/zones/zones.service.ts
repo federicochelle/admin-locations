@@ -1,3 +1,4 @@
+import { normalizeAdminError, reportAdminError } from '../../lib/admin-error-reporting'
 import { getSupabaseClient } from '../../lib/supabase'
 import { createActivityLog } from '../activity/activity-logs.service'
 import type { ZoneCreatePayload } from './zones.types'
@@ -39,10 +40,11 @@ function buildInsertCandidates(payload: ZoneCreatePayload): ZoneInsertCandidate[
 
 export async function createZone(
   payload: ZoneCreatePayload,
-  options?: { actorProfileId?: string | null },
+  options?: { actorProfileId?: string | null; correlationId?: string },
 ): Promise<string> {
   const supabase = getSupabaseClient()
   const candidates = buildInsertCandidates(payload)
+  let lastError: unknown
   let lastErrorMessage = 'No pudimos crear la zona.'
 
   for (const candidate of candidates) {
@@ -65,6 +67,7 @@ export async function createZone(
             entityName: payload.name.trim(),
           })
         } catch (error) {
+          if (options?.correlationId) reportAdminError(error, { operation: 'location.zone.create', stage: 'activity_log', provider: 'supabase', correlationId: options.correlationId, userFacing: false, outcome: 'partial', level: 'warning' })
           console.warn('No pudimos registrar activity_log para zone.', error)
         }
       } else {
@@ -75,9 +78,10 @@ export async function createZone(
     }
 
     if (error) {
+      lastError = error
       lastErrorMessage = error.message
     }
   }
 
-  throw new Error(lastErrorMessage)
+  throw normalizeAdminError(lastError, lastErrorMessage)
 }

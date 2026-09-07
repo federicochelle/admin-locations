@@ -1,3 +1,4 @@
+import { markExpectedAdminError } from '../../lib/admin-error-reporting'
 export const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
 
 export const DIRECT_UPLOAD_IMAGE_MIME_TYPES = [
@@ -97,6 +98,6 @@ export function getUnsupportedImageFormatMessage() {
 
 export function assertSupportedImageFile(file: Pick<File, 'name' | 'type'>) {
   if (!isSupportedImageFile(file)) {
-    throw new Error(getUnsupportedImageFormatMessage())
+    throw markExpectedAdminError(new Error(getUnsupportedImageFormatMessage()))
   }
 }

@@ -1,3 +1,4 @@
+import { useUnsavedCriticalState } from '../../app/useUnsavedCriticalState'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Button from '../../components/ui/Button'
@@ -101,6 +102,7 @@ function OwnerForm({
   }))
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const protection = useUnsavedCriticalState(values, { enabled: !isReadOnly, pending: isSubmitting })
   const ownerLocationsAsLocationListItems = useMemo<LocationListItem[]>(
     () =>
       locations.map((location) => ({
@@ -167,6 +169,7 @@ function OwnerForm({
         })
       }
 
+      protection.markSaved()
       navigate(routePaths.owners)
     } catch (error) {
       const message =
