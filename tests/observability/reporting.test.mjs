@@ -241,7 +241,7 @@ test('Cloudflare 502 is propagated with status and original upload stage', async
   assert.equal(h.events[0].scope.tags.provider, 'cloudflare')
 })
 
-test('detection/blur failures preserve precise inner stage across user-message wrapper', async () => {
+test('detection/blur fallback reports the precise inner stage without rejecting the image', async () => {
   for (const stage of ['images.detect', 'images.blur']) {
     const original = new Error('private diagnostic')
     const h = await harness({
@@ -249,13 +249,14 @@ test('detection/blur failures preserve precise inner stage across user-message w
       blur: async () => { throw original },
     })
     const images = await h.module('src/features/locations/location-image-selection')
-    await assert.rejects(images.preparePendingLocationImage(new File(['x'], 'private.jpg', { type: 'image/jpeg' }), { id: 'image', isCover: true, originalIndex: 0, target: 'cover' }), error => {
-      h.reporting.reportAdminError(error, { ...observation, stage: 'images.prepare', correlationId })
-      return true
-    })
+    const image = await images.preparePendingLocationImage(new File(['x'], 'private.jpg', { type: 'image/jpeg' }), { id: 'image', isCover: true, originalIndex: 0, target: 'cover' })
+    URL.revokeObjectURL(image.previewUrl)
+    assert.equal(image.status, 'pending')
+    assert.equal(image.errorMessage, null)
     assert.equal(h.events.length, 1)
     assert.equal(h.events[0].scope.tags.stage, stage)
-    assert.equal(h.events[0].error.cause, original)
+    assert.equal(h.events[0].error, original)
+    assert.equal(h.events[0].scope.contexts.admin_operation.fallback_used, true)
   }
 })
 

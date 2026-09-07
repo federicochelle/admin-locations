@@ -1,4 +1,4 @@
-import { withAdminErrorStage } from '../../lib/admin-error-reporting'
+import { reportAdminError, withAdminErrorStage } from '../../lib/admin-error-reporting'
 import { prepareImageUploadFile } from '../images/image-upload.processor'
 import { applyFaceBlurToImage } from './location-face-blur'
 import { detectLocationImageSensitiveContent } from './location-sensitive-content.service'
@@ -71,14 +71,21 @@ export async function preparePendingLocationImage(
       finalFile = await withAdminErrorStage({ stage: 'images.blur', provider: 'browser' }, () => applyFaceBlurToImage(optimizedFile, detectionResult.faces))
     }
   } catch (error) {
-    throw new Error(
-      error instanceof Error
-        ? `No se pudo verificar el rostro de esta imagen. Intenta nuevamente.`
-        : 'No se pudo verificar el rostro de esta imagen. Intenta nuevamente.',
-      {
-        cause: error,
+    // Detection and automatic blur are best effort; keep the optimized original.
+    reportAdminError(error, {
+      operation: 'location.image.prepare',
+      resourceType: 'image',
+      stage: 'images.detect',
+      provider: 'google_vision',
+      outcome: 'partial',
+      level: 'warning',
+      extraSafeContext: {
+        fallback_used: true,
+        image_index: options.originalIndex,
+        image_mime: optimizedFile.type,
+        image_bytes: optimizedFile.size,
       },
-    )
+    })
   }
 
   return {
