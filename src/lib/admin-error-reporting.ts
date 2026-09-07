@@ -199,6 +199,9 @@ export function sanitizeAdminSentryEvent(event: Sentry.ErrorEvent): Sentry.Error
     return {
       type: event.type, event_id: event.event_id, timestamp: event.timestamp, platform: event.platform,
       level: event.level, environment: event.environment, release: event.release,
+      ...(typeof event.user?.id === 'string' && uuid.test(event.user.id)
+        ? { user: { id: event.user.id } }
+        : {}),
       // Automatic events retain automatic grouping without being labelled locations.
       ...(sourceTags.operation ? { ...scope, fingerprint: ['{{ default }}', scope.tags.operation, scope.tags.stage, scope.tags.supabase_code ?? scope.tags.http_status ?? 'unknown'] } : {}),
       // Replay 10.73 adds this tag before beforeSend, including global errors.

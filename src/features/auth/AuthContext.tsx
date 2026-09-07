@@ -7,6 +7,7 @@ import {
   type PropsWithChildren,
 } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import * as Sentry from '@sentry/react'
 import { getSupabaseClient } from '../../lib/supabase'
 import {
   getCurrentSession,
@@ -112,13 +113,16 @@ function AuthProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     let isActive = true
+    let hasAuthStateChange = false
+    Sentry.setUser(null)
 
     void getCurrentSession()
       .then(async (nextSession) => {
-        if (!isActive) {
+        if (!isActive || hasAuthStateChange) {
           return
         }
 
+        Sentry.setUser(nextSession?.user ? { id: nextSession.user.id } : null)
         expectedProfileUserIdRef.current = nextSession?.user.id ?? null
         latestSessionUserIdRef.current = nextSession?.user.id ?? null
         setProfile(null)
@@ -127,10 +131,11 @@ function AuthProvider({ children }: PropsWithChildren) {
         await loadProfileForUser(nextSession?.user.id ?? null)
       })
       .catch(() => {
-        if (!isActive) {
+        if (!isActive || hasAuthStateChange) {
           return
         }
 
+        Sentry.setUser(null)
         setSession(null)
         setProfile(null)
         latestSessionUserIdRef.current = null
@@ -153,6 +158,8 @@ function AuthProvider({ children }: PropsWithChildren) {
         return
       }
 
+      hasAuthStateChange = true
+      Sentry.setUser(nextSession?.user ? { id: nextSession.user.id } : null)
       const previousUserId = latestSessionUserIdRef.current
       const nextUserId = nextSession?.user.id ?? null
       const isSameUser = previousUserId !== null && previousUserId === nextUserId
@@ -197,6 +204,7 @@ function AuthProvider({ children }: PropsWithChildren) {
     return () => {
       isActive = false
       subscription.unsubscribe()
+      Sentry.setUser(null)
     }
   }, [loadProfileForUser])
 
