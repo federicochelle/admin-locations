@@ -1,3 +1,4 @@
+import { readImageFileDimensions } from './decode-image'
 import { annotateAdminError, markExpectedAdminError } from '../../lib/admin-error-reporting'
 import { optimizeLocationImageFile } from '../locations/location-image-optimizer'
 import {
@@ -119,42 +120,6 @@ function calculateTargetDimensions(width: number, height: number) {
   return {
     width: Math.max(1, Math.round(width * scale)),
     height: Math.max(1, Math.round(height * scale)),
-  }
-}
-
-async function readImageFileDimensions(file: File) {
-  if (typeof window.createImageBitmap === 'function') {
-    const bitmap = await window.createImageBitmap(file, {
-      imageOrientation: 'from-image',
-    })
-
-    try {
-      return {
-        height: bitmap.height,
-        width: bitmap.width,
-      }
-    } finally {
-      bitmap.close()
-    }
-  }
-
-  const objectUrl = URL.createObjectURL(file)
-
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const nextImage = new Image()
-      nextImage.onload = () => resolve(nextImage)
-      nextImage.onerror = () =>
-        reject(new Error('No pudimos leer la imagen seleccionada.'))
-      nextImage.src = objectUrl
-    })
-
-    return {
-      height: image.naturalHeight,
-      width: image.naturalWidth,
-    }
-  } finally {
-    URL.revokeObjectURL(objectUrl)
   }
 }
 

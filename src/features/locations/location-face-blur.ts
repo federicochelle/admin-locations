@@ -1,3 +1,4 @@
+import { decodeImage } from '../images/decode-image'
 import type { LocationSensitiveContentFace } from './location-sensitive-content.service'
 
 export type BlurRegion = {
@@ -15,13 +16,6 @@ export type BlurStrokePoint = {
 export type BlurStroke = {
   points: BlurStrokePoint[]
   radius: number
-}
-
-type LoadedImageSource = {
-  width: number
-  height: number
-  source: CanvasImageSource
-  release: () => void
 }
 
 export const FACE_BLUR_FILTER = 'blur(18px)'
@@ -176,43 +170,6 @@ function getExpandedFaceRegions(
   )
 }
 
-async function loadImageSource(file: File): Promise<LoadedImageSource> {
-  if (typeof window.createImageBitmap === 'function') {
-    const bitmap = await window.createImageBitmap(file, {
-      imageOrientation: 'from-image',
-    })
-
-    return {
-      height: bitmap.height,
-      release: () => bitmap.close(),
-      source: bitmap,
-      width: bitmap.width,
-    }
-  }
-
-  const objectUrl = URL.createObjectURL(file)
-
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const nextImage = new Image()
-      nextImage.onload = () => resolve(nextImage)
-      nextImage.onerror = () =>
-        reject(new Error('No pudimos preparar la imagen para blur de rostros.'))
-      nextImage.src = objectUrl
-    })
-
-    return {
-      height: image.naturalHeight,
-      release: () => URL.revokeObjectURL(objectUrl),
-      source: image,
-      width: image.naturalWidth,
-    }
-  } catch (error) {
-    URL.revokeObjectURL(objectUrl)
-    throw error
-  }
-}
-
 async function canvasToBlob(
   canvas: HTMLCanvasElement,
   mimeType: string,
@@ -278,7 +235,7 @@ async function renderBlurredCanvas(
     strokes?: BlurStroke[]
   },
 ) {
-  const { height, release, source, width } = await loadImageSource(file)
+  const { height, release, source, width } = await decodeImage(file)
 
   try {
     const canvas = document.createElement('canvas')
@@ -451,7 +408,7 @@ export async function applyFaceBlurToImage(
     return file
   }
 
-  const loadedSource = await loadImageSource(file)
+  const loadedSource = await decodeImage(file)
 
   try {
     return await applyBlurToImageRegions(

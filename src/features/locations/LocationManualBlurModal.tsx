@@ -1,3 +1,4 @@
+import { decodeImage } from '../images/decode-image'
 import { useUnsavedCriticalState } from '../../app/useUnsavedCriticalState'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -46,13 +47,6 @@ type EditorAssets = {
   width: number
 }
 
-type LoadedEditorSource = {
-  height: number
-  release: () => void
-  source: CanvasImageSource
-  width: number
-}
-
 const BRUSH_RADIUS_RENDERED = 19
 const BRUSH_CURSOR_VISUAL_OFFSET_Y = -12
 const BRUSH_APPLICATION_OFFSET_RENDERED_Y = 12
@@ -97,45 +91,8 @@ function UndoIcon() {
   )
 }
 
-async function loadEditorSource(file: File): Promise<LoadedEditorSource> {
-  if (typeof window.createImageBitmap === 'function') {
-    const bitmap = await window.createImageBitmap(file, {
-      imageOrientation: 'from-image',
-    })
-
-    return {
-      height: bitmap.height,
-      release: () => bitmap.close(),
-      source: bitmap,
-      width: bitmap.width,
-    }
-  }
-
-  const objectUrl = URL.createObjectURL(file)
-
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const nextImage = new Image()
-      nextImage.onload = () => resolve(nextImage)
-      nextImage.onerror = () =>
-        reject(new Error('No pudimos preparar la imagen para blur manual.'))
-      nextImage.src = objectUrl
-    })
-
-    return {
-      height: image.naturalHeight,
-      release: () => URL.revokeObjectURL(objectUrl),
-      source: image,
-      width: image.naturalWidth,
-    }
-  } catch (error) {
-    URL.revokeObjectURL(objectUrl)
-    throw error
-  }
-}
-
 async function createEditorAssets(file: File): Promise<EditorAssets> {
-  const loadedSource = await loadEditorSource(file)
+  const loadedSource = await decodeImage(file)
 
   try {
     const baseCanvas = document.createElement('canvas')

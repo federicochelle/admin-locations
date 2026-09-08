@@ -1,3 +1,4 @@
+import { readImageFileDimensions } from '../images/decode-image'
 import { useUnsavedCriticalState } from '../../app/useUnsavedCriticalState'
 import { annotateAdminError, createAdminCorrelationId, reportAdminError, suppressAdminErrorReport, type AdminErrorContext } from '../../lib/admin-error-reporting'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -661,42 +662,6 @@ function getImageFileExtension(contentType: string) {
   }
 }
 
-async function getImageFileDimensions(file: File) {
-  if (typeof window.createImageBitmap === 'function') {
-    const bitmap = await window.createImageBitmap(file, {
-      imageOrientation: 'from-image',
-    })
-
-    try {
-      return {
-        height: bitmap.height,
-        width: bitmap.width,
-      }
-    } finally {
-      bitmap.close()
-    }
-  }
-
-  const previewUrl = URL.createObjectURL(file)
-
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const nextImage = new Image()
-      nextImage.onload = () => resolve(nextImage)
-      nextImage.onerror = () =>
-        reject(new Error('No pudimos leer la imagen para editar.'))
-      nextImage.src = previewUrl
-    })
-
-    return {
-      height: image.naturalHeight,
-      width: image.naturalWidth,
-    }
-  } finally {
-    URL.revokeObjectURL(previewUrl)
-  }
-}
-
 function openDropboxChooser(
   dropbox: DropboxGlobal,
   target: ImageSelectionTarget,
@@ -792,6 +757,7 @@ function LocationForm({
   const [processedImagesCount, setProcessedImagesCount] = useState(0)
   const [totalImagesToProcess, setTotalImagesToProcess] = useState(0)
   const [manualBlurTarget, setManualBlurTarget] = useState<ManualBlurTarget | null>(null)
+  const [imageErrorsById, setImageErrorsById] = useState<Record<string, string | undefined>>({})
   const [manualBlurErrorMessage, setManualBlurErrorMessage] = useState<string | null>(null)
   const [isApplyingManualBlur, setIsApplyingManualBlur] = useState(false)
   const [manualBlurLoadingImageId, setManualBlurLoadingImageId] = useState<string | null>(null)
@@ -2236,8 +2202,6 @@ function markSaveProgressSuccess() {
       })
       setImageSelectionTarget(null)
 
-      const nextErrors: string[] = []
-
       let processedCount = 0
       let nextPlaceholderIndex = 0
 
@@ -2299,7 +2263,6 @@ function markSaveProgressSuccess() {
           if (isMountedRef.current && !removedPendingImageIdsRef.current.has(placeholder.id)) {
             reportLocationFailure(error, { operation: 'location.image.prepare', resourceType: 'image', stage: 'images.prepare', provider: 'browser', correlationId, extraSafeContext: { image_count: totalFiles, image_index: placeholder.originalIndex, image_mime: placeholder.file.type, image_bytes: placeholder.file.size } })
           }
-          nextErrors.push(message)
 
           if (!isMountedRef.current || removedPendingImageIdsRef.current.has(placeholder.id)) {
             return
@@ -2345,10 +2308,6 @@ function markSaveProgressSuccess() {
       await Promise.all(
         Array.from({ length: workerCount }, () => runPreparationWorker()),
       )
-
-      if (isMountedRef.current) {
-        setImageValidationErrors(nextErrors)
-      }
     } finally {
       if (isMountedRef.current) {
         setIsPreparingImages(false)
@@ -2418,10 +2377,11 @@ function markSaveProgressSuccess() {
     const persistedImage = visiblePersistedImages.find((image) => image.id === imageId)
 
     if (!persistedImage) {
-      setManualBlurErrorMessage('No pudimos encontrar la imagen a editar.')
+      setImageErrorsById(current => ({ ...current, [imageId]: 'No pudimos encontrar la imagen a editar.' }))
       return
     }
 
+    setImageErrorsById(current => ({ ...current, [imageId]: undefined }))
     setManualBlurErrorMessage(null)
     setManualBlurLoadingImageId(imageId)
 
@@ -2439,7 +2399,7 @@ function markSaveProgressSuccess() {
           type: source.contentType,
         },
       )
-      const dimensions = await getImageFileDimensions(file)
+      const dimensions = await readImageFileDimensions(file)
 
       if (!isMountedRef.current) {
         return
@@ -2464,13 +2424,16 @@ function markSaveProgressSuccess() {
       })
     } catch (error) {
       reportLocationFailure(error, { operation: 'location.image.replace', resourceType: 'image', stage: 'images.source', correlationId, provider: 'browser', outcome: 'unknown' })
-      setManualBlurErrorMessage(
-        error instanceof Error
-          ? error.message
-          : 'No pudimos preparar la imagen para blur manual.',
-      )
+      if (isMountedRef.current) {
+        setImageErrorsById(current => ({
+          ...current,
+          [imageId]: error instanceof Error ? error.message : 'No pudimos preparar la imagen para blur manual.',
+        }))
+      }
     } finally {
-      setManualBlurLoadingImageId(null)
+      if (isMountedRef.current) {
+        setManualBlurLoadingImageId(null)
+      }
     }
   }
 
@@ -2488,10 +2451,7 @@ function markSaveProgressSuccess() {
   }
 
   function renderImageFeedback() {
-    const shouldShowManualBlurError =
-      manualBlurTarget === null && manualBlurErrorMessage !== null
-
-    if (imageValidationErrors.length === 0 && !shouldShowManualBlurError) {
+    if (imageValidationErrors.length === 0) {
       return null
     }
 
@@ -2504,11 +2464,6 @@ function markSaveProgressSuccess() {
                 <li key={error}>{error}</li>
               ))}
             </ul>
-          </div>
-        ) : null}
-        {shouldShowManualBlurError ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {manualBlurErrorMessage}
           </div>
         ) : null}
       </div>
@@ -3487,6 +3442,7 @@ function markSaveProgressSuccess() {
             {showImagesSection && mode === 'create' ? (
               <div className="min-w-0 space-y-4 xl:pl-6 2xl:pl-8">
                 <LocationImagesGrid
+                  imageErrorsById={imageErrorsById}
                   images={pendingCoverImage ? [pendingCoverImage] : []}
                   emptyCoverAction={
                     <LocationImageUploader
@@ -3531,6 +3487,7 @@ function markSaveProgressSuccess() {
               <div className="min-w-0 space-y-4 xl:pl-6 2xl:pl-8">
                 {pendingCoverImage ? (
                   <LocationImagesGrid
+                    imageErrorsById={imageErrorsById}
                     images={[pendingCoverImage]}
                     isLocked={isSubmitting}
                     manualBlurLoadingImageId={manualBlurLoadingImageId}
@@ -3543,6 +3500,7 @@ function markSaveProgressSuccess() {
                   />
                 ) : (
                   <LocationImagesGrid
+                    imageErrorsById={imageErrorsById}
                     images={persistedCoverImage ? [persistedCoverImage] : []}
                     emptyCoverAction={
                       <LocationImageUploader
@@ -3586,6 +3544,7 @@ function markSaveProgressSuccess() {
             {showImagesSection && mode === 'view' ? (
               <div className="min-w-0 space-y-4 xl:pl-6 2xl:pl-8">
                 <LocationImagesGrid
+                  imageErrorsById={imageErrorsById}
                   images={persistedCoverImage ? [persistedCoverImage] : []}
                   emptyCoverAction={
                     <ReadOnlyImagePlaceholder message="Esta locación todavía no tiene portada." />
@@ -3767,6 +3726,7 @@ function markSaveProgressSuccess() {
               </div>
               {pendingGalleryImages.length > 0 ? (
                 <LocationImagesGrid
+                  imageErrorsById={imageErrorsById}
                   images={pendingGalleryImages}
                   isLocked={isSubmitting}
                   manualBlurLoadingImageId={manualBlurLoadingImageId}
@@ -3804,6 +3764,7 @@ function markSaveProgressSuccess() {
               </div>
               {combinedEditGalleryImages.length > 0 ? (
                 <LocationImagesGrid
+                  imageErrorsById={imageErrorsById}
                   images={combinedEditGalleryImages}
                   isLocked={isSubmitting}
                   manualBlurLoadingImageId={manualBlurLoadingImageId}
@@ -3837,6 +3798,7 @@ function markSaveProgressSuccess() {
               </h3>
               {persistedGalleryImages.length > 0 ? (
                 <LocationImagesGrid
+                  imageErrorsById={imageErrorsById}
                   images={persistedGalleryImages}
                   isLocked
                   mode="persisted"

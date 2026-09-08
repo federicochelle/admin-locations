@@ -1,0 +1,175 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import fs from 'node:fs/promises'
+import vm from 'node:vm'
+import ts from 'typescript'
+import { harness } from '../observability/harness.mjs'
+
+const nativeMessage = 'Cannot decode the data in the argument to createImageBitmap'
+const friendlyMessage = 'No pudimos procesar esta imagen. Probá con otra imagen o guardala nuevamente como JPG.'
+
+async function setup({ bitmap = 'reject', htmlFails = () => false, drawFails = false } = {}) {
+  const created = [], revoked = [], drawn = [], calls = []
+  let closes = 0
+  let optimizer
+  const h = await harness({ prepare: file => optimizer.optimizeLocationImageFile(file) })
+  const urls = new Map()
+  const source = { width: 3200, height: 1600, close() { closes++ } }
+  const createImageBitmap = async (file, options) => {
+    calls.push({ file, options })
+    if (bitmap === 'reject') throw new DOMException(nativeMessage, 'InvalidStateError')
+    return source
+  }
+  Object.assign(h.context, {
+    performance,
+    console: { log() {}, warn() {}, error() {} },
+    window: bitmap === 'absent' ? {} : { createImageBitmap },
+    URL: {
+      createObjectURL(file) {
+        const url = `blob:test-${created.length}`
+        created.push(url)
+        urls.set(url, file)
+        return url
+      },
+      revokeObjectURL(url) { revoked.push(url); urls.delete(url) },
+    },
+    Image: class {
+      naturalWidth = 3200
+      naturalHeight = 1600
+      set src(url) {
+        queueMicrotask(() => htmlFails(urls.get(url)) ? this.onerror?.() : this.onload?.())
+      }
+    },
+    document: {
+      createElement(tag) {
+        assert.equal(tag, 'canvas')
+        return {
+          width: 0, height: 0,
+          getContext() { return { drawImage(...args) {
+            drawn.push(args)
+            if (drawFails) throw new Error('Canvas draw failed')
+          } } },
+          toBlob(callback, mime) { callback(new Blob(['encoded jpeg'], { type: mime })) },
+        }
+      },
+    },
+  })
+  const decoder = await h.module('src/features/images/decode-image')
+  optimizer = await h.module('src/features/locations/location-image-optimizer')
+  return { h, decoder, optimizer, created, revoked, drawn, calls, closes: () => closes }
+}
+
+const file = (name = 'IMG_4836.jpeg', large = false) => new File(
+  [large ? new Uint8Array(2 * 1024 * 1024) : 'jpeg bytes'], name, { type: 'image/jpeg' },
+)
+
+test('bitmap success returns dimensions and closes exactly once', async () => {
+  const s = await setup({ bitmap: 'success' })
+  const input = file()
+  const decoded = await s.decoder.decodeImage(input)
+  assert.equal(decoded.width, 3200)
+  assert.equal(decoded.height, 1600)
+  assert.equal(decoded.path, 'createImageBitmap')
+  assert.equal(s.calls[0].file, input)
+  assert.equal(s.calls[0].options.imageOrientation, 'from-image')
+  decoded.release(); decoded.release()
+  assert.equal(s.closes(), 1)
+  assert.equal(s.created.length, 0)
+})
+
+for (const bitmap of ['reject', 'absent']) {
+  test(`${bitmap}: HTMLImageElement fallback provides dimensions and releases URL`, async () => {
+    const s = await setup({ bitmap })
+    const dimensions = await s.decoder.readImageFileDimensions(file())
+    assert.equal(dimensions.width, 3200)
+    assert.equal(dimensions.height, 1600)
+    assert.equal(dimensions.path, 'fallbackImage')
+    assert.deepEqual(s.revoked, s.created)
+    assert.equal(s.created.length, 1)
+  })
+}
+
+test('fallback URL stays alive until source is consumed; release is idempotent', async () => {
+  const s = await setup()
+  const decoded = await s.decoder.decodeImage(file())
+  assert.equal(s.revoked.length, 0)
+  decoded.release(); decoded.release()
+  assert.deepEqual(s.revoked, s.created)
+})
+
+test('both decoders fail: friendly message and URL cleanup', async () => {
+  const s = await setup({ htmlFails: () => true })
+  await assert.rejects(s.decoder.decodeImage(file()), error => {
+    assert.equal(error.message, friendlyMessage)
+    assert.equal(error.message.includes(nativeMessage), false)
+    return true
+  })
+  assert.deepEqual(s.revoked, s.created)
+})
+
+test('Safari fallback continues resize and JPEG compression', async () => {
+  const s = await setup()
+  const result = await s.optimizer.optimizeLocationImageFile(file(undefined, true))
+  assert.equal(result.file.type, 'image/jpeg')
+  assert.equal(await result.file.text(), 'encoded jpeg')
+  assert.equal(result.wasOptimized, true)
+  assert.equal(result.outputDimensions.width, 2400)
+  assert.equal(result.outputDimensions.height, 1200)
+  assert.equal(result.perf.path, 'fallbackImage')
+  assert.equal(s.drawn.length, 1)
+  assert.deepEqual(s.revoked, s.created)
+})
+
+for (const bitmap of ['success', 'reject']) {
+  test(`${bitmap}: releases source even when canvas drawing throws`, async () => {
+    const s = await setup({ bitmap, drawFails: true })
+    await assert.rejects(s.optimizer.optimizeLocationImageFile(file(undefined, true)), /Canvas draw failed/)
+    if (bitmap === 'success') assert.equal(s.closes(), 1)
+    else assert.deepEqual(s.revoked, s.created)
+  })
+}
+
+test('actual LocationForm batch keeps failures on their image and processes the others', async () => {
+  const s = await setup({ htmlFails: input => input.name === 'bad.jpeg' })
+  const selection = await s.h.module('src/features/locations/location-image-selection')
+  const source = await fs.readFile('src/features/locations/LocationForm.tsx', 'utf8')
+  const ast = ts.createSourceFile('LocationForm.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  const names = new Set(['handleSelectedImageFiles', 'renderImageFeedback', 'handleRemovePendingImage'])
+  const declarations = []
+  function visit(node) {
+    if (ts.isFunctionDeclaration(node) && names.has(node.name?.text)) declarations.push('export ' + node.getText(ast))
+    ts.forEachChild(node, visit)
+  }
+  visit(ast)
+  assert.equal(declarations.length, names.size)
+  let images = []
+  const context = s.h.context
+  Object.assign(context, selection, s.h.reporting, {
+    isReadOnly: false, isMountedRef: { current: true }, pendingImagesRef: { current: [] },
+    removedPendingImageIdsRef: { current: new Set() }, IMAGE_PREPARATION_CONCURRENCY: 3,
+    imageValidationErrors: [],
+    setTotalImagesToProcess() {}, setProcessedImagesCount() {}, setIsPreparingImages() {},
+    setEditDeleteErrorMessage() {}, setImageSelectionTarget() {},
+    setImageValidationErrors(value) { context.imageValidationErrors = value },
+    setPendingImages(updater) { images = updater(images); context.pendingImagesRef.current = images },
+    getNextPendingImageOriginalIndex: () => 0,
+    reportLocationFailure() {}, revokePreviewUrl: url => context.URL.revokeObjectURL(url),
+  })
+  const output = ts.transpileModule(declarations.join('\n'), {
+    compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.React },
+  }).outputText
+  const mod = new vm.SourceTextModule(output, { context })
+  await mod.link(() => { throw new Error('Unexpected import') }); await mod.evaluate()
+  await mod.namespace.handleSelectedImageFiles([file('good.jpeg'), file('bad.jpeg'), file('also-good.jpeg')], 'gallery')
+  assert.deepEqual(Array.from(images, image => image.status), ['pending', 'error', 'pending'])
+  assert.equal(images[1].errorMessage, friendlyMessage)
+  assert.equal(images[0].errorMessage, null)
+  assert.equal(images[2].errorMessage, null)
+  assert.equal(context.imageValidationErrors.length, 0)
+  assert.equal(mod.namespace.renderImageFeedback(), null)
+  mod.namespace.handleRemovePendingImage(images[1].id)
+  assert.equal(mod.namespace.renderImageFeedback(), null)
+  assert.equal(images.length, 2)
+  for (const image of [...images]) mod.namespace.handleRemovePendingImage(image.id)
+  assert.deepEqual([...s.revoked].sort(), [...s.created].sort())
+})

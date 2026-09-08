@@ -55,6 +55,7 @@ type LocationImagesGridProps =
   | MixedLocationImagesGridProps
 
 type LocationImagesGridBaseProps = {
+  imageErrorsById?: Record<string, string | undefined>
   emptyCoverAction?: React.ReactNode
   emptyGalleryAction?: React.ReactNode
   manualBlurLoadingImageId?: string | null
@@ -240,7 +241,7 @@ function LocationImagesGrid(
   const shouldSuppressClickRef = useRef(false)
   const showCover = props.showCover ?? true
   const showGallery = props.showGallery ?? true
-  const items =
+  const mappedItems =
     props.mode === 'persisted'
       ? props.images.map((image, index) => mapPersistedImage(image, index))
       : props.mode === 'mixed'
@@ -250,6 +251,11 @@ function LocationImagesGrid(
               : mapPendingImage(entry.image),
           )
       : props.images.map((image) => mapPendingImage(image))
+
+  const items = mappedItems.map(image => ({
+    ...image,
+    errorMessage: props.imageErrorsById?.[image.id] ?? image.errorMessage,
+  }))
 
   const coverItem = showCover
     ? items.find((image) => image.isCover) ?? null
