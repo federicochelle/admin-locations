@@ -707,6 +707,7 @@ function LocationForm({
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const createdLocationIdRef = useRef<string | null>(null)
+  const submitLockRef = useRef(false)
   const [analysisState, setAnalysisState] =
     useState<LocationAnalysisState>(defaultAnalysisState)
   const [saveProgress, setSaveProgress] = useState<LocationSaveProgressState | null>(
@@ -2839,6 +2840,11 @@ function markSaveProgressSuccess() {
       return
     }
 
+    if (submitLockRef.current) {
+      return
+    }
+    submitLockRef.current = true
+
     const observation: AdminErrorContext = { operation: mode === 'edit' ? 'location.update' : 'location.create', stage: 'payload', resourceId: locationId, correlationId: createAdminCorrelationId(), userFacing: true, outcome: 'failed' }
     let resolvedOwnerId = values.owner_id || null
     let createdOwnerName: string | null = null
@@ -2954,11 +2960,15 @@ function markSaveProgressSuccess() {
         navigate(routePaths.locations)
       } else {
         // Retain a partially created location so retries do not create duplicates.
-        const createdLocationId = createdLocationIdRef.current ?? await createLocation(payload, {
+        const existingCreatedLocationId = createdLocationIdRef.current
+        const createdLocationId = existingCreatedLocationId ?? await createLocation(payload, {
           actorProfileId: profile?.id ?? null,
           correlationId: observation.correlationId,
+          onLocationCreated: (confirmedLocationId) => {
+            createdLocationIdRef.current = confirmedLocationId
+          },
         })
-        if (createdLocationIdRef.current) {
+        if (existingCreatedLocationId) {
           await updateLocation(createdLocationId, payload, {
             actorProfileId: profile?.id ?? null,
             correlationId: observation.correlationId,
@@ -3037,6 +3047,7 @@ function markSaveProgressSuccess() {
       )
       await wait(SAVE_SUCCESS_DELAY_MS)
     } finally {
+      submitLockRef.current = false
       setSaveProgress(null)
       setIsSubmitting(false)
     }

@@ -552,7 +552,11 @@ export async function getLocationFormOptions(): Promise<LocationFormOptions> {
 
 export async function createLocation(
   payload: LocationCreatePayload,
-  options?: { actorProfileId?: string | null; correlationId?: string },
+  options?: {
+    actorProfileId?: string | null
+    correlationId?: string
+    onLocationCreated?: (locationId: string) => void
+  },
 ): Promise<string> {
   let stage = 'payload'
   let observedLocationId: string | undefined = undefined
@@ -590,6 +594,7 @@ export async function createLocation(
     const locationId = createdRow.id
     observedLocationId = locationId
     confirmedStages.push('location.insert')
+    options?.onLocationCreated?.(locationId)
     const generatedLocationCode = createdRow.location_code
 
     stage = 'relations.features'
