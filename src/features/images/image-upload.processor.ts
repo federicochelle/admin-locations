@@ -1,10 +1,14 @@
 import { readImageFileDimensions } from './decode-image'
+import {
+  shouldConvertHeicImageFile,
+  type DetectedImageContentType,
+} from './image-content-type'
 import { annotateAdminError, markExpectedAdminError } from '../../lib/admin-error-reporting'
 import { optimizeLocationImageFile } from '../locations/location-image-optimizer'
 import {
   assertSupportedImageFile,
   getImageMimeTypeFromFileName,
-  isHeicImageFile,
+  isSupportedImageMimeType,
   MAX_IMAGE_SIZE_BYTES,
 } from './image-upload.constants'
 
@@ -95,8 +99,16 @@ function logHeicConversionError(file: File, error: unknown) {
   })
 }
 
-function normalizeImageFileType(file: File) {
-  const inferredMimeType = getImageMimeTypeFromFileName(file.name)
+function normalizeImageFileType(
+  file: File,
+  detectedContentType: DetectedImageContentType,
+) {
+  const inferredMimeType =
+    detectedContentType && detectedContentType !== 'image/heif-unknown'
+      ? detectedContentType
+      : isSupportedImageMimeType(file.type)
+        ? file.type.trim().toLowerCase()
+        : getImageMimeTypeFromFileName(file.name)
 
   if (!inferredMimeType || file.type === inferredMimeType) {
     return file
@@ -247,8 +259,8 @@ export async function prepareImageUploadFile(
   assertSupportedImageFile(file)
 
   const totalStartedAt = performance.now()
-  const normalizedInputFile = normalizeImageFileType(file)
-  const isHeic = isHeicImageFile(normalizedInputFile)
+  const { detectedContentType, isHeic } = await shouldConvertHeicImageFile(file)
+  const normalizedInputFile = normalizeImageFileType(file, detectedContentType)
 
   if (isHeic) {
     console.groupCollapsed(`[HEIC_PERF] ${normalizedInputFile.name}`)
@@ -328,8 +340,8 @@ export async function prepareProductionCompanyLogoFile(
   assertSupportedImageFile(file)
 
   const totalStartedAt = performance.now()
-  const normalizedInputFile = normalizeImageFileType(file)
-  const isHeic = isHeicImageFile(normalizedInputFile)
+  const { detectedContentType, isHeic } = await shouldConvertHeicImageFile(file)
+  const normalizedInputFile = normalizeImageFileType(file, detectedContentType)
 
   if (isHeic) {
     console.groupCollapsed(`[HEIC_PERF] ${normalizedInputFile.name}`)
