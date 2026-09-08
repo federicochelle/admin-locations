@@ -8,13 +8,18 @@ import { harness } from '../observability/harness.mjs'
 const nativeMessage = 'Cannot decode the data in the argument to createImageBitmap'
 const friendlyMessage = 'No pudimos procesar esta imagen. Probá con otra imagen o guardala nuevamente como JPG.'
 
-async function setup({ bitmap = 'reject', htmlFails = () => false, drawFails = false } = {}) {
+async function setup({
+  bitmap = 'reject',
+  dimensions = { width: 3200, height: 1600 },
+  htmlFails = () => false,
+  drawFails = false,
+} = {}) {
   const created = [], revoked = [], drawn = [], calls = []
   let closes = 0
   let optimizer
   const h = await harness({ prepare: file => optimizer.optimizeLocationImageFile(file) })
   const urls = new Map()
-  const source = { width: 3200, height: 1600, close() { closes++ } }
+  const source = { ...dimensions, close() { closes++ } }
   const createImageBitmap = async (file, options) => {
     calls.push({ file, options })
     if (bitmap === 'reject') throw new DOMException(nativeMessage, 'InvalidStateError')
@@ -34,8 +39,8 @@ async function setup({ bitmap = 'reject', htmlFails = () => false, drawFails = f
       revokeObjectURL(url) { revoked.push(url); urls.delete(url) },
     },
     Image: class {
-      naturalWidth = 3200
-      naturalHeight = 1600
+      naturalWidth = dimensions.width
+      naturalHeight = dimensions.height
       set src(url) {
         queueMicrotask(() => htmlFails(urls.get(url)) ? this.onerror?.() : this.onload?.())
       }
@@ -61,6 +66,10 @@ async function setup({ bitmap = 'reject', htmlFails = () => false, drawFails = f
 
 const file = (name = 'IMG_4836.jpeg', large = false) => new File(
   [large ? new Uint8Array(2 * 1024 * 1024) : 'jpeg bytes'], name, { type: 'image/jpeg' },
+)
+
+const sizedFile = (name, size) => new File(
+  [new Uint8Array(size)], name, { type: 'image/jpeg' },
 )
 
 test('bitmap success returns dimensions and closes exactly once', async () => {
@@ -120,6 +129,29 @@ test('Safari fallback continues resize and JPEG compression', async () => {
   assert.deepEqual(s.revoked, s.created)
 })
 
+test('optimizes by file size or dimensions and skips canvas only when both are within limits', async () => {
+  const cases = [
+    { dimensions: { width: 800, height: 600 }, size: 500 * 1024, optimized: false, output: { width: 800, height: 600 } },
+    { dimensions: { width: 1920, height: 1080 }, size: 2 * 1024 * 1024, optimized: true, output: { width: 1920, height: 1080 } },
+    { dimensions: { width: 4032, height: 3024 }, size: Math.round(1.2 * 1024 * 1024), optimized: true, output: { width: 2400, height: 1800 } },
+    { dimensions: { width: 6000, height: 4000 }, size: Math.round(1.4 * 1024 * 1024), optimized: true, output: { width: 2400, height: 1600 } },
+    { dimensions: { width: 4032, height: 3024 }, size: 6 * 1024 * 1024, optimized: true, output: { width: 2400, height: 1800 } },
+  ]
+
+  for (const [index, testCase] of cases.entries()) {
+    const s = await setup({ dimensions: testCase.dimensions })
+    const result = await s.optimizer.optimizeLocationImageFile(
+      sizedFile(`case-${index}.jpeg`, testCase.size),
+    )
+
+    assert.equal(result.wasOptimized, testCase.optimized)
+    assert.equal(result.outputDimensions.width, testCase.output.width)
+    assert.equal(result.outputDimensions.height, testCase.output.height)
+    assert.equal(s.drawn.length, testCase.optimized ? 1 : 0)
+    assert.deepEqual(s.revoked, s.created)
+  }
+})
+
 for (const bitmap of ['success', 'reject']) {
   test(`${bitmap}: releases source even when canvas drawing throws`, async () => {
     const s = await setup({ bitmap, drawFails: true })
@@ -134,7 +166,12 @@ test('actual LocationForm batch keeps failures on their image and processes the 
   const selection = await s.h.module('src/features/locations/location-image-selection')
   const source = await fs.readFile('src/features/locations/LocationForm.tsx', 'utf8')
   const ast = ts.createSourceFile('LocationForm.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
-  const names = new Set(['handleSelectedImageFiles', 'renderImageFeedback', 'handleRemovePendingImage'])
+  const names = new Set([
+    'handleSelectedImageFiles',
+    'renderImageFeedback',
+    'handleRemovePendingImage',
+    'revokePreviewUrl',
+  ])
   const declarations = []
   function visit(node) {
     if (ts.isFunctionDeclaration(node) && names.has(node.name?.text)) declarations.push('export ' + node.getText(ast))
@@ -153,13 +190,24 @@ test('actual LocationForm batch keeps failures on their image and processes the 
     setImageValidationErrors(value) { context.imageValidationErrors = value },
     setPendingImages(updater) { images = updater(images); context.pendingImagesRef.current = images },
     getNextPendingImageOriginalIndex: () => 0,
-    reportLocationFailure() {}, revokePreviewUrl: url => context.URL.revokeObjectURL(url),
+    reportLocationFailure() {},
   })
   const output = ts.transpileModule(declarations.join('\n'), {
     compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.ESNext, jsx: ts.JsxEmit.React },
   }).outputText
   const mod = new vm.SourceTextModule(output, { context })
   await mod.link(() => { throw new Error('Unexpected import') }); await mod.evaluate()
+
+  const revokedBeforeNonBlobUrls = s.revoked.length
+  mod.namespace.revokePreviewUrl('data:image/gif;base64,R0lGODlhAQABAAAAACw=')
+  mod.namespace.revokePreviewUrl('http://example.com/image.jpg')
+  mod.namespace.revokePreviewUrl('https://example.com/image.jpg')
+  assert.equal(s.revoked.length, revokedBeforeNonBlobUrls)
+
+  const blobUrl = context.URL.createObjectURL(file('cleanup.jpeg'))
+  mod.namespace.revokePreviewUrl(blobUrl)
+  assert.equal(s.revoked.at(-1), blobUrl)
+
   await mod.namespace.handleSelectedImageFiles([file('good.jpeg'), file('bad.jpeg'), file('also-good.jpeg')], 'gallery')
   assert.deepEqual(Array.from(images, image => image.status), ['pending', 'error', 'pending'])
   assert.equal(images[1].errorMessage, friendlyMessage)

@@ -1,4 +1,4 @@
-import { decodeImage, readImageFileDimensions } from '../images/decode-image'
+import { decodeImage, type DecodedImage } from '../images/decode-image'
 
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
 const MIN_IMAGE_SIZE_BYTES_TO_OPTIMIZE = 1.5 * 1024 * 1024
@@ -29,8 +29,15 @@ export type OptimizeLocationImageResult = {
   }
 }
 
-export function shouldOptimizeLocationImageFile(file: File) {
-  return file.size > MIN_IMAGE_SIZE_BYTES_TO_OPTIMIZE
+export function shouldOptimizeLocationImageFile(
+  file: File,
+  dimensions: { width: number; height: number },
+) {
+  return (
+    file.size > MIN_IMAGE_SIZE_BYTES_TO_OPTIMIZE ||
+    dimensions.width > MAX_IMAGE_DIMENSION ||
+    dimensions.height > MAX_IMAGE_DIMENSION
+  )
 }
 
 function replaceFileExtension(filename: string, extension: string) {
@@ -78,37 +85,35 @@ function canvasToBlob(
   })
 }
 
-async function drawFileToCanvas(file: File) {
-  const image = await decodeImage(file)
-  try {
-    const { width, height } = calculateTargetDimensions(image.width, image.height)
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const context = canvas.getContext('2d')
-    if (!context) throw new Error('No pudimos preparar la imagen para optimizarla.')
-    context.drawImage(image.source, 0, 0, width, height)
-    return { canvas, originalWidth: image.width, originalHeight: image.height, path: image.path }
-  } finally {
-    image.release()
-  }
+function drawImageToCanvas(image: DecodedImage) {
+  const { width, height } = calculateTargetDimensions(image.width, image.height)
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('No pudimos preparar la imagen para optimizarla.')
+  context.drawImage(image.source, 0, 0, width, height)
+  return { canvas, originalWidth: image.width, originalHeight: image.height, path: image.path }
 }
 
 export async function optimizeLocationImageFile(
   file: File,
 ): Promise<OptimizeLocationImageResult> {
   const optimizeStartedAt = performance.now()
+  const image = await decodeImage(file)
+  let canvasResult: ReturnType<typeof drawImageToCanvas>
 
-  if (!shouldOptimizeLocationImageFile(file)) {
-    const dimensions = await readImageFileDimensions(file)
+  try {
+    const dimensions = { width: image.width, height: image.height }
 
-    console.log(
-      '[IMAGE OPTIMIZER]',
-      file.name,
-      'sin cambios',
-      `original=${(file.size / 1024 / 1024).toFixed(2)} MB`,
-      `final=${(file.size / 1024 / 1024).toFixed(2)} MB`,
-    )
+    if (!shouldOptimizeLocationImageFile(file, dimensions)) {
+      console.log(
+        '[IMAGE OPTIMIZER]',
+        file.name,
+        'sin cambios',
+        `original=${(file.size / 1024 / 1024).toFixed(2)} MB`,
+        `final=${(file.size / 1024 / 1024).toFixed(2)} MB`,
+      )
 
       return {
         file,
@@ -125,16 +130,21 @@ export async function optimizeLocationImageFile(
             width: dimensions.width,
             height: dimensions.height,
           },
-          path: dimensions.path,
+          path: image.path,
           totalMs: performance.now() - optimizeStartedAt,
         },
         wasOptimized: false,
         originalSize: file.size,
         optimizedSize: file.size,
       }
+    }
+
+    canvasResult = drawImageToCanvas(image)
+  } finally {
+    image.release()
   }
 
-  const { canvas, originalHeight, originalWidth, path } = await drawFileToCanvas(file)
+  const { canvas, originalHeight, originalWidth, path } = canvasResult
   const dimensionsLabel = `${canvas.width}x${canvas.height}`
 
   for (const quality of JPEG_QUALITY_STEPS) {

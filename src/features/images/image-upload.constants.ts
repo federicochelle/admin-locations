@@ -74,6 +74,14 @@ export function isSupportedImageExtension(fileName: string) {
   return SUPPORTED_IMAGE_EXTENSION_SET.has(getImageFileExtension(fileName))
 }
 
+export function isHeicImageMimeType(value: string) {
+  return HEIC_IMAGE_MIME_TYPE_SET.has(normalizeImageMimeType(value))
+}
+
+export function isHeicImageExtension(fileName: string) {
+  return HEIC_IMAGE_EXTENSION_SET.has(getImageFileExtension(fileName))
+}
+
 export function getImageMimeTypeFromFileName(fileName: string) {
   return IMAGE_EXTENSION_TO_MIME_TYPE.get(getImageFileExtension(fileName)) ?? null
 }
@@ -87,8 +95,8 @@ export function isSupportedImageFile(file: Pick<File, 'name' | 'type'>) {
 
 export function isHeicImageFile(file: Pick<File, 'name' | 'type'>) {
   return (
-    HEIC_IMAGE_MIME_TYPE_SET.has(normalizeImageMimeType(file.type)) ||
-    HEIC_IMAGE_EXTENSION_SET.has(getImageFileExtension(file.name))
+    isHeicImageMimeType(file.type) ||
+    isHeicImageExtension(file.name)
   )
 }
 

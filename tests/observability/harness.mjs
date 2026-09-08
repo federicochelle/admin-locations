@@ -9,7 +9,7 @@ const root = process.cwd()
 export const locationId = '11111111-1111-4111-8111-111111111111'
 export const correlationId = '22222222-2222-4222-8222-222222222222'
 
-export async function harness({ query, invoke, activityError, fetch, prepare, detect, blur } = {}) {
+export async function harness({ query, invoke, activityError, fetch, prepare, detect, blur, actualImageProcessor = false, optimize, heicTo } = {}) {
   const events = []
   const requests = []
   const context = vm.createContext({
@@ -52,6 +52,9 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
     [path.join(root, 'src/lib/supabase'), { getSupabaseClient: () => supabase }],
     [path.join(root, 'src/features/activity/activity-logs.service'), { createActivityLog: async () => { if (activityError) throw activityError } }],
   ])
+  if (actualImageProcessor) mocks.delete(path.join(root, 'src/features/images/image-upload.processor'))
+  if (optimize) mocks.set(path.join(root, 'src/features/locations/location-image-optimizer'), { optimizeLocationImageFile: optimize })
+  if (heicTo) mocks.set('heic-to', { heicTo })
   const cache = new Map()
   async function load(specifier, referencing) {
     const key = specifier.startsWith('.') ? path.resolve(path.dirname(referencing), specifier) : specifier
@@ -67,7 +70,17 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
     const filename = key.endsWith('.ts') ? key : key + '.ts'
     const source = await fs.readFile(filename, 'utf8')
     const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.ESNext } }).outputText
-    const mod = new vm.SourceTextModule(output, { context, identifier: filename, initializeImportMeta(meta) { meta.env = { VITE_APP_RELEASE: 'aaaaaaaa' } } })
+    const mod = new vm.SourceTextModule(output, {
+      context,
+      identifier: filename,
+      initializeImportMeta(meta) { meta.env = { VITE_APP_RELEASE: 'aaaaaaaa' } },
+      async importModuleDynamically(childSpecifier, referencingModule) {
+        const child = await load(childSpecifier, referencingModule.identifier)
+        if (child.status === 'unlinked') await child.link(() => { throw new Error('Unexpected dynamic dependency') })
+        if (child.status !== 'evaluated') await child.evaluate()
+        return child
+      },
+    })
     cache.set(key, mod)
     await mod.link((child, ref) => load(child, ref.identifier))
     return mod
@@ -93,7 +106,7 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
     const state = { pending: [], submitError: null, navigation: [], validations: [], submitting: false, progress: null }
     const noop = () => {}
     Object.assign(context, reporting, {
-      mode: 'create', isReadOnly: false, locationId: undefined, createdLocationIdRef: { current: null },
+      mode: 'create', isReadOnly: false, locationId: undefined, createdLocationIdRef: { current: null }, submitLockRef: { current: false },
       values: { owner_id: 'existing-owner' }, ownerInputValue: '', ownerPhoneValue: '',
       profile: { id: 'actor' }, initialValues: {},
       validateRequiredFields: () => ({}), hasFieldErrors: errors => Boolean(errors.title),
