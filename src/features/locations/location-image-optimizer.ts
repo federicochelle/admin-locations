@@ -1,3 +1,5 @@
+import { decodeImage, readImageFileDimensions } from '../images/decode-image'
+
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
 const MIN_IMAGE_SIZE_BYTES_TO_OPTIMIZE = 1.5 * 1024 * 1024
 const MAX_IMAGE_DIMENSION = 2400
@@ -24,44 +26,6 @@ export type OptimizeLocationImageResult = {
     } | null
     path: OptimizationPath
     totalMs: number
-  }
-}
-
-async function readImageFileDimensions(file: File) {
-  if (typeof window.createImageBitmap === 'function') {
-    const bitmap = await window.createImageBitmap(file, {
-      imageOrientation: 'from-image',
-    })
-
-    try {
-      return {
-        height: bitmap.height,
-        path: 'createImageBitmap' as const,
-        width: bitmap.width,
-      }
-    } finally {
-      bitmap.close()
-    }
-  }
-
-  const objectUrl = URL.createObjectURL(file)
-
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const nextImage = new Image()
-      nextImage.onload = () => resolve(nextImage)
-      nextImage.onerror = () =>
-        reject(new Error('No pudimos leer la imagen seleccionada.'))
-      nextImage.src = objectUrl
-    })
-
-    return {
-      height: image.naturalHeight,
-      path: 'fallbackImage' as const,
-      width: image.naturalWidth,
-    }
-  } finally {
-    URL.revokeObjectURL(objectUrl)
   }
 }
 
@@ -115,75 +79,18 @@ function canvasToBlob(
 }
 
 async function drawFileToCanvas(file: File) {
-  if (typeof window.createImageBitmap === 'function') {
-    const path: OptimizationPath = 'createImageBitmap'
-    const bitmap = await window.createImageBitmap(file, {
-      imageOrientation: 'from-image',
-    })
-
-    const originalWidth = bitmap.width
-    const originalHeight = bitmap.height
-    const { width, height } = calculateTargetDimensions(originalWidth, originalHeight)
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-
-    const context = canvas.getContext('2d')
-
-    if (!context) {
-      bitmap.close()
-      throw new Error('No pudimos preparar la imagen para optimizarla.')
-    }
-
-    context.drawImage(bitmap, 0, 0, width, height)
-    bitmap.close()
-
-    return {
-      canvas,
-      originalHeight,
-      originalWidth,
-      path,
-    }
-  }
-
-  const objectUrl = URL.createObjectURL(file)
-
+  const image = await decodeImage(file)
   try {
-    const path: OptimizationPath = 'fallbackImage'
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const nextImage = new Image()
-      nextImage.onload = () => resolve(nextImage)
-      nextImage.onerror = () =>
-        reject(new Error('No pudimos leer la imagen seleccionada.'))
-      nextImage.src = objectUrl
-    })
-
-    const originalWidth = image.naturalWidth
-    const originalHeight = image.naturalHeight
-    const { width, height } = calculateTargetDimensions(
-      originalWidth,
-      originalHeight,
-    )
+    const { width, height } = calculateTargetDimensions(image.width, image.height)
     const canvas = document.createElement('canvas')
     canvas.width = width
     canvas.height = height
-
     const context = canvas.getContext('2d')
-
-    if (!context) {
-      throw new Error('No pudimos preparar la imagen para optimizarla.')
-    }
-
-    context.drawImage(image, 0, 0, width, height)
-
-    return {
-      canvas,
-      originalHeight,
-      originalWidth,
-      path,
-    }
+    if (!context) throw new Error('No pudimos preparar la imagen para optimizarla.')
+    context.drawImage(image.source, 0, 0, width, height)
+    return { canvas, originalWidth: image.width, originalHeight: image.height, path: image.path }
   } finally {
-    URL.revokeObjectURL(objectUrl)
+    image.release()
   }
 }
 
