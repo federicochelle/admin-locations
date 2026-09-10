@@ -39,6 +39,7 @@ export type CloudflareDirectUploadResponse = {
 export type LocationImageFinalizeInput = {
   locationId: string
   cloudflareImageId: string
+  clientUploadId?: string | null
   width: number
   height: number
   altText?: string | null
@@ -50,6 +51,7 @@ export type LocationImageFinalizeInput = {
 export type LocationImageRecord = {
   id: string
   location_id: string
+  client_upload_id?: string | null
   url: string
   storage_key: string
   alt_text: string | null
@@ -65,6 +67,7 @@ export type LocationImageRecord = {
 export type UploadLocationImageInput = {
   locationId: string
   file: File
+  clientUploadId?: string | null
   width: number
   height: number
   altText?: string | null

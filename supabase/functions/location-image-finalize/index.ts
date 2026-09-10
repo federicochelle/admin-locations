@@ -6,6 +6,7 @@ import { assertLocationExists } from '../_shared/locations.ts'
 type FinalizeRequestBody = {
   altText?: unknown
   caption?: unknown
+  clientUploadId?: unknown
   cloudflareImageId?: unknown
   height?: unknown
   isCover?: unknown
@@ -17,6 +18,7 @@ type FinalizeRequestBody = {
 type CreatedLocationImageRow = {
   id: string
   location_id: string
+  client_upload_id: string | null
   url: string
   storage_key: string
   alt_text: string | null
@@ -32,6 +34,29 @@ type CreatedLocationImageRow = {
 type ExistingLocationImageRow = {
   sort_order: number | null
 }
+
+type SupabaseAdminClient = {
+  from: (table: string) => any
+}
+
+const LOCATION_IMAGE_SELECT = `
+  id,
+  location_id,
+  client_upload_id,
+  url,
+  storage_key,
+  alt_text,
+  caption,
+  sort_order,
+  is_cover,
+  width,
+  height,
+  created_at,
+  updated_at
+`
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function toNullableText(value: unknown) {
   if (typeof value !== 'string') {
@@ -86,6 +111,37 @@ function parsePositiveDimension(value: unknown, fieldName: 'width' | 'height') {
   return value
 }
 
+function parseOptionalUuid(value: unknown, fieldName: string) {
+  if (typeof value === 'undefined' || value === null) {
+    return null
+  }
+
+  if (typeof value !== 'string') {
+    throw new HttpError(400, `${fieldName} must be a UUID.`)
+  }
+
+  const trimmed = value.trim()
+
+  if (trimmed.length === 0) {
+    return null
+  }
+
+  if (!UUID_PATTERN.test(trimmed)) {
+    throw new HttpError(400, `${fieldName} must be a UUID.`)
+  }
+
+  return trimmed
+}
+
+function isUniqueViolation(error: unknown) {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === '23505'
+  )
+}
+
 function parseRequestBody(body: FinalizeRequestBody) {
   const locationId =
     typeof body.locationId === 'string' ? body.locationId.trim() : ''
@@ -104,6 +160,7 @@ function parseRequestBody(body: FinalizeRequestBody) {
 
   return {
     locationId,
+    clientUploadId: parseOptionalUuid(body.clientUploadId, 'clientUploadId'),
     cloudflareImageId,
     height: parsePositiveDimension(body.height, 'height'),
     altText: toNullableText(body.altText),
@@ -112,6 +169,35 @@ function parseRequestBody(body: FinalizeRequestBody) {
     sortOrder: parseOptionalSortOrder(body.sortOrder),
     width: parsePositiveDimension(body.width, 'width'),
   }
+}
+
+async function findExistingClientUpload(
+  adminClient: SupabaseAdminClient,
+  input: {
+    clientUploadId: string | null
+    locationId: string
+  },
+) {
+  if (!input.clientUploadId) {
+    return null
+  }
+
+  const { data, error } = await adminClient
+    .from('location_images')
+    .select(LOCATION_IMAGE_SELECT)
+    .eq('location_id', input.locationId)
+    .eq('client_upload_id', input.clientUploadId)
+    .maybeSingle()
+
+  if (error) {
+    throw new HttpError(
+      500,
+      'Could not load existing image metadata.',
+      error.message,
+    )
+  }
+
+  return (data as CreatedLocationImageRow | null) ?? null
 }
 
 Deno.serve(async (request) => {
@@ -135,6 +221,12 @@ Deno.serve(async (request) => {
     const { adminClient } = await assertAdmin(request)
 
     await assertLocationExists(adminClient, input.locationId)
+
+    const existingClientUpload = await findExistingClientUpload(adminClient, input)
+
+    if (existingClientUpload) {
+      return jsonResponse(existingClientUpload, { status: 200 }, origin)
+    }
 
     const { data: existingImages, error: existingImagesError } = await adminClient
       .from('location_images')
@@ -177,6 +269,7 @@ Deno.serve(async (request) => {
       .insert({
         alt_text: input.altText,
         caption: input.caption,
+        client_upload_id: input.clientUploadId,
         height: input.height,
         is_cover: isCover,
         location_id: input.locationId,
@@ -189,6 +282,7 @@ Deno.serve(async (request) => {
         `
           id,
           location_id,
+          client_upload_id,
           url,
           storage_key,
           alt_text,
@@ -204,6 +298,14 @@ Deno.serve(async (request) => {
       .single()
 
     if (insertError || !createdRow) {
+      if (input.clientUploadId && isUniqueViolation(insertError)) {
+        const recoveredClientUpload = await findExistingClientUpload(adminClient, input)
+
+        if (recoveredClientUpload) {
+          return jsonResponse(recoveredClientUpload, { status: 200 }, origin)
+        }
+      }
+
       throw new HttpError(
         500,
         'Could not store image metadata.',
