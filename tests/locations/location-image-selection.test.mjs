@@ -56,6 +56,7 @@ function createSelectionHarness(overrides = {}) {
     isPreparingImages: [],
     pendingImages: overrides.initialImages ?? [],
     pendingImagesRef: { current: overrides.initialImages ?? [] },
+    pendingImageSnapshots: [],
     preparedFiles: [],
     processedCounts: [],
     removedPendingImageIdsRef: {
@@ -70,6 +71,20 @@ function createSelectionHarness(overrides = {}) {
   function syncPendingImages(nextImages) {
     state.pendingImages = nextImages
     state.pendingImagesRef.current = nextImages
+    state.pendingImageSnapshots.push(
+      nextImages.map((image) => ({
+        errorMessage: image.errorMessage,
+        height: image.height,
+        id: image.id,
+        isCover: image.isCover,
+        originalIndex: image.originalIndex,
+        previewUrl: image.previewUrl,
+        processingLabel: image.processingLabel,
+        selectionTarget: image.selectionTarget,
+        status: image.status,
+        width: image.width,
+      })),
+    )
   }
 
   return {
@@ -588,6 +603,62 @@ test('handleSelectedLocationImageFiles does not update a removed image and revok
   assert.deepEqual(state.revokedPreviewUrls, ['blob:prepared-gallery-a'])
 })
 
+test('handleSelectedLocationImageFiles skips mounted setters after unmount and revokes the prepared preview', async () => {
+  const { handleSelectedLocationImageFiles } = await loadImageSelection()
+  const continuePreparation = createDeferred()
+  const preparationStarted = createDeferred()
+  const { deps, state } = createSelectionHarness({
+    files: [new File(['a'], 'gallery-a.jpg', { type: 'image/jpeg' })],
+    prepareImage: async (file, options) => {
+      state.preparedFiles.push(file.name)
+      preparationStarted.resolve()
+      await continuePreparation.promise
+
+      return pendingImage(options.id, {
+        file,
+        height: 480,
+        isCover: options.isCover,
+        originalIndex: options.originalIndex,
+        previewUrl: 'blob:prepared-gallery-a',
+        selectionTarget: options.target,
+        status: 'pending',
+        width: 640,
+      })
+    },
+    target: 'gallery',
+  })
+
+  const selection = handleSelectedLocationImageFiles(deps)
+  await preparationStarted.promise
+  const placeholderSnapshot = plain(state.pendingImageSnapshots.at(-1))
+  state.isMountedRef.current = false
+  continuePreparation.resolve()
+  await selection
+
+  assert.deepEqual(
+    plain(
+      state.pendingImages.map((image) => ({
+        errorMessage: image.errorMessage,
+        height: image.height,
+        id: image.id,
+        isCover: image.isCover,
+        originalIndex: image.originalIndex,
+        previewUrl: image.previewUrl,
+        processingLabel: image.processingLabel,
+        selectionTarget: image.selectionTarget,
+        status: image.status,
+        width: image.width,
+      })),
+    ),
+    placeholderSnapshot,
+  )
+  assert.deepEqual(plain(state.pendingImageSnapshots), [placeholderSnapshot])
+  assert.deepEqual(state.processedCounts, [0])
+  assert.deepEqual(state.isPreparingImages, [true])
+  assert.deepEqual(state.reportedFailures, [])
+  assert.deepEqual(state.revokedPreviewUrls, ['blob:prepared-gallery-a'])
+})
+
 test('handleSelectedLocationImageFiles ignores status changes for images removed while preparing', async () => {
   const { handleSelectedLocationImageFiles } = await loadImageSelection()
   const continuePreparation = createDeferred()
@@ -623,6 +694,88 @@ test('handleSelectedLocationImageFiles ignores status changes for images removed
   assert.equal(state.pendingImages[0].processingLabel, undefined)
   assert.equal(state.pendingImages[0].status, 'processing')
   assert.deepEqual(state.revokedPreviewUrls, ['blob:prepared-gallery-a'])
+})
+
+test('handleSelectedLocationImageFiles moves a placeholder through status label updates to pending', async () => {
+  const { handleSelectedLocationImageFiles } = await loadImageSelection()
+  const preparedFile = new File(['prepared'], 'prepared-gallery-a.jpg', { type: 'image/jpeg' })
+  const { deps, state } = createSelectionHarness({
+    files: [new File(['a'], 'gallery-a.jpg', { type: 'image/jpeg' })],
+    prepareImage: async (file, options) => {
+      state.preparedFiles.push(file.name)
+      options.onStatusChange?.('Optimizando imagen...')
+
+      return pendingImage(options.id, {
+        file: preparedFile,
+        height: 720,
+        isCover: options.isCover,
+        originalIndex: options.originalIndex,
+        previewUrl: 'blob:prepared-gallery-a',
+        selectionTarget: options.target,
+        status: 'pending',
+        width: 1280,
+      })
+    },
+    target: 'gallery',
+  })
+
+  await handleSelectedLocationImageFiles(deps)
+
+  assert.deepEqual(state.processedCounts, [0, 1])
+  assert.equal(state.pendingImageSnapshots.length, 3)
+  assert.deepEqual(
+    plain(
+      state.pendingImageSnapshots.map((snapshot) => {
+        const image = snapshot[0]
+
+        return {
+          errorMessage: image.errorMessage,
+          height: image.height,
+          id: image.id,
+          originalIndex: image.originalIndex,
+          previewUrl: image.previewUrl,
+          processingLabel: image.processingLabel,
+          status: image.status,
+          width: image.width,
+        }
+      }),
+    ),
+    [
+      {
+        errorMessage: null,
+        height: 0,
+        id: 'gallery-a.jpg',
+        originalIndex: 0,
+        previewUrl: 'placeholder:gallery-a.jpg',
+        status: 'processing',
+        width: 0,
+      },
+      {
+        errorMessage: null,
+        height: 0,
+        id: 'gallery-a.jpg',
+        originalIndex: 0,
+        previewUrl: 'placeholder:gallery-a.jpg',
+        processingLabel: 'Optimizando imagen...',
+        status: 'processing',
+        width: 0,
+      },
+      {
+        errorMessage: null,
+        height: 720,
+        id: 'gallery-a.jpg',
+        originalIndex: 0,
+        previewUrl: 'blob:prepared-gallery-a',
+        processingLabel: null,
+        status: 'pending',
+        width: 1280,
+      },
+    ],
+  )
+  assert.equal(state.pendingImages[0].file, preparedFile)
+  assert.equal(state.pendingImages[0].errorMessage, null)
+  assert.equal(state.pendingImages[0].status, 'pending')
+  assert.deepEqual(state.isPreparingImages, [true, false])
 })
 
 test('handleSelectedLocationImageFiles skips failure reporting when an image was removed before prepareImage fails', async () => {
