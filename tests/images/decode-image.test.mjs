@@ -164,6 +164,7 @@ for (const bitmap of ['success', 'reject']) {
 test('actual LocationForm batch keeps failures on their image and processes the others', async () => {
   const s = await setup({ htmlFails: input => input.name === 'bad.jpeg' })
   const selection = await s.h.module('src/features/locations/location-image-selection')
+  const applicationSelection = await s.h.module('src/features/locations/application/location-image-selection')
   const source = await fs.readFile('src/features/locations/LocationForm.tsx', 'utf8')
   const ast = ts.createSourceFile('LocationForm.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
   const names = new Set([
@@ -181,7 +182,7 @@ test('actual LocationForm batch keeps failures on their image and processes the 
   assert.equal(declarations.length, names.size)
   let images = []
   const context = s.h.context
-  Object.assign(context, selection, s.h.reporting, {
+  Object.assign(context, selection, applicationSelection, s.h.reporting, {
     isReadOnly: false, isMountedRef: { current: true }, pendingImagesRef: { current: [] },
     removedPendingImageIdsRef: { current: new Set() }, IMAGE_PREPARATION_CONCURRENCY: 3,
     imageValidationErrors: [],
