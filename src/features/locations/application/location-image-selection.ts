@@ -40,6 +40,74 @@ type MergePendingImagePlaceholdersResult = {
   removedImageIds: string[]
 }
 
+type LocationImageSelectionRef<T> = {
+  current: T
+}
+
+type PrepareSelectedLocationImagesInput = {
+  correlationId: string
+  imagePreparationConcurrency: number
+  isMountedRef: LocationImageSelectionRef<boolean>
+  placeholders: PendingLocationImageFile[]
+  prepareImage: (
+    file: File,
+    options: {
+      id: string
+      isCover: boolean
+      originalIndex: number
+      target: ImageSelectionTarget
+      onStatusChange?: (statusLabel: string) => void
+    },
+  ) => Promise<PendingLocationImageFile>
+  removedPendingImageIdsRef: LocationImageSelectionRef<Set<string>>
+  reportLocationFailure: (
+    error: unknown,
+    context: Partial<AdminErrorContext>,
+  ) => void
+  revokePreviewUrl: (previewUrl: string) => void
+  setPendingImages: (
+    updater: (
+      currentImages: PendingLocationImageFile[],
+    ) => PendingLocationImageFile[],
+  ) => void
+  setProcessedImagesCount: (count: number) => void
+  target: ImageSelectionTarget
+  totalFiles: number
+}
+
+type HandleSelectedLocationImageFilesInput = {
+  createCorrelationId: () => string
+  createPlaceholder: (
+    file: File,
+    options: {
+      isCover: boolean
+      originalIndex: number
+      target: ImageSelectionTarget
+    },
+  ) => PendingLocationImageFile
+  files: File[]
+  getNextOriginalIndex: (currentImages: PendingLocationImageFile[]) => number
+  imagePreparationConcurrency: number
+  isMountedRef: LocationImageSelectionRef<boolean>
+  isReadOnly: boolean
+  pendingImagesRef: LocationImageSelectionRef<PendingLocationImageFile[]>
+  prepareImage: PrepareSelectedLocationImagesInput['prepareImage']
+  removedPendingImageIdsRef: LocationImageSelectionRef<Set<string>>
+  reportLocationFailure: (
+    error: unknown,
+    context: Partial<AdminErrorContext>,
+  ) => void
+  revokePreviewUrl: (previewUrl: string) => void
+  setEditDeleteErrorMessage: (message: string | null) => void
+  setImageSelectionTarget: (target: ImageSelectionTarget | null) => void
+  setImageValidationErrors: (errors: string[]) => void
+  setIsPreparingImages: (isPreparing: boolean) => void
+  setPendingImages: PrepareSelectedLocationImagesInput['setPendingImages']
+  setProcessedImagesCount: (count: number) => void
+  setTotalImagesToProcess: (count: number) => void
+  target: ImageSelectionTarget
+}
+
 export function getImageSelectionPlan({
   files,
   target,
@@ -142,54 +210,108 @@ export function applyImagePreparationErrorToPendingImages(
   )
 }
 
-type LocationImageSelectionRef<T> = {
-  current: T
-}
+export async function prepareSelectedLocationImages({
+  correlationId,
+  imagePreparationConcurrency,
+  isMountedRef,
+  placeholders,
+  prepareImage,
+  removedPendingImageIdsRef,
+  reportLocationFailure,
+  revokePreviewUrl,
+  setPendingImages,
+  setProcessedImagesCount,
+  target,
+  totalFiles,
+}: PrepareSelectedLocationImagesInput) {
+  let processedCount = 0
+  let nextPlaceholderIndex = 0
 
-type HandleSelectedLocationImageFilesInput = {
-  createCorrelationId: () => string
-  createPlaceholder: (
-    file: File,
-    options: {
-      isCover: boolean
-      originalIndex: number
-      target: ImageSelectionTarget
-    },
-  ) => PendingLocationImageFile
-  files: File[]
-  getNextOriginalIndex: (currentImages: PendingLocationImageFile[]) => number
-  imagePreparationConcurrency: number
-  isMountedRef: LocationImageSelectionRef<boolean>
-  isReadOnly: boolean
-  pendingImagesRef: LocationImageSelectionRef<PendingLocationImageFile[]>
-  prepareImage: (
-    file: File,
-    options: {
-      id: string
-      isCover: boolean
-      originalIndex: number
-      target: ImageSelectionTarget
-      onStatusChange?: (statusLabel: string) => void
-    },
-  ) => Promise<PendingLocationImageFile>
-  removedPendingImageIdsRef: LocationImageSelectionRef<Set<string>>
-  reportLocationFailure: (
-    error: unknown,
-    context: Partial<AdminErrorContext>,
-  ) => void
-  revokePreviewUrl: (previewUrl: string) => void
-  setEditDeleteErrorMessage: (message: string | null) => void
-  setImageSelectionTarget: (target: ImageSelectionTarget | null) => void
-  setImageValidationErrors: (errors: string[]) => void
-  setIsPreparingImages: (isPreparing: boolean) => void
-  setPendingImages: (
-    updater: (
-      currentImages: PendingLocationImageFile[],
-    ) => PendingLocationImageFile[],
-  ) => void
-  setProcessedImagesCount: (count: number) => void
-  setTotalImagesToProcess: (count: number) => void
-  target: ImageSelectionTarget
+  async function processPlaceholder(placeholder: PendingLocationImageFile) {
+    try {
+      const preparedImage = await prepareImage(placeholder.file, {
+        id: placeholder.id,
+        isCover: placeholder.isCover,
+        onStatusChange: (processingLabel) => {
+          if (!isMountedRef.current || removedPendingImageIdsRef.current.has(placeholder.id)) {
+            return
+          }
+
+          setPendingImages((currentImages) =>
+            currentImages.map((image) =>
+              image.id === placeholder.id
+                ? {
+                    ...image,
+                    processingLabel,
+                  }
+                : image,
+            ),
+          )
+        },
+        originalIndex: placeholder.originalIndex,
+        target,
+      })
+
+      if (
+        !isMountedRef.current ||
+        removedPendingImageIdsRef.current.has(preparedImage.id)
+      ) {
+        revokePreviewUrl(preparedImage.previewUrl)
+        return
+      }
+
+      setPendingImages((currentImages) =>
+        applyPreparedImageToPendingImages(currentImages, preparedImage),
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : `${placeholder.file.name}: no pudimos optimizar la imagen seleccionada.`
+
+      if (isMountedRef.current && !removedPendingImageIdsRef.current.has(placeholder.id)) {
+        reportLocationFailure(error, { operation: 'location.image.prepare', resourceType: 'image', stage: 'images.prepare', provider: 'browser', correlationId, extraSafeContext: { image_count: totalFiles, image_index: placeholder.originalIndex, image_mime: placeholder.file.type, image_bytes: placeholder.file.size } })
+      }
+
+      if (!isMountedRef.current || removedPendingImageIdsRef.current.has(placeholder.id)) {
+        return
+      }
+
+      setPendingImages((currentImages) =>
+        applyImagePreparationErrorToPendingImages(
+          currentImages,
+          placeholder.id,
+          message,
+        ),
+      )
+    } finally {
+      if (isMountedRef.current) {
+        processedCount += 1
+        setProcessedImagesCount(Math.min(processedCount, totalFiles))
+      }
+    }
+  }
+
+  async function runPreparationWorker() {
+    while (nextPlaceholderIndex < placeholders.length) {
+      const currentIndex = nextPlaceholderIndex
+      nextPlaceholderIndex += 1
+
+      const placeholder = placeholders[currentIndex]
+
+      if (!placeholder) {
+        return
+      }
+
+      await processPlaceholder(placeholder)
+    }
+  }
+
+  const workerCount = Math.min(imagePreparationConcurrency, placeholders.length)
+
+  await Promise.all(
+    Array.from({ length: workerCount }, () => runPreparationWorker()),
+  )
 }
 
 export async function handleSelectedLocationImageFiles({
@@ -257,94 +379,20 @@ export async function handleSelectedLocationImageFiles({
     })
     setImageSelectionTarget(null)
 
-    let processedCount = 0
-    let nextPlaceholderIndex = 0
-
-    async function processPlaceholder(placeholder: PendingLocationImageFile) {
-      try {
-        const preparedImage = await prepareImage(placeholder.file, {
-          id: placeholder.id,
-          isCover: placeholder.isCover,
-          onStatusChange: (processingLabel) => {
-            if (!isMountedRef.current || removedPendingImageIdsRef.current.has(placeholder.id)) {
-              return
-            }
-
-            setPendingImages((currentImages) =>
-              currentImages.map((image) =>
-                image.id === placeholder.id
-                  ? {
-                      ...image,
-                      processingLabel,
-                    }
-                  : image,
-              ),
-            )
-          },
-          originalIndex: placeholder.originalIndex,
-          target,
-        })
-
-        if (
-          !isMountedRef.current ||
-          removedPendingImageIdsRef.current.has(preparedImage.id)
-        ) {
-          revokePreviewUrl(preparedImage.previewUrl)
-          return
-        }
-
-        setPendingImages((currentImages) =>
-          applyPreparedImageToPendingImages(currentImages, preparedImage),
-        )
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : `${placeholder.file.name}: no pudimos optimizar la imagen seleccionada.`
-
-        if (isMountedRef.current && !removedPendingImageIdsRef.current.has(placeholder.id)) {
-          reportLocationFailure(error, { operation: 'location.image.prepare', resourceType: 'image', stage: 'images.prepare', provider: 'browser', correlationId, extraSafeContext: { image_count: totalFiles, image_index: placeholder.originalIndex, image_mime: placeholder.file.type, image_bytes: placeholder.file.size } })
-        }
-
-        if (!isMountedRef.current || removedPendingImageIdsRef.current.has(placeholder.id)) {
-          return
-        }
-
-        setPendingImages((currentImages) =>
-          applyImagePreparationErrorToPendingImages(
-            currentImages,
-            placeholder.id,
-            message,
-          ),
-        )
-      } finally {
-        if (isMountedRef.current) {
-          processedCount += 1
-          setProcessedImagesCount(Math.min(processedCount, totalFiles))
-        }
-      }
-    }
-
-    async function runPreparationWorker() {
-      while (nextPlaceholderIndex < placeholders.length) {
-        const currentIndex = nextPlaceholderIndex
-        nextPlaceholderIndex += 1
-
-        const placeholder = placeholders[currentIndex]
-
-        if (!placeholder) {
-          return
-        }
-
-        await processPlaceholder(placeholder)
-      }
-    }
-
-    const workerCount = Math.min(imagePreparationConcurrency, placeholders.length)
-
-    await Promise.all(
-      Array.from({ length: workerCount }, () => runPreparationWorker()),
-    )
+    await prepareSelectedLocationImages({
+      correlationId,
+      imagePreparationConcurrency,
+      isMountedRef,
+      placeholders,
+      prepareImage,
+      removedPendingImageIdsRef,
+      reportLocationFailure,
+      revokePreviewUrl,
+      setPendingImages,
+      setProcessedImagesCount,
+      target,
+      totalFiles,
+    })
   } finally {
     if (isMountedRef.current) {
       setIsPreparingImages(false)
