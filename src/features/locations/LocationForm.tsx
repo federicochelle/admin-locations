@@ -73,6 +73,7 @@ import {
   runCreateLocationSave,
   runEditLocationSave,
 } from './application/location-save-branches'
+import { resolveInlineLocationOwner } from './application/location-inline-owner'
 import { deriveLocationImageState } from './application/location-image-selectors'
 import { runPendingLocationImageUploads } from './application/location-image-upload-runner'
 import {
@@ -1375,34 +1376,21 @@ function LocationForm({
       updateStageStatus('location', 'active')
 
       if (!resolvedOwnerId) {
-        const inlineOwnerDraft = getInlineOwnerDraft({
-          ownerName: ownerInputValue,
-          ownerPhone: ownerPhoneValue,
+        const inlineOwnerResult = await resolveInlineLocationOwner({
+          actorProfileId: profile?.id ?? null,
+          buildInlineOwnerCreatePayload,
+          createOwner,
+          currentOwnerId: resolvedOwnerId,
+          getInlineOwnerDraft,
+          observation,
+          ownerInputValue,
+          ownerPhoneValue,
+          setOwnerPhoneInput,
+          setOwnerSearchTerm,
+          setValues,
         })
-
-        if (inlineOwnerDraft.shouldCreate) {
-          observation.stage = 'owner.inline'
-          observation.provider = 'supabase'
-          resolvedOwnerId = await createOwner(
-            buildInlineOwnerCreatePayload({
-              full_name: inlineOwnerDraft.full_name,
-              phone: inlineOwnerDraft.phone,
-            }),
-            {
-              actorProfileId: profile?.id ?? null,
-              correlationId: observation.correlationId,
-            },
-          )
-          observation.outcome = 'partial'
-          observation.extraSafeContext = { confirmed_stages: ['owner.inline'] }
-          createdOwnerName = inlineOwnerDraft.full_name
-          setValues((currentValues) => ({
-            ...currentValues,
-            owner_id: resolvedOwnerId ?? '',
-          }))
-          setOwnerSearchTerm(inlineOwnerDraft.full_name)
-          setOwnerPhoneInput(inlineOwnerDraft.phone)
-        }
+        resolvedOwnerId = inlineOwnerResult.ownerId
+        createdOwnerName = inlineOwnerResult.createdOwnerName
       }
 
       observation.stage = 'payload'
