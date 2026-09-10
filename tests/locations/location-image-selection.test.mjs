@@ -588,6 +588,69 @@ test('handleSelectedLocationImageFiles does not update a removed image and revok
   assert.deepEqual(state.revokedPreviewUrls, ['blob:prepared-gallery-a'])
 })
 
+test('handleSelectedLocationImageFiles ignores status changes for images removed while preparing', async () => {
+  const { handleSelectedLocationImageFiles } = await loadImageSelection()
+  const continuePreparation = createDeferred()
+  const statusChangeStarted = createDeferred()
+  const { deps, state } = createSelectionHarness({
+    files: [new File(['a'], 'gallery-a.jpg', { type: 'image/jpeg' })],
+    prepareImage: async (file, options) => {
+      state.preparedFiles.push(file.name)
+      statusChangeStarted.resolve()
+      await continuePreparation.promise
+      options.onStatusChange?.('Optimizando imagen...')
+
+      return pendingImage(options.id, {
+        file,
+        height: 480,
+        isCover: options.isCover,
+        originalIndex: options.originalIndex,
+        previewUrl: 'blob:prepared-gallery-a',
+        selectionTarget: options.target,
+        status: 'pending',
+        width: 640,
+      })
+    },
+    target: 'gallery',
+  })
+
+  const selection = handleSelectedLocationImageFiles(deps)
+  await statusChangeStarted.promise
+  state.removedPendingImageIdsRef.current.add('gallery-a.jpg')
+  continuePreparation.resolve()
+  await selection
+
+  assert.equal(state.pendingImages[0].processingLabel, undefined)
+  assert.equal(state.pendingImages[0].status, 'processing')
+  assert.deepEqual(state.revokedPreviewUrls, ['blob:prepared-gallery-a'])
+})
+
+test('handleSelectedLocationImageFiles skips failure reporting when an image was removed before prepareImage fails', async () => {
+  const { handleSelectedLocationImageFiles } = await loadImageSelection()
+  const continuePreparation = createDeferred()
+  const preparationStarted = createDeferred()
+  const { deps, state } = createSelectionHarness({
+    files: [new File(['a'], 'gallery-a.jpg', { type: 'image/jpeg' })],
+    prepareImage: async (file) => {
+      state.preparedFiles.push(file.name)
+      preparationStarted.resolve()
+      await continuePreparation.promise
+      throw new Error('No pudimos preparar gallery-a.jpg')
+    },
+    target: 'gallery',
+  })
+
+  const selection = handleSelectedLocationImageFiles(deps)
+  await preparationStarted.promise
+  state.removedPendingImageIdsRef.current.add('gallery-a.jpg')
+  continuePreparation.resolve()
+  await selection
+
+  assert.deepEqual(state.reportedFailures, [])
+  assert.equal(state.pendingImages[0].errorMessage, null)
+  assert.equal(state.pendingImages[0].status, 'processing')
+})
+
 test('handleSelectedLocationImageFiles limits concurrency and counts success and error progress', async () => {
   const { handleSelectedLocationImageFiles } = await loadImageSelection()
   const files = Array.from(
