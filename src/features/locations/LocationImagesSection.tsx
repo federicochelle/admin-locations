@@ -136,6 +136,7 @@ function LocationImagesSection({
         })
 
         await uploadLocationImage({
+          clientUploadId: image.id,
           file: image.file,
           height: image.height,
           isCover: image.isCover,
