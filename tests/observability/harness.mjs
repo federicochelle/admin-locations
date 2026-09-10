@@ -91,6 +91,8 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
     return mod.namespace
   }
   const reporting = await module('src/lib/admin-error-reporting')
+  const imageUploadPlan = await module('src/features/locations/application/location-image-upload-plan')
+  const submitHelpers = await module('src/features/locations/application/location-submit-helpers')
   async function formHandlers(overrides = {}) {
     // Extract actual nested handlers using the TS AST, not copied implementations.
     const source = await fs.readFile(path.join(root, 'src/features/locations/LocationForm.tsx'), 'utf8')
@@ -105,7 +107,7 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
     if (declarations.length !== 4) throw new Error('Expected actual LocationForm handlers')
     const state = { pending: [], submitError: null, navigation: [], validations: [], submitting: false, progress: null }
     const noop = () => {}
-    Object.assign(context, reporting, {
+    Object.assign(context, reporting, imageUploadPlan, submitHelpers, {
       mode: 'create', isReadOnly: false, locationId: undefined, createdLocationIdRef: { current: null }, submitLockRef: { current: false },
       values: { owner_id: 'existing-owner' }, ownerInputValue: '', ownerPhoneValue: '',
       profile: { id: 'actor' }, initialValues: {},
