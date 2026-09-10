@@ -4,6 +4,7 @@ import {
   type DetectedImageContentType,
 } from './image-content-type'
 import { annotateAdminError, markExpectedAdminError } from '../../lib/admin-error-reporting'
+import { runWithAdminTimeout } from '../../lib/async-timeout'
 import { optimizeLocationImageFile } from '../locations/location-image-optimizer'
 import {
   assertSupportedImageFile,
@@ -14,6 +15,7 @@ import {
 
 const HEIC_RESIZE_MAX_DIMENSION = 2400
 const HEIC_OUTPUT_QUALITY_STEPS = [0.85, 0.82] as const
+const DEFAULT_LOCATION_IMAGE_CONVERT_TIMEOUT_MS = 45_000
 
 export type PrepareImageUploadResult = {
   file: File
@@ -65,6 +67,13 @@ type HeicConversionResult = {
 
 function bytesToMb(bytes: number) {
   return Number((bytes / 1024 / 1024).toFixed(2))
+}
+
+function getLocationImageConvertTimeoutMs() {
+  const override = (globalThis as { __LOCATION_IMAGE_CONVERT_TIMEOUT_MS__?: unknown }).__LOCATION_IMAGE_CONVERT_TIMEOUT_MS__
+  return typeof override === 'number' && Number.isFinite(override) && override > 0
+    ? override
+    : DEFAULT_LOCATION_IMAGE_CONVERT_TIMEOUT_MS
 }
 
 function replaceFileExtension(filename: string, extension: string) {
@@ -161,9 +170,21 @@ async function convertHeicImageFile(file: File): Promise<HeicConversionResult> {
   try {
     const { heicTo } = await import('heic-to')
     const decodeStartedAt = performance.now()
-    const convertedBitmap = await heicTo({
-      blob: file,
-      type: 'bitmap',
+    const timeoutMs = getLocationImageConvertTimeoutMs()
+    const convertedBitmap = await runWithAdminTimeout({
+      action: () => heicTo({
+        blob: file,
+        type: 'bitmap',
+      }),
+      cleanupLateResult: (lateBitmap) => {
+        if (lateBitmap instanceof ImageBitmap) {
+          lateBitmap.close()
+        }
+      },
+      message: 'La conversión HEIC/HEIF demoró demasiado.',
+      provider: 'browser',
+      stage: 'images.convert',
+      timeoutMs,
     })
     const decodeMs = performance.now() - decodeStartedAt
 
@@ -202,7 +223,13 @@ async function convertHeicImageFile(file: File): Promise<HeicConversionResult> {
       let convertedBlob: Blob | null = null
 
       for (const quality of HEIC_OUTPUT_QUALITY_STEPS) {
-        const nextBlob = await canvasToBlob(canvas, quality)
+        const nextBlob = await runWithAdminTimeout({
+          action: () => canvasToBlob(canvas, quality),
+          message: 'La conversión HEIC/HEIF demoró demasiado.',
+          provider: 'browser',
+          stage: 'images.convert',
+          timeoutMs,
+        })
 
         if (nextBlob.size > MAX_IMAGE_SIZE_BYTES) {
           continue

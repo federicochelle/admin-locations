@@ -153,10 +153,21 @@ export function createAdminErrorReporter(sentry: Pick<typeof Sentry, 'captureExc
       const fields = causes.map(cause => record(cause)!)
       const code = fields.find(field => typeof field.code === 'string')?.code
       const httpStatus = fields.map(field => field.status ?? record(field.context)?.status).find(status => typeof status === 'number')
+      const timeoutMs = fields.map(field => field.timeoutMs).find(timeout => typeof timeout === 'number' && Number.isFinite(timeout) && timeout >= 0)
+      const timeoutStage = fields.map(field => field.stage).find(stage => typeof stage === 'string' && stages.has(stage))
+      const timeoutProvider = fields.map(field => field.provider).find(provider => typeof provider === 'string' && providers.has(provider))
+      const extraSafeContext: Record<string, unknown> = {
+        ...context.extraSafeContext,
+        ...(timeoutMs !== undefined ? { timeout_ms: timeoutMs } : {}),
+        ...metadata.extraSafeContext,
+      }
       const enriched = { ...context, ...metadata,
         httpStatus: metadata.httpStatus ?? context.httpStatus ?? httpStatus as number | undefined,
+        provider: metadata.provider ?? context.provider ?? timeoutProvider as AdminErrorContext['provider'] | undefined,
+        retryable: metadata.retryable ?? context.retryable ?? (timeoutMs !== undefined ? true : undefined),
+        stage: metadata.stage ?? context.stage ?? timeoutStage as string | undefined,
         supabaseCode: metadata.supabaseCode ?? context.supabaseCode ?? code as string | undefined,
-        extraSafeContext: { ...context.extraSafeContext, ...metadata.extraSafeContext },
+        extraSafeContext,
       }
       if (context.outcome === 'partial') enriched.outcome = 'partial'
       const confirmedStages = [...(Array.isArray(context.extraSafeContext?.confirmed_stages) ? context.extraSafeContext.confirmed_stages : []), ...(Array.isArray(metadata.extraSafeContext?.confirmed_stages) ? metadata.extraSafeContext.confirmed_stages : [])]
