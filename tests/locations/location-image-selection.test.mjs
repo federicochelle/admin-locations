@@ -114,6 +114,7 @@ function createSelectionHarness(overrides = {}) {
             -1,
           ) + 1),
       imagePreparationConcurrency: overrides.imagePreparationConcurrency ?? 3,
+      imagePreparationTimeoutMs: overrides.imagePreparationTimeoutMs,
       isMountedRef: state.isMountedRef,
       isReadOnly: false,
       pendingImagesRef: state.pendingImagesRef,
@@ -532,6 +533,66 @@ test('handleSelectedLocationImageFiles keeps preparing gallery images after one 
   ])
   assert.equal(state.pendingImages[1].errorMessage, 'No pudimos preparar gallery-b.jpg')
   assert.equal(state.reportedFailures.length, 1)
+})
+
+test('handleSelectedLocationImageFiles times out a hung preparation and continues the batch', async () => {
+  const { handleSelectedLocationImageFiles } = await loadImageSelection()
+  const files = [
+    new File(['a'], 'gallery-a.jpg', { type: 'image/jpeg' }),
+    new File(['b'], 'gallery-b.jpg', { type: 'image/jpeg' }),
+  ]
+  const { deps, state } = createSelectionHarness({
+    files,
+    imagePreparationConcurrency: 1,
+    imagePreparationTimeoutMs: 10,
+    prepareImage: async (file, options) => {
+      state.preparedFiles.push(file.name)
+
+      if (file.name === 'gallery-a.jpg') {
+        options.onStatusChange?.('Optimizando imagen...')
+        return new Promise(() => {})
+      }
+
+      return pendingImage(options.id, {
+        file,
+        height: 480,
+        isCover: options.isCover,
+        originalIndex: options.originalIndex,
+        previewUrl: `prepared:${file.name}`,
+        selectionTarget: options.target,
+        status: 'pending',
+        width: 640,
+      })
+    },
+    target: 'gallery',
+  })
+
+  await handleSelectedLocationImageFiles(deps)
+
+  assert.deepEqual(state.preparedFiles, ['gallery-a.jpg', 'gallery-b.jpg'])
+  assert.deepEqual(state.processedCounts, [0, 1, 2])
+  assert.deepEqual(state.isPreparingImages, [true, false])
+  assert.deepEqual(plain(state.pendingImages.map((image) => ({
+    errorMessage: image.errorMessage,
+    processingLabel: image.processingLabel,
+    status: image.status,
+  }))), [
+    {
+      errorMessage: 'gallery-a.jpg: la preparación de la imagen demoró demasiado. Probá nuevamente.',
+      processingLabel: null,
+      status: 'error',
+    },
+    {
+      errorMessage: null,
+      processingLabel: null,
+      status: 'pending',
+    },
+  ])
+  assert.equal(state.reportedFailures.length, 1)
+  assert.equal(state.reportedFailures[0].context.stage, 'images.prepare')
+  assert.equal(state.reportedFailures[0].context.provider, 'browser')
+  assert.equal(state.reportedFailures[0].context.correlationId, 'correlation-1')
+  assert.equal(state.reportedFailures[0].context.extraSafeContext.timeout_ms, 10)
 })
 
 test('handleSelectedLocationImageFiles replaces an existing cover and revokes its preview', async () => {
