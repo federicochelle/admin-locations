@@ -153,6 +153,30 @@ test('runPendingImageUploads keeps uploading after one image fails', async () =>
   assert.equal(reportedFailures.length, 1)
 })
 
+test('runPendingImageUploads sends the pending image id as the client upload id', async () => {
+  const pendingImages = [
+    pendingImage('11111111-1111-4111-8111-111111111111', { originalIndex: 0 }),
+    pendingImage('22222222-2222-4222-8222-222222222222', { originalIndex: 1 }),
+  ]
+  const uploadedClientIds = []
+  const { form } = await setupUploadRunner({
+    pendingImages,
+    uploadLocationImage: async ({ clientUploadId }) => {
+      uploadedClientIds.push(clientUploadId)
+    },
+  })
+
+  const result = await form.runPendingImageUploads('location-1', {
+    correlationId: 'correlation-1',
+  })
+
+  assert.equal(result, null)
+  assert.deepEqual(uploadedClientIds.sort(), [
+    '11111111-1111-4111-8111-111111111111',
+    '22222222-2222-4222-8222-222222222222',
+  ])
+})
+
 test('runPendingImageUploads aborts the matching upload on timeout', async () => {
   const timeoutCallbacks = []
   const clearedTimeouts = []
