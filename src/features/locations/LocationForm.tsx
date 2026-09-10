@@ -69,6 +69,10 @@ import {
   getInlineOwnerDraft,
   getSubmitErrorMessage,
 } from './application/location-submit-helpers'
+import {
+  runCreateLocationSave,
+  runEditLocationSave,
+} from './application/location-save-branches'
 import { deriveLocationImageState } from './application/location-image-selectors'
 import { runPendingLocationImageUploads } from './application/location-image-upload-runner'
 import {
@@ -1411,99 +1415,50 @@ function LocationForm({
       )
 
       if (mode === 'edit') {
-        if (!locationId) {
-          throw new Error('Falta el identificador de la locación a editar.')
-        }
-
-        await updateLocation(locationId, payload, {
+        await runEditLocationSave({
           actorProfileId: profile?.id ?? null,
-          correlationId: observation.correlationId,
+          locationId,
+          markSaveProgressSuccess,
+          navigateToLocations: () => navigate(routePaths.locations),
+          observation,
+          onEditSuccess,
+          payload,
+          protection,
+          revokePreviewUrl,
+          runPendingImageDeletes,
+          runPendingImageUploads,
+          setPendingDeletedPersistedImageIds,
+          setPendingImages,
+          setSaveProgress,
+          syncVisibleGallery,
+          updateLocation,
+          updateLocationWriteObservation: getLocationWriteObservationPatch,
+          updateStageStatus,
+          waitForSuccess: () => wait(SAVE_SUCCESS_DELAY_MS),
         })
-        Object.assign(observation, getLocationWriteObservationPatch({ locationId, mode }))
-        updateStageStatus('location', 'done')
-
-        await runPendingImageDeletes(locationId, observation)
-        setPendingDeletedPersistedImageIds([])
-        const uploadErrorMessage = await runPendingImageUploads(locationId, observation)
-        await syncVisibleGallery(observation)
-
-        setPendingImages((currentImages) => {
-          currentImages.forEach((image) => {
-            if (image.status === 'done') {
-              revokePreviewUrl(image.previewUrl)
-            }
-          })
-
-          return currentImages.filter((image) => image.status !== 'done')
-        })
-
-        if (uploadErrorMessage) {
-          throw suppressAdminErrorReport(new Error(uploadErrorMessage))
-        }
-
-        protection.markSaved()
-        updateStageStatus('completed', 'done')
-        markSaveProgressSuccess()
-        await wait(SAVE_SUCCESS_DELAY_MS)
-        setSaveProgress(null)
-        if (onEditSuccess) {
-          await onEditSuccess()
-          return
-        }
-
-        navigate(routePaths.locations)
       } else {
-        // Retain a partially created location so retries do not create duplicates.
-        const existingCreatedLocationId = createdLocationIdRef.current
-        const createdLocationId = existingCreatedLocationId ?? await createLocation(payload, {
+        await runCreateLocationSave({
           actorProfileId: profile?.id ?? null,
-          correlationId: observation.correlationId,
-          onLocationCreated: (confirmedLocationId) => {
-            createdLocationIdRef.current = confirmedLocationId
-          },
+          createLocation,
+          createdLocationIdRef,
+          markSaveProgressSuccess,
+          navigateToLocations: () => navigate(routePaths.locations),
+          observation,
+          onCreateSuccess,
+          payload,
+          protection,
+          revokePreviewUrl,
+          runPendingImageDeletes,
+          runPendingImageUploads,
+          setPendingDeletedPersistedImageIds,
+          setPendingImages,
+          setSaveProgress,
+          syncVisibleGallery,
+          updateLocation,
+          updateLocationWriteObservation: getLocationWriteObservationPatch,
+          updateStageStatus,
+          waitForSuccess: () => wait(SAVE_SUCCESS_DELAY_MS),
         })
-        if (existingCreatedLocationId) {
-          await updateLocation(createdLocationId, payload, {
-            actorProfileId: profile?.id ?? null,
-            correlationId: observation.correlationId,
-          })
-        }
-        createdLocationIdRef.current = createdLocationId
-        Object.assign(observation, getLocationWriteObservationPatch({ locationId: createdLocationId, mode }))
-        updateStageStatus('location', 'done')
-
-        await runPendingImageDeletes(createdLocationId, observation)
-        setPendingDeletedPersistedImageIds([])
-
-        const uploadErrorMessage = await runPendingImageUploads(createdLocationId, observation)
-
-        setPendingImages((currentImages) => {
-          currentImages.forEach((image) => {
-            if (image.status === 'done') {
-              revokePreviewUrl(image.previewUrl)
-            }
-          })
-
-          return currentImages.filter((image) => image.status !== 'done')
-        })
-
-        if (uploadErrorMessage) {
-          throw suppressAdminErrorReport(new Error(uploadErrorMessage))
-        }
-
-        await syncVisibleGallery(observation)
-
-        protection.markSaved()
-        updateStageStatus('completed', 'done')
-        markSaveProgressSuccess()
-        await wait(SAVE_SUCCESS_DELAY_MS)
-        setSaveProgress(null)
-        if (onCreateSuccess) {
-          await onCreateSuccess()
-          return
-        }
-
-        navigate(routePaths.locations)
       }
     } catch (error) {
       reportLocationFailure(error, observation)
