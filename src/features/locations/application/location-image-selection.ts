@@ -1,5 +1,6 @@
 import type { PendingLocationImageFile } from '../location-images.types'
 import type { AdminErrorContext } from '../../../lib/admin-error-reporting'
+import { isAdminOperationTimeoutError, runWithAdminTimeout } from '../../../lib/async-timeout'
 
 type ImageSelectionTarget = 'cover' | 'gallery'
 
@@ -47,6 +48,7 @@ type LocationImageSelectionRef<T> = {
 type PrepareSelectedLocationImagesInput = {
   correlationId: string
   imagePreparationConcurrency: number
+  imagePreparationTimeoutMs?: number
   isMountedRef: LocationImageSelectionRef<boolean>
   placeholders: PendingLocationImageFile[]
   prepareImage: (
@@ -88,6 +90,7 @@ type HandleSelectedLocationImageFilesInput = {
   files: File[]
   getNextOriginalIndex: (currentImages: PendingLocationImageFile[]) => number
   imagePreparationConcurrency: number
+  imagePreparationTimeoutMs?: number
   isMountedRef: LocationImageSelectionRef<boolean>
   isReadOnly: boolean
   pendingImagesRef: LocationImageSelectionRef<PendingLocationImageFile[]>
@@ -107,6 +110,8 @@ type HandleSelectedLocationImageFilesInput = {
   setTotalImagesToProcess: (count: number) => void
   target: ImageSelectionTarget
 }
+
+const DEFAULT_IMAGE_PREPARATION_TIMEOUT_MS = 60_000
 
 export function getImageSelectionPlan({
   files,
@@ -213,6 +218,7 @@ export function applyImagePreparationErrorToPendingImages(
 export async function prepareSelectedLocationImages({
   correlationId,
   imagePreparationConcurrency,
+  imagePreparationTimeoutMs = DEFAULT_IMAGE_PREPARATION_TIMEOUT_MS,
   isMountedRef,
   placeholders,
   prepareImage,
@@ -229,27 +235,33 @@ export async function prepareSelectedLocationImages({
 
   async function processPlaceholder(placeholder: PendingLocationImageFile) {
     try {
-      const preparedImage = await prepareImage(placeholder.file, {
-        id: placeholder.id,
-        isCover: placeholder.isCover,
-        onStatusChange: (processingLabel) => {
-          if (!isMountedRef.current || removedPendingImageIdsRef.current.has(placeholder.id)) {
-            return
-          }
+      const preparedImage = await runWithAdminTimeout({
+        action: () => prepareImage(placeholder.file, {
+          id: placeholder.id,
+          isCover: placeholder.isCover,
+          onStatusChange: (processingLabel) => {
+            if (!isMountedRef.current || removedPendingImageIdsRef.current.has(placeholder.id)) {
+              return
+            }
 
-          setPendingImages((currentImages) =>
-            currentImages.map((image) =>
-              image.id === placeholder.id
-                ? {
-                    ...image,
-                    processingLabel,
-                  }
-                : image,
-            ),
-          )
-        },
-        originalIndex: placeholder.originalIndex,
-        target,
+            setPendingImages((currentImages) =>
+              currentImages.map((image) =>
+                image.id === placeholder.id
+                  ? {
+                      ...image,
+                      processingLabel,
+                    }
+                  : image,
+              ),
+            )
+          },
+          originalIndex: placeholder.originalIndex,
+          target,
+        }),
+        message: `${placeholder.file.name}: la preparación de la imagen demoró demasiado. Probá nuevamente.`,
+        provider: 'browser',
+        stage: 'images.prepare',
+        timeoutMs: imagePreparationTimeoutMs,
       })
 
       if (
@@ -270,7 +282,7 @@ export async function prepareSelectedLocationImages({
           : `${placeholder.file.name}: no pudimos optimizar la imagen seleccionada.`
 
       if (isMountedRef.current && !removedPendingImageIdsRef.current.has(placeholder.id)) {
-        reportLocationFailure(error, { operation: 'location.image.prepare', resourceType: 'image', stage: 'images.prepare', provider: 'browser', correlationId, extraSafeContext: { image_count: totalFiles, image_index: placeholder.originalIndex, image_mime: placeholder.file.type, image_bytes: placeholder.file.size } })
+        reportLocationFailure(error, { operation: 'location.image.prepare', resourceType: 'image', stage: 'images.prepare', provider: 'browser', correlationId, extraSafeContext: { image_count: totalFiles, image_index: placeholder.originalIndex, image_mime: placeholder.file.type, image_bytes: placeholder.file.size, ...(isAdminOperationTimeoutError(error) ? { timeout_ms: error.timeoutMs } : {}) } })
       }
 
       if (!isMountedRef.current || removedPendingImageIdsRef.current.has(placeholder.id)) {
@@ -320,6 +332,7 @@ export async function handleSelectedLocationImageFiles({
   files,
   getNextOriginalIndex,
   imagePreparationConcurrency,
+  imagePreparationTimeoutMs,
   isMountedRef,
   isReadOnly,
   pendingImagesRef,
@@ -382,6 +395,7 @@ export async function handleSelectedLocationImageFiles({
     await prepareSelectedLocationImages({
       correlationId,
       imagePreparationConcurrency,
+      imagePreparationTimeoutMs,
       isMountedRef,
       placeholders,
       prepareImage,

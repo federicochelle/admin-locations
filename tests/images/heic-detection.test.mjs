@@ -29,6 +29,17 @@ const cases = [
   ['G: AVIF real + .jpg + image/jpeg', avifBytes, 'foto.jpg', 'image/jpeg', false],
 ]
 
+function createDeferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+
+  return { promise, reject, resolve }
+}
+
 test('A-G: prepareImageUploadFile sólo llama heicTo para contenido HEIC/HEVC', async () => {
   let heicToCalls = 0
 
@@ -166,4 +177,96 @@ test('el caso D se convierte a bytes JPEG y continúa por el decoder/optimizer',
     jpegBytes.slice(0, 3),
   )
   assert.equal(closeCalls, 2)
+})
+
+test('HEIC conversion timeout rejects with a recoverable image error', async () => {
+  const h = await harness({
+    actualImageProcessor: true,
+    heicTo: async () => new Promise(() => {}),
+  })
+
+  Object.assign(h.context, {
+    __LOCATION_IMAGE_CONVERT_TIMEOUT_MS__: 10,
+    ImageBitmap: class {},
+    performance,
+    console: {
+      error() {}, groupCollapsed() {}, groupEnd() {}, log() {}, warn() {},
+    },
+    document: {
+      createElement(tag) {
+        assert.equal(tag, 'canvas')
+        return {
+          width: 0,
+          height: 0,
+          getContext() { return { drawImage() {} } },
+          toBlob(callback, mimeType) {
+            callback(new Blob([jpegBytes], { type: mimeType }))
+          },
+        }
+      },
+    },
+  })
+
+  const processor = await h.module('src/features/images/image-upload.processor')
+
+  await assert.rejects(
+    processor.prepareImageUploadFile(new File([heicBytes], 'foto.heic', { type: 'image/heic' })),
+    error => {
+      assert.equal(error.message, 'foto.heic: no pudimos convertir la imagen HEIC/HEIF automáticamente.')
+      assert.equal(error.cause?.name, 'AdminOperationTimeoutError')
+      assert.equal(error.cause?.stage, 'images.convert')
+      assert.equal(error.cause?.timeoutMs, 10)
+      return true
+    },
+  )
+})
+
+test('late HEIC bitmap result is closed after conversion timeout wins', async () => {
+  const deferred = createDeferred()
+  let closeCalls = 0
+
+  class FakeImageBitmap {
+    width = 1200
+    height = 800
+    close() { closeCalls += 1 }
+  }
+
+  const h = await harness({
+    actualImageProcessor: true,
+    heicTo: async () => deferred.promise,
+  })
+
+  Object.assign(h.context, {
+    __LOCATION_IMAGE_CONVERT_TIMEOUT_MS__: 10,
+    ImageBitmap: FakeImageBitmap,
+    performance,
+    console: {
+      error() {}, groupCollapsed() {}, groupEnd() {}, log() {}, warn() {},
+    },
+    document: {
+      createElement(tag) {
+        assert.equal(tag, 'canvas')
+        return {
+          width: 0,
+          height: 0,
+          getContext() { return { drawImage() {} } },
+          toBlob(callback, mimeType) {
+            callback(new Blob([jpegBytes], { type: mimeType }))
+          },
+        }
+      },
+    },
+  })
+
+  const processor = await h.module('src/features/images/image-upload.processor')
+
+  await assert.rejects(
+    processor.prepareImageUploadFile(new File([heicBytes], 'foto.heic', { type: 'image/heic' })),
+    /foto.heic: no pudimos convertir la imagen HEIC\/HEIF automáticamente\./,
+  )
+  assert.equal(closeCalls, 0)
+  deferred.resolve(new FakeImageBitmap())
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(closeCalls, 1)
+  assert.equal(h.events.length, 0)
 })
