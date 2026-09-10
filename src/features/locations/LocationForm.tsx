@@ -41,7 +41,6 @@ import { resolvePublicLocationCoordinates } from './location-public-coordinates'
 import type { LocationFormValues } from './locations.types'
 import type {
   PendingLocationImageFile,
-  PendingLocationImageStatus,
 } from './location-images.types'
 import type { ParsedGooglePlaceAddress } from './location-address-parser'
 import {
@@ -71,7 +70,7 @@ import {
   getSubmitErrorMessage,
 } from './application/location-submit-helpers'
 import { deriveLocationImageState } from './application/location-image-selectors'
-import { buildLocationImageUploadPlan } from './application/location-image-upload-plan'
+import { runPendingLocationImageUploads } from './application/location-image-upload-runner'
 import {
   getDefaultFieldErrors,
   getValidationMessages,
@@ -1294,164 +1293,23 @@ function LocationForm({
   }
 
   async function runPendingImageUploads(nextLocationId: string, observation: AdminErrorContext) {
-    if (pendingImages.length === 0) {
-      updateStageStatus('uploadImages', 'skipped')
-      return null
-    }
-
-    let hasImageErrors = false
-    const uploadPlan = buildLocationImageUploadPlan({
+    return runPendingLocationImageUploads({
+      imageUploadConcurrency: IMAGE_UPLOAD_CONCURRENCY,
+      imageUploadTimeoutErrorMessage: IMAGE_UPLOAD_TIMEOUT_ERROR_MESSAGE,
+      imageUploadTimeoutMs: IMAGE_UPLOAD_TIMEOUT_MS,
+      locationId: nextLocationId,
       mode,
+      observation,
       pendingImages,
+      reportLocationFailure,
+      setSaveProgressError,
+      timers: window,
+      updatePendingImage,
+      updateSaveProgress,
+      updateStageStatus,
+      uploadLocationImage,
       visiblePersistedImages,
     })
-    const { uploads } = uploadPlan
-
-    if (uploadPlan.invalidPendingImages.length > 0) {
-      throw new Error('Hay imágenes que no se pudieron procesar. Quitalas o volvé a cargarlas antes de guardar.')
-    }
-
-    if (uploads.length === 0) {
-      updateStageStatus('uploadImages', 'skipped')
-      return null
-    }
-    const activeUploadStatuses = new Map<
-      string,
-      Extract<PendingLocationImageStatus, 'uploading' | 'finalizing'>
-    >()
-    let completedUploads = 0
-    let nextUploadIndex = 0
-
-    function syncUploadProgress() {
-      const activeUploadStatusesList = Array.from(activeUploadStatuses.values())
-      const uploadingCurrentStep =
-        activeUploadStatusesList.length === 0
-          ? null
-          : activeUploadStatusesList.includes('finalizing')
-            ? 'finalizing'
-            : 'uploading'
-
-      updateSaveProgress((currentState) => ({
-        ...currentState,
-        uploadingDone: completedUploads,
-        uploadingCurrentIndex:
-          activeUploadStatusesList.length > 0
-            ? Math.min(completedUploads + 1, currentState.uploadingTotal)
-            : null,
-        uploadingCurrentName: null,
-        uploadingCurrentStep,
-      }))
-    }
-
-    async function processUpload(
-      image: PendingLocationImageFile,
-      sortOrder: number,
-    ) {
-      const controller = new AbortController()
-      let uploadTimeoutId: number | null = null
-
-      try {
-        updatePendingImage(image.id, {
-          errorMessage: null,
-          status: 'uploading',
-        })
-
-        activeUploadStatuses.set(image.id, 'uploading')
-        syncUploadProgress()
-
-        const uploadTask = uploadLocationImage({
-          file: image.file,
-          height: image.height,
-          isCover: image.isCover,
-          locationId: nextLocationId,
-          sortOrder,
-          width: image.width,
-          signal: controller.signal,
-          onStatusChange: (status) => {
-            updatePendingImage(image.id, {
-              status,
-            })
-
-            activeUploadStatuses.set(image.id, status)
-            syncUploadProgress()
-          },
-        })
-        uploadTimeoutId = window.setTimeout(() => {
-          controller.abort(new Error(IMAGE_UPLOAD_TIMEOUT_ERROR_MESSAGE))
-        }, IMAGE_UPLOAD_TIMEOUT_MS)
-
-        await uploadTask
-
-        updatePendingImage(image.id, {
-          errorMessage: null,
-          status: 'done',
-        })
-      } catch (error) {
-        hasImageErrors = true
-        reportLocationFailure(error, { ...observation, resourceType: 'image', resourceId: nextLocationId, stage: 'images.upload', outcome: 'partial', extraSafeContext: { ...observation.extraSafeContext, image_count: uploads.length, image_index: image.originalIndex, image_mime: image.file.type, image_bytes: image.file.size, image_dimensions: { width: image.width, height: image.height }, timeout_ms: IMAGE_UPLOAD_TIMEOUT_MS } })
-
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'No pudimos subir esta imagen.'
-
-        if (message === IMAGE_UPLOAD_TIMEOUT_ERROR_MESSAGE) {
-          console.warn('[UPLOAD TIMEOUT]', image.id)
-        } else {
-          console.error('[UPLOAD ERROR]', image.id, error)
-        }
-
-        updatePendingImage(image.id, {
-          errorMessage: message,
-          status: 'error',
-        })
-      } finally {
-        if (uploadTimeoutId !== null) {
-          window.clearTimeout(uploadTimeoutId)
-        }
-
-        activeUploadStatuses.delete(image.id)
-        completedUploads += 1
-        syncUploadProgress()
-      }
-    }
-
-    async function runUploadWorker() {
-      while (nextUploadIndex < uploads.length) {
-        const currentUploadIndex = nextUploadIndex
-        nextUploadIndex += 1
-
-        const currentUpload = uploads[currentUploadIndex]
-
-        if (!currentUpload) {
-          return
-        }
-
-        await processUpload(currentUpload.image, currentUpload.sortOrder)
-      }
-    }
-
-    updateStageStatus('uploadImages', 'active')
-    syncUploadProgress()
-
-    const workerCount = Math.min(IMAGE_UPLOAD_CONCURRENCY, uploads.length)
-
-    await Promise.all(
-      Array.from({ length: workerCount }, () => runUploadWorker()),
-    )
-
-    if (hasImageErrors) {
-      const message =
-        mode === 'edit'
-          ? 'Los cambios de la locacion fueron guardados, pero algunas imagenes no se pudieron subir. Revisalas y volve a intentar.'
-          : 'La locacion fue creada, pero algunas imagenes no se pudieron subir. Revisalas y volve a intentar.'
-
-      setSaveProgressError('uploadImages', message)
-      return message
-    }
-
-    updateStageStatus('uploadImages', 'done')
-    return null
   }
 
   async function syncVisibleGallery(observation: AdminErrorContext) {
