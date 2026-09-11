@@ -281,9 +281,13 @@ type CreatedLocationRow = {
 
 type DeleteLocationResult = {
   success: true
+  alreadyDeleted?: boolean
   deletedLocationId: string
   deletedImagesCount: number
 }
+
+const DELETE_LOCATION_CONFIRMATION_ERROR_MESSAGE =
+  'No pudimos confirmar la eliminación. Intentá nuevamente.'
 
 function getSelectedRelationIds<T>(
   relation: T | T[] | null,
@@ -880,6 +884,16 @@ export async function deleteLocation(id: string): Promise<string> {
   )
 
   if (error) {
+    if (isAmbiguousDeleteTransportError(error)) {
+      const wasDeleted = await reconcileDeletedLocation(supabase, id)
+
+      if (wasDeleted) {
+        return id
+      }
+
+      throw new Error(DELETE_LOCATION_CONFIRMATION_ERROR_MESSAGE)
+    }
+
     throw await annotateLocationDeleteFailure(error)
   }
 
@@ -888,6 +902,63 @@ export async function deleteLocation(id: string): Promise<string> {
   }
 
   return data.deletedLocationId
+}
+
+function getErrorName(error: unknown) {
+  return typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    typeof error.name === 'string'
+    ? error.name
+    : null
+}
+
+function getErrorMessageValue(error: unknown) {
+  return typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof error.message === 'string'
+    ? error.message
+    : null
+}
+
+function isAmbiguousDeleteTransportError(error: unknown) {
+  const errorName = getErrorName(error)
+
+  if (
+    errorName === 'FunctionsFetchError' ||
+    errorName === 'FunctionsRelayError' ||
+    errorName === 'AbortError' ||
+    errorName === 'TimeoutError'
+  ) {
+    return true
+  }
+
+  const errorMessage = getErrorMessageValue(error)?.toLocaleLowerCase() ?? ''
+
+  return (
+    error instanceof TypeError &&
+    (errorMessage.includes('failed to fetch') ||
+      errorMessage.includes('network') ||
+      errorMessage.includes('abort'))
+  )
+}
+
+async function reconcileDeletedLocation(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  id: string,
+) {
+  const { data, error } = await supabase
+    .from('locations')
+    .select('id')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(DELETE_LOCATION_CONFIRMATION_ERROR_MESSAGE)
+  }
+
+  return !data
 }
 
 // Future feature growth for locations should stay in this service layer,
