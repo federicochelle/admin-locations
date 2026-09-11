@@ -132,7 +132,7 @@ export function useLocations(): UseLocationsResult {
   }
 
   async function remove(id: string, correlationId?: string) {
-    await runLocationAction(`delete:${id}`, () => deleteLocation(id), correlationId)
+    await runLocationAction(`delete:${id}`, () => deleteLocation(id, { correlationId }), correlationId)
   }
 
   function setSearchTerm(value: string) {

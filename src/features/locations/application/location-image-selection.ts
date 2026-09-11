@@ -58,6 +58,7 @@ type PrepareSelectedLocationImagesInput = {
   prepareImage: (
     file: File,
     options: {
+      correlationId?: string
       id: string
       isCover: boolean
       originalIndex: number
@@ -378,6 +379,7 @@ async function runPendingImagePreparation({
     const preparedImage = await runWithAdminTimeout({
       action: () =>
         prepareImage(placeholder.file, {
+          correlationId,
           id: placeholder.id,
           isCover: placeholder.isCover,
           onStatusChange: (processingLabel) => {

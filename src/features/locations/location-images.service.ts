@@ -1,5 +1,6 @@
 import { annotateLocationDeleteFailure } from './location-edge-errors'
 import { annotateAdminError, normalizeAdminError } from '../../lib/admin-error-reporting'
+import { getAdminCorrelationHeaders } from '../../lib/admin-correlation'
 import { getSupabaseClient } from '../../lib/supabase'
 import type {
   DeleteLocationImageInput,
@@ -100,7 +101,12 @@ export async function getLocationImageUploadUrl(
     const { data, error } = await supabase.functions.invoke<LocationImageUploadUrlResult>(
       'location-image-upload-url',
       {
-        body: input,
+        body: {
+          contentType: input.contentType,
+          filename: input.filename,
+          locationId: input.locationId,
+        },
+        headers: getAdminCorrelationHeaders(input.correlationId),
         signal,
       },
     )
@@ -172,6 +178,7 @@ export async function finalizeLocationImageUpload(
           sortOrder: input.sortOrder,
           width: input.width,
         },
+        headers: getAdminCorrelationHeaders(input.correlationId),
         signal,
       },
     )
@@ -318,6 +325,7 @@ export async function uploadLocationImageAsset(input: {
   locationId: string
   onUploadStart?: () => void
   signal?: AbortSignal
+  correlationId?: string
 }): Promise<{
   cloudflareImageId: string
   directUpload: CloudflareDirectUploadResponse
@@ -328,6 +336,7 @@ export async function uploadLocationImageAsset(input: {
       locationId: input.locationId,
       filename: input.file.name,
       contentType,
+      correlationId: input.correlationId,
     },
     input.signal,
   )
@@ -361,6 +370,7 @@ export async function uploadLocationImage(
 ): Promise<UploadLocationImageResult> {
   try {
     const uploadedAsset = await uploadLocationImageAsset({
+      correlationId: input.correlationId,
       file: input.file,
       locationId: input.locationId,
       onUploadStart: () => input.onStatusChange?.('uploading'),
@@ -374,6 +384,7 @@ export async function uploadLocationImage(
       locationId: input.locationId,
       cloudflareImageId,
       clientUploadId: input.clientUploadId,
+      correlationId: input.correlationId,
       height: input.height,
       altText: input.altText,
       caption: input.caption,

@@ -1,5 +1,6 @@
 import { annotateLocationDeleteFailure } from './location-edge-errors'
 import { annotateAdminError, normalizeAdminError, reportAdminError } from '../../lib/admin-error-reporting'
+import { getAdminCorrelationHeaders } from '../../lib/admin-correlation'
 import { getSupabaseClient } from '../../lib/supabase'
 import { createActivityLog } from '../activity/activity-logs.service'
 import type {
@@ -871,7 +872,7 @@ export async function publishLocation(id: string): Promise<string> {
   })
 }
 
-export async function deleteLocation(id: string): Promise<string> {
+export async function deleteLocation(id: string, options?: { correlationId?: string }): Promise<string> {
   const supabase = getSupabaseClient()
 
   const { data, error } = await supabase.functions.invoke<DeleteLocationResult>(
@@ -880,6 +881,7 @@ export async function deleteLocation(id: string): Promise<string> {
       body: {
         locationId: id,
       },
+      headers: getAdminCorrelationHeaders(options?.correlationId),
     },
   )
 

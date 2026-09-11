@@ -3,7 +3,7 @@ import {
   assertAllowedContentType,
   createDirectUploadUrl,
 } from '../_shared/cloudflare.ts'
-import { handleOptions, HttpError, jsonResponse, errorResponse } from '../_shared/http.ts'
+import { getAdminCorrelationId, handleOptions, HttpError, jsonResponse, errorResponse } from '../_shared/http.ts'
 import { assertLocationExists } from '../_shared/locations.ts'
 
 type UploadUrlRequestBody = {
@@ -43,6 +43,8 @@ function parseRequestBody(body: UploadUrlRequestBody) {
 
 Deno.serve(async (request) => {
   const origin = request.headers.get('origin')
+  const correlationId = getAdminCorrelationId(request)
+  let locationId: string | undefined
 
   if (request.method === 'OPTIONS') {
     return handleOptions(request)
@@ -59,6 +61,7 @@ Deno.serve(async (request) => {
   try {
     const body = (await request.json()) as UploadUrlRequestBody
     const input = parseRequestBody(body)
+    locationId = input.locationId
 
     const { adminClient, user } = await assertAdmin(request)
 
@@ -83,12 +86,18 @@ Deno.serve(async (request) => {
   } catch (error) {
     if (error instanceof HttpError) {
       console.error('[location-image-upload-url] request_failed', {
+        correlationId,
         details: error.details ?? null,
+        event: 'location-image-upload-url.error',
+        locationId,
         message: error.message,
         status: error.status,
       })
     } else if (error instanceof Error) {
       console.error('[location-image-upload-url] request_failed', {
+        correlationId,
+        event: 'location-image-upload-url.error',
+        locationId,
         message: error.message,
         name: error.name,
         stack: error.stack ?? null,
@@ -96,6 +105,7 @@ Deno.serve(async (request) => {
 
       return jsonResponse(
         {
+          correlationId,
           details: {
             name: error.name,
             stack: error.stack ?? null,
@@ -107,10 +117,13 @@ Deno.serve(async (request) => {
       )
     } else {
       console.error('[location-image-upload-url] request_failed', {
+        correlationId,
+        event: 'location-image-upload-url.error',
+        locationId,
         message: 'Unknown error',
       })
     }
 
-    return errorResponse(error, origin)
+    return errorResponse(error, origin, correlationId)
   }
 })

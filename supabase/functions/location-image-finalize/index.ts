@@ -1,6 +1,6 @@
 import { assertAdmin } from '../_shared/auth.ts'
 import { buildCloudflarePublicUrl } from '../_shared/cloudflare.ts'
-import { errorResponse, handleOptions, HttpError, jsonResponse } from '../_shared/http.ts'
+import { errorResponse, getAdminCorrelationId, handleOptions, HttpError, jsonResponse } from '../_shared/http.ts'
 import { assertLocationExists } from '../_shared/locations.ts'
 
 type FinalizeRequestBody = {
@@ -202,6 +202,8 @@ async function findExistingClientUpload(
 
 Deno.serve(async (request) => {
   const origin = request.headers.get('origin')
+  const correlationId = getAdminCorrelationId(request)
+  let locationId: string | undefined
 
   if (request.method === 'OPTIONS') {
     return handleOptions(request)
@@ -218,6 +220,7 @@ Deno.serve(async (request) => {
   try {
     const body = (await request.json()) as FinalizeRequestBody
     const input = parseRequestBody(body)
+    locationId = input.locationId
     const { adminClient } = await assertAdmin(request)
 
     await assertLocationExists(adminClient, input.locationId)
@@ -315,6 +318,18 @@ Deno.serve(async (request) => {
 
     return jsonResponse(createdRow as CreatedLocationImageRow, { status: 201 }, origin)
   } catch (error) {
-    return errorResponse(error, origin)
+    console.error('[location-image-finalize] error', {
+      correlationId,
+      errorCode:
+        error instanceof HttpError && typeof error.details === 'object' && error.details !== null && 'code' in error.details
+          ? error.details.code
+          : undefined,
+      event: 'location-image-finalize.error',
+      locationId,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stage: 'request',
+      status: error instanceof HttpError ? error.status : 500,
+    })
+    return errorResponse(error, origin, correlationId)
   }
 })

@@ -136,6 +136,7 @@ export async function runPendingLocationImageUploads({
 
       const uploadTask = uploadLocationImage({
         clientUploadId: image.id,
+        correlationId: observation.correlationId,
         file: image.file,
         height: image.height,
         isCover: image.isCover,

@@ -131,7 +131,7 @@ function OwnerEditPage() {
     try {
       setActiveLocationActionKey(`delete:${locationId}`)
       setLocationActionErrorMessage(null)
-      await deleteLocation(locationId)
+      await deleteLocation(locationId, { correlationId })
       setOwnerLocations((currentLocations) =>
         currentLocations.filter((location) => location.id !== locationId),
       )

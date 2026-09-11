@@ -3,7 +3,7 @@ import {
   annotateImageWithGoogleVision,
   type VisionFaceAnnotation,
 } from '../_shared/google-vision.ts'
-import { errorResponse, handleOptions, HttpError, jsonResponse } from '../_shared/http.ts'
+import { errorResponse, getAdminCorrelationId, handleOptions, HttpError, jsonResponse } from '../_shared/http.ts'
 
 type BoundingBox = {
   x: number
@@ -100,6 +100,7 @@ function parseImageFile(formData: FormData) {
 
 Deno.serve(async (request) => {
   const origin = request.headers.get('origin')
+  const correlationId = getAdminCorrelationId(request)
 
   if (request.method === 'OPTIONS') {
     return handleOptions(request)
@@ -136,6 +137,13 @@ Deno.serve(async (request) => {
       origin,
     )
   } catch (error) {
-    return errorResponse(error, origin)
+    console.error('[location-image-detect-sensitive-content] error', {
+      correlationId,
+      event: 'location-image-detect-sensitive-content.error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stage: 'request',
+      status: error instanceof HttpError ? error.status : 500,
+    })
+    return errorResponse(error, origin, correlationId)
   }
 })
