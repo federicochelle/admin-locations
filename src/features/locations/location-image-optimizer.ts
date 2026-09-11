@@ -1,4 +1,5 @@
 import { decodeImage, type DecodedImage } from '../images/decode-image'
+import { markExpectedAdminError } from '../../lib/admin-error-reporting'
 
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024
 const MIN_IMAGE_SIZE_BYTES_TO_OPTIMIZE = 1.5 * 1024 * 1024
@@ -196,7 +197,7 @@ export async function optimizeLocationImageFile(
     }
   }
 
-  throw new Error(
+  throw markExpectedAdminError(new Error(
     `${file.name}: sigue superando el máximo de 10MB después de optimizar.`,
-  )
+  ))
 }

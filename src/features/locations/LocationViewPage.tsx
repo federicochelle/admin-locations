@@ -435,7 +435,7 @@ function LocationViewPage() {
         ) : null}
 
         {!isLoading && errorMessage ? (
-          <div>
+          <div className="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-sm backdrop-blur-sm">
             <h2 className="text-lg font-semibold text-slate-950">
               {errorMessage === 'LOCATION_NOT_FOUND'
                 ? 'Locación no encontrada'

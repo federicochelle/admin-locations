@@ -17,6 +17,7 @@ type PendingLocationImagesGridProps = {
   mode?: 'pending'
   onManualBlur?: (imageId: string) => void
   onRemove?: (imageId: string) => void
+  onRetry?: (imageId: string) => void
   onSetCover?: (imageId: string) => void
 }
 
@@ -47,6 +48,7 @@ type MixedLocationImagesGridProps = {
   onManualBlurPersisted?: (imageId: string) => void
   onRemovePending?: (imageId: string) => void
   onRemovePersisted?: (imageId: string) => void
+  onRetryPending?: (imageId: string) => void
 }
 
 type LocationImagesGridProps =
@@ -72,6 +74,7 @@ type GridImageItem = {
   id: string
   isCover: boolean
   isProcessing?: boolean
+  isRetryable?: boolean
   kind: 'pending' | 'persisted'
   previewUrl: string
   secondaryLabel: string
@@ -204,6 +207,7 @@ function mapPendingImage(image: PendingLocationImageFile): GridImageItem {
     id: image.id,
     isCover: image.isCover,
     isProcessing: image.status === 'processing',
+    isRetryable: image.status === 'error' && image.retryable === true,
     kind: 'pending',
     previewUrl: image.previewUrl,
     secondaryLabel: 'Imagen pendiente',
@@ -278,6 +282,12 @@ function LocationImagesGrid(
     : props.mode === 'pending'
       ? Boolean(props.onManualBlur)
       : Boolean(props.onManualBlur)
+  const hasRetryAction =
+    props.mode === 'mixed'
+      ? Boolean(props.onRetryPending)
+      : props.mode === 'pending' || typeof props.mode === 'undefined'
+        ? Boolean(props.onRetry)
+        : false
   const canDragToCover = Boolean(onSetCoverHandler)
   const title = props.title
   const showCount = props.showCount !== false && orderedItems.length > 0
@@ -381,6 +391,21 @@ function LocationImagesGrid(
     }
 
     props.onManualBlur?.(image.id)
+  }
+
+  function handleRetryImage(image: GridImageItem) {
+    if (image.kind !== 'pending') {
+      return
+    }
+
+    if (props.mode === 'mixed') {
+      props.onRetryPending?.(image.id)
+      return
+    }
+
+    if (props.mode === 'pending' || typeof props.mode === 'undefined') {
+      props.onRetry?.(image.id)
+    }
   }
 
   function handleOpenLightbox(imageId: string) {
@@ -534,6 +559,21 @@ function LocationImagesGrid(
                 <p className="text-xs leading-5 text-red-700">
                   {coverItem.errorMessage}
                 </p>
+                {coverItem.isRetryable &&
+                hasRetryAction &&
+                props.mode !== 'persisted' &&
+                !props.isLocked ? (
+                  <button
+                    type="button"
+                    className="mt-2 inline-flex items-center rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm transition hover:bg-red-100"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      handleRetryImage(coverItem)
+                    }}
+                  >
+                    Reintentar
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </article>
@@ -638,6 +678,21 @@ function LocationImagesGrid(
                 <p className="text-xs leading-5 text-red-700">
                   {image.errorMessage}
                 </p>
+                {image.isRetryable &&
+                hasRetryAction &&
+                props.mode !== 'persisted' &&
+                !props.isLocked ? (
+                  <button
+                    type="button"
+                    className="mt-2 inline-flex items-center rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm transition hover:bg-red-100"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      handleRetryImage(image)
+                    }}
+                  >
+                    Reintentar
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </article>

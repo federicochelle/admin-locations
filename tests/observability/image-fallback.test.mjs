@@ -129,3 +129,82 @@ test('optimization failure still rejects before detection', async () => {
   assert.equal(detections, 0)
   assert.equal(h.events.length, 0)
 })
+
+test('hung detection times out as best-effort fallback and keeps the image ready', async t => {
+  const original = new File(['original'], 'private.jpg', { type: 'image/jpeg' })
+  const optimized = new File(['optimized'], 'private.jpg', { type: 'image/jpeg' })
+  const h = await harness({
+    prepare: async file => {
+      assert.equal(file, original)
+      return { file: optimized, outputDimensions: { width: 640, height: 480 } }
+    },
+    detect: async file => {
+      assert.equal(file, optimized)
+      return new Promise(() => {})
+    },
+  })
+  h.context.__LOCATION_IMAGE_DETECT_TIMEOUT_MS__ = 10
+  const selection = await h.module('src/features/locations/location-image-selection')
+
+  const image = await selection.preparePendingLocationImage(original, {
+    id: 'image',
+    isCover: true,
+    originalIndex: 2,
+    target: 'cover',
+  })
+
+  t.after(() => URL.revokeObjectURL(image.previewUrl))
+  assert.equal(image.file, optimized)
+  assert.equal(image.status, 'pending')
+  assert.equal(image.errorMessage, null)
+  assert.equal(h.events.length, 1)
+  const recorded = h.events[0]
+  assert.equal(recorded.scope.tags.stage, 'images.detect')
+  assert.equal(recorded.scope.tags.provider, 'google_vision')
+  assert.equal(recorded.scope.tags.outcome, 'partial')
+  assert.equal(recorded.scope.level, 'warning')
+  assert.equal(recorded.scope.contexts.admin_operation.fallback_used, true)
+  assert.equal(recorded.scope.contexts.admin_operation.timeout_ms, 10)
+})
+
+test('hung automatic blur times out as best-effort fallback and keeps the image ready', async t => {
+  const original = new File(['original'], 'private.jpg', { type: 'image/jpeg' })
+  const optimized = new File(['optimized'], 'private.jpg', { type: 'image/jpeg' })
+  const h = await harness({
+    prepare: async file => {
+      assert.equal(file, original)
+      return { file: optimized, outputDimensions: { width: 640, height: 480 } }
+    },
+    detect: async file => {
+      assert.equal(file, optimized)
+      return { faces, summary: { faces: faces.length } }
+    },
+    blur: async (file, detectedFaces) => {
+      assert.equal(file, optimized)
+      assert.equal(detectedFaces, faces)
+      return new Promise(() => {})
+    },
+  })
+  h.context.__LOCATION_IMAGE_BLUR_TIMEOUT_MS__ = 10
+  const selection = await h.module('src/features/locations/location-image-selection')
+
+  const image = await selection.preparePendingLocationImage(original, {
+    id: 'image',
+    isCover: true,
+    originalIndex: 3,
+    target: 'cover',
+  })
+
+  t.after(() => URL.revokeObjectURL(image.previewUrl))
+  assert.equal(image.file, optimized)
+  assert.equal(image.status, 'pending')
+  assert.equal(image.errorMessage, null)
+  assert.equal(h.events.length, 1)
+  const recorded = h.events[0]
+  assert.equal(recorded.scope.tags.stage, 'images.blur')
+  assert.equal(recorded.scope.tags.provider, 'browser')
+  assert.equal(recorded.scope.tags.outcome, 'partial')
+  assert.equal(recorded.scope.level, 'warning')
+  assert.equal(recorded.scope.contexts.admin_operation.fallback_used, true)
+  assert.equal(recorded.scope.contexts.admin_operation.timeout_ms, 10)
+})

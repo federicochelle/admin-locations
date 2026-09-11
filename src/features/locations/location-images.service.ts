@@ -164,6 +164,7 @@ export async function finalizeLocationImageUpload(
         body: {
           altText: toNullableString(input.altText),
           caption: toNullableString(input.caption),
+          clientUploadId: toNullableString(input.clientUploadId),
           cloudflareImageId: input.cloudflareImageId,
           height: input.height,
           isCover: input.isCover,
@@ -372,6 +373,7 @@ export async function uploadLocationImage(
     const finalizedImage = await finalizeLocationImageUpload({
       locationId: input.locationId,
       cloudflareImageId,
+      clientUploadId: input.clientUploadId,
       height: input.height,
       altText: input.altText,
       caption: input.caption,

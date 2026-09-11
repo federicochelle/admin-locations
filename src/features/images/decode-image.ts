@@ -1,6 +1,60 @@
 export const IMAGE_DECODE_ERROR_MESSAGE =
   'No pudimos procesar esta imagen. Probá con otra imagen o guardala nuevamente como JPG.'
 
+const DEFAULT_IMAGE_DECODE_TIMEOUT_MS = 30_000
+
+function getImageDecodeTimeoutMs() {
+  const override = (globalThis as { __LOCATION_IMAGE_DECODE_TIMEOUT_MS__?: unknown }).__LOCATION_IMAGE_DECODE_TIMEOUT_MS__
+  return typeof override === 'number' && Number.isFinite(override) && override > 0
+    ? override
+    : DEFAULT_IMAGE_DECODE_TIMEOUT_MS
+}
+
+function runDecodeWithTimeout<T>(
+  action: () => Promise<T>,
+  options: {
+    cleanupLateResult?: (value: T) => void
+    onTimeout?: () => void
+  } = {},
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  let timedOut = false
+  const actionPromise = action()
+
+  actionPromise.then(
+    (value) => {
+      if (timedOut) {
+        options.cleanupLateResult?.(value)
+      }
+    },
+    () => {},
+  )
+
+  return Promise.race([
+    actionPromise,
+    new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        timedOut = true
+        options.onTimeout?.()
+        const error = new Error('La lectura de la imagen demoró demasiado.') as Error & {
+          provider: string
+          stage: string
+          timeoutMs: number
+        }
+        error.name = 'AdminOperationTimeoutError'
+        error.provider = 'browser'
+        error.stage = 'images.prepare'
+        error.timeoutMs = getImageDecodeTimeoutMs()
+        reject(error)
+      }, getImageDecodeTimeoutMs())
+    }),
+  ]).finally(() => {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId)
+    }
+  })
+}
+
 export type DecodedImage = {
   source: CanvasImageSource
   width: number
@@ -14,7 +68,14 @@ export async function decodeImage(file: Blob): Promise<DecodedImage> {
   let bitmapError: unknown
   if (typeof window.createImageBitmap === 'function') {
     try {
-      const bitmap = await window.createImageBitmap(file, { imageOrientation: 'from-image' })
+      const bitmap = await runDecodeWithTimeout(
+        () => window.createImageBitmap(file, { imageOrientation: 'from-image' }),
+        {
+          cleanupLateResult: (lateBitmap) => {
+            lateBitmap.close()
+          },
+        },
+      )
       let released = false
       return {
         source: bitmap,
@@ -43,21 +104,30 @@ export async function decodeImage(file: Blob): Promise<DecodedImage> {
   try {
     const sourceUrl = URL.createObjectURL(file)
     objectUrl = sourceUrl
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const element = new Image()
-      element.onload = () => {
+    let element: HTMLImageElement | undefined
+    const cleanupElement = () => {
+      if (element) {
         element.onload = null
         element.onerror = null
-        if (element.naturalWidth > 0 && element.naturalHeight > 0) resolve(element)
-        else reject(new Error('Invalid image dimensions'))
+        element.src = ''
       }
-      element.onerror = () => {
-        element.onload = null
-        element.onerror = null
-        reject(new Error('HTMLImageElement could not decode the image'))
-      }
-      element.src = sourceUrl
-    })
+    }
+    const image = await runDecodeWithTimeout(
+      () => new Promise<HTMLImageElement>((resolve, reject) => {
+        element = new Image()
+        element.onload = () => {
+          cleanupElement()
+          if (element && element.naturalWidth > 0 && element.naturalHeight > 0) resolve(element)
+          else reject(new Error('Invalid image dimensions'))
+        }
+        element.onerror = () => {
+          cleanupElement()
+          reject(new Error('HTMLImageElement could not decode the image'))
+        }
+        element.src = sourceUrl
+      }),
+      { onTimeout: cleanupElement },
+    )
     return {
       source: image,
       width: image.naturalWidth,

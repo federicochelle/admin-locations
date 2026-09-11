@@ -1,4 +1,6 @@
 import { reportAdminError, withAdminErrorStage } from '../../lib/admin-error-reporting'
+import { runWithAdminTimeout } from '../../lib/async-timeout'
+import { createClientUuid } from '../../lib/client-id'
 import { prepareImageUploadFile } from '../images/image-upload.processor'
 import { applyFaceBlurToImage } from './location-face-blur'
 import { detectLocationImageSensitiveContent } from './location-sensitive-content.service'
@@ -6,6 +8,8 @@ import type { PendingLocationImageFile } from './location-images.types'
 
 const PLACEHOLDER_PREVIEW_URL =
   'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
+const DEFAULT_LOCATION_IMAGE_DETECT_TIMEOUT_MS = 15_000
+const DEFAULT_LOCATION_IMAGE_BLUR_TIMEOUT_MS = 30_000
 
 export type PendingImageSelectionTarget = 'cover' | 'gallery'
 
@@ -35,12 +39,26 @@ export type PreparePendingLocationImagesResult = {
   errors: string[]
 }
 
+function getLocationImageDetectTimeoutMs() {
+  const override = (globalThis as { __LOCATION_IMAGE_DETECT_TIMEOUT_MS__?: unknown }).__LOCATION_IMAGE_DETECT_TIMEOUT_MS__
+  return typeof override === 'number' && Number.isFinite(override) && override > 0
+    ? override
+    : DEFAULT_LOCATION_IMAGE_DETECT_TIMEOUT_MS
+}
+
+function getLocationImageBlurTimeoutMs() {
+  const override = (globalThis as { __LOCATION_IMAGE_BLUR_TIMEOUT_MS__?: unknown }).__LOCATION_IMAGE_BLUR_TIMEOUT_MS__
+  return typeof override === 'number' && Number.isFinite(override) && override > 0
+    ? override
+    : DEFAULT_LOCATION_IMAGE_BLUR_TIMEOUT_MS
+}
+
 export function createPendingLocationImagePlaceholder(
   file: File,
   options: CreatePendingLocationImagePlaceholderOptions,
 ): PendingLocationImageFile {
   return {
-    id: options.id ?? crypto.randomUUID(),
+    id: options.id ?? createClientUuid(),
     file,
     height: 0,
     previewUrl: PLACEHOLDER_PREVIEW_URL,
@@ -65,10 +83,22 @@ export async function preparePendingLocationImage(
   let finalFile = optimizedFile
 
   try {
-    const detectionResult = await withAdminErrorStage({ stage: 'images.detect', provider: 'google_vision' }, () => detectLocationImageSensitiveContent(optimizedFile))
+    const detectionResult = await withAdminErrorStage({ stage: 'images.detect', provider: 'google_vision' }, () => runWithAdminTimeout({
+      action: () => detectLocationImageSensitiveContent(optimizedFile),
+      message: 'La detección automática demoró demasiado.',
+      provider: 'google_vision',
+      stage: 'images.detect',
+      timeoutMs: getLocationImageDetectTimeoutMs(),
+    }))
 
     if (detectionResult.summary.faces > 0) {
-      finalFile = await withAdminErrorStage({ stage: 'images.blur', provider: 'browser' }, () => applyFaceBlurToImage(optimizedFile, detectionResult.faces))
+      finalFile = await withAdminErrorStage({ stage: 'images.blur', provider: 'browser' }, () => runWithAdminTimeout({
+        action: () => applyFaceBlurToImage(optimizedFile, detectionResult.faces),
+        message: 'El blur automático demoró demasiado.',
+        provider: 'browser',
+        stage: 'images.blur',
+        timeoutMs: getLocationImageBlurTimeoutMs(),
+      }))
     }
   } catch (error) {
     // Detection and automatic blur are best effort; keep the optimized original.
@@ -122,7 +152,7 @@ export async function preparePendingLocationImages(
     try {
       nextImages.push(
         await preparePendingLocationImage(file, {
-          id: crypto.randomUUID(),
+          id: createClientUuid(),
           isCover: options.isCoverSelection && index === 0,
           onStatusChange: undefined,
           originalIndex: options.startingOriginalIndex + nextImages.length,
