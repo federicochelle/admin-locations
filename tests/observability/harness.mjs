@@ -91,6 +91,11 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
     return mod.namespace
   }
   const reporting = await module('src/lib/admin-error-reporting')
+  const imageUploadPlan = await module('src/features/locations/application/location-image-upload-plan')
+  const imageUploadRunner = await module('src/features/locations/application/location-image-upload-runner')
+  const inlineOwner = await module('src/features/locations/application/location-inline-owner')
+  const locationSaveBranches = await module('src/features/locations/application/location-save-branches')
+  const submitHelpers = await module('src/features/locations/application/location-submit-helpers')
   async function formHandlers(overrides = {}) {
     // Extract actual nested handlers using the TS AST, not copied implementations.
     const source = await fs.readFile(path.join(root, 'src/features/locations/LocationForm.tsx'), 'utf8')
@@ -105,7 +110,7 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
     if (declarations.length !== 4) throw new Error('Expected actual LocationForm handlers')
     const state = { pending: [], submitError: null, navigation: [], validations: [], submitting: false, progress: null }
     const noop = () => {}
-    Object.assign(context, reporting, {
+    Object.assign(context, reporting, imageUploadPlan, imageUploadRunner, inlineOwner, locationSaveBranches, submitHelpers, {
       mode: 'create', isReadOnly: false, locationId: undefined, createdLocationIdRef: { current: null }, submitLockRef: { current: false },
       values: { owner_id: 'existing-owner' }, ownerInputValue: '', ownerPhoneValue: '',
       profile: { id: 'actor' }, initialValues: {},
@@ -113,6 +118,9 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
       getValidationMessages: errors => Object.values(errors), setFieldErrors: noop,
       setSubmitError: value => { state.submitError = value },
       setValidationModalMessages: value => { state.validations = value },
+      setOwnerPhoneInput: noop,
+      setOwnerSearchTerm: noop,
+      setValues: updater => { context.values = updater(context.values) },
       setIsSubmitting: value => { state.submitting = value }, setEditDeleteErrorMessage: noop,
       openSaveProgress: () => { state.progress = { stages: [], errorMessage: null } },
       updateStageStatus: noop,
@@ -121,7 +129,10 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
       updateSaveProgress: updater => { if (state.progress) state.progress = updater(state.progress) },
       setSaveProgressError: (_stage, message) => { state.progress.errorMessage = message },
       buildPayload: value => value, createLocation: async () => locationId,
+      createOwner: async () => 'created-owner',
+      buildInlineOwnerCreatePayload: value => value,
       updateLocation: async () => locationId,
+      uploadLocationImage: async () => {},
       pendingDeletedPersistedImageIds: [], visiblePersistedImages: [], pendingImages: state.pending,
       setPendingDeletedPersistedImageIds: noop,
       setPendingImages: updater => { state.pending = updater(state.pending) },

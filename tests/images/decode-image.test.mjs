@@ -8,13 +8,26 @@ import { harness } from '../observability/harness.mjs'
 const nativeMessage = 'Cannot decode the data in the argument to createImageBitmap'
 const friendlyMessage = 'No pudimos procesar esta imagen. Probá con otra imagen o guardala nuevamente como JPG.'
 
+function createDeferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+
+  return { promise, reject, resolve }
+}
+
 async function setup({
   bitmap = 'reject',
+  bitmapDeferred,
   dimensions = { width: 3200, height: 1600 },
   htmlFails = () => false,
+  htmlHangs = false,
   drawFails = false,
 } = {}) {
-  const created = [], revoked = [], drawn = [], calls = []
+  const created = [], revoked = [], drawn = [], calls = [], images = []
   let closes = 0
   let optimizer
   const h = await harness({ prepare: file => optimizer.optimizeLocationImageFile(file) })
@@ -22,6 +35,8 @@ async function setup({
   const source = { ...dimensions, close() { closes++ } }
   const createImageBitmap = async (file, options) => {
     calls.push({ file, options })
+    if (bitmapDeferred) return bitmapDeferred.promise
+    if (bitmap === 'pending') return new Promise(() => {})
     if (bitmap === 'reject') throw new DOMException(nativeMessage, 'InvalidStateError')
     return source
   }
@@ -41,7 +56,19 @@ async function setup({
     Image: class {
       naturalWidth = dimensions.width
       naturalHeight = dimensions.height
+      onload = null
+      onerror = null
+      _src = ''
+      constructor() {
+        images.push(this)
+      }
+      get src() {
+        return this._src
+      }
       set src(url) {
+        this._src = url
+        if (url === '') return
+        if (htmlHangs) return
         queueMicrotask(() => htmlFails(urls.get(url)) ? this.onerror?.() : this.onload?.())
       }
     },
@@ -61,7 +88,7 @@ async function setup({
   })
   const decoder = await h.module('src/features/images/decode-image')
   optimizer = await h.module('src/features/locations/location-image-optimizer')
-  return { h, decoder, optimizer, created, revoked, drawn, calls, closes: () => closes }
+  return { h, decoder, optimizer, created, revoked, drawn, calls, images, closes: () => closes }
 }
 
 const file = (name = 'IMG_4836.jpeg', large = false) => new File(
@@ -97,6 +124,63 @@ for (const bitmap of ['reject', 'absent']) {
     assert.equal(s.created.length, 1)
   })
 }
+
+test('hung createImageBitmap times out and uses HTMLImageElement fallback', async () => {
+  const s = await setup({ bitmap: 'pending' })
+  s.h.context.__LOCATION_IMAGE_DECODE_TIMEOUT_MS__ = 10
+
+  const dimensions = await s.decoder.readImageFileDimensions(file())
+
+  assert.equal(dimensions.width, 3200)
+  assert.equal(dimensions.height, 1600)
+  assert.equal(dimensions.path, 'fallbackImage')
+  assert.deepEqual(s.revoked, s.created)
+})
+
+test('late createImageBitmap result is closed after timeout fallback wins', async () => {
+  const bitmapDeferred = createDeferred()
+  const s = await setup({ bitmapDeferred })
+  s.h.context.__LOCATION_IMAGE_DECODE_TIMEOUT_MS__ = 10
+
+  const dimensions = await s.decoder.readImageFileDimensions(file())
+
+  assert.equal(dimensions.path, 'fallbackImage')
+  assert.equal(s.closes(), 0)
+  bitmapDeferred.resolve({ width: 3200, height: 1600, close() { s.h.context.__lateBitmapCloses = (s.h.context.__lateBitmapCloses ?? 0) + 1 } })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(s.h.context.__lateBitmapCloses, 1)
+  assert.equal(s.closes(), 0)
+  assert.deepEqual(s.revoked, s.created)
+})
+
+test('hung HTMLImageElement fallback times out with friendly message and URL cleanup', async () => {
+  const s = await setup({ bitmap: 'absent', htmlHangs: true })
+  s.h.context.__LOCATION_IMAGE_DECODE_TIMEOUT_MS__ = 10
+
+  await assert.rejects(s.decoder.decodeImage(file()), error => {
+    assert.equal(error.message, friendlyMessage)
+    assert.equal(error.cause?.errors?.[1]?.name, 'AdminOperationTimeoutError')
+    assert.equal(error.cause?.errors?.[1]?.timeoutMs, 10)
+    return true
+  })
+  assert.deepEqual(s.revoked, s.created)
+})
+
+test('hung HTMLImageElement fallback clears handlers and src before late load', async () => {
+  const s = await setup({ bitmap: 'absent', htmlHangs: true })
+  s.h.context.__LOCATION_IMAGE_DECODE_TIMEOUT_MS__ = 10
+
+  await assert.rejects(s.decoder.decodeImage(file()), { message: friendlyMessage })
+
+  assert.equal(s.images.length, 1)
+  const image = s.images[0]
+  assert.equal(image.onload, null)
+  assert.equal(image.onerror, null)
+  assert.equal(image.src, '')
+  assert.deepEqual(s.revoked, s.created)
+  image.onload?.()
+  assert.deepEqual(s.revoked, s.created)
+})
 
 test('fallback URL stays alive until source is consumed; release is idempotent', async () => {
   const s = await setup()
@@ -164,6 +248,7 @@ for (const bitmap of ['success', 'reject']) {
 test('actual LocationForm batch keeps failures on their image and processes the others', async () => {
   const s = await setup({ htmlFails: input => input.name === 'bad.jpeg' })
   const selection = await s.h.module('src/features/locations/location-image-selection')
+  const applicationSelection = await s.h.module('src/features/locations/application/location-image-selection')
   const source = await fs.readFile('src/features/locations/LocationForm.tsx', 'utf8')
   const ast = ts.createSourceFile('LocationForm.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
   const names = new Set([
@@ -181,7 +266,7 @@ test('actual LocationForm batch keeps failures on their image and processes the 
   assert.equal(declarations.length, names.size)
   let images = []
   const context = s.h.context
-  Object.assign(context, selection, s.h.reporting, {
+  Object.assign(context, selection, applicationSelection, s.h.reporting, {
     isReadOnly: false, isMountedRef: { current: true }, pendingImagesRef: { current: [] },
     removedPendingImageIdsRef: { current: new Set() }, IMAGE_PREPARATION_CONCURRENCY: 3,
     imageValidationErrors: [],
