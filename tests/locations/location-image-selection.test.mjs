@@ -63,6 +63,9 @@ function createSelectionHarness(overrides = {}) {
       current: new Set(overrides.initialRemovedIds ?? []),
     },
     reportedFailures: [],
+    retryingPendingImageIdsRef: {
+      current: new Set(),
+    },
     revokedPreviewUrls: [],
     totalImagesToProcess: [],
   }
@@ -80,6 +83,7 @@ function createSelectionHarness(overrides = {}) {
         originalIndex: image.originalIndex,
         previewUrl: image.previewUrl,
         processingLabel: image.processingLabel,
+        retryable: image.retryable,
         selectionTarget: image.selectionTarget,
         status: image.status,
         width: image.width,
@@ -164,6 +168,22 @@ function createSelectionHarness(overrides = {}) {
       target: overrides.target ?? 'gallery',
     },
     state,
+  }
+}
+
+function createRetryDeps(deps, state, imageId, overrides = {}) {
+  return {
+    correlationId: overrides.correlationId ?? 'retry-correlation',
+    imageId,
+    imagePreparationTimeoutMs: overrides.imagePreparationTimeoutMs,
+    isMountedRef: state.isMountedRef,
+    pendingImagesRef: state.pendingImagesRef,
+    prepareImage: overrides.prepareImage ?? deps.prepareImage,
+    removedPendingImageIdsRef: state.removedPendingImageIdsRef,
+    reportLocationFailure: deps.reportLocationFailure,
+    retryingPendingImageIdsRef: state.retryingPendingImageIdsRef,
+    revokePreviewUrl: deps.revokePreviewUrl,
+    setPendingImages: deps.setPendingImages,
   }
 }
 
@@ -442,15 +462,36 @@ test('applyImagePreparationErrorToPendingImages replaces only the target image w
     'target',
     'last',
   ])
-  assert.deepEqual(plain({
+  assert.deepEqual({
     errorMessage: result[1].errorMessage,
     processingLabel: result[1].processingLabel,
+    retryable: result[1].retryable,
     status: result[1].status,
-  }), {
+  }, {
     errorMessage: 'No pudimos preparar la imagen.',
     processingLabel: null,
+    retryable: undefined,
     status: 'error',
   })
+})
+
+test('applyImagePreparationErrorToPendingImages stores explicit retryable classification', async () => {
+  const { applyImagePreparationErrorToPendingImages } = await loadImageSelection()
+  const target = pendingImage('target', {
+    errorMessage: null,
+    processingLabel: 'Optimizando...',
+    status: 'processing',
+  })
+
+  const result = applyImagePreparationErrorToPendingImages(
+    [target],
+    'target',
+    'La preparación demoró demasiado.',
+    true,
+  )
+
+  assert.equal(result[0].retryable, true)
+  assert.equal(result[0].status, 'error')
 })
 
 test('applyImagePreparationErrorToPendingImages keeps equivalent content when the id is missing', async () => {
@@ -467,6 +508,66 @@ test('applyImagePreparationErrorToPendingImages keeps equivalent content when th
   assert.equal(result[0], first)
   assert.equal(result[1], last)
   assert.deepEqual(plain(imageSummary(result)), plain(imageSummary([first, last])))
+})
+
+test('getImagePreparationRetryable marks structured mandatory timeouts as retryable', async () => {
+  const { getImagePreparationRetryable } = await loadImageSelection()
+  const timeout = new Error('La preparación demoró demasiado.')
+  timeout.name = 'AdminOperationTimeoutError'
+  timeout.stage = 'images.prepare'
+  timeout.provider = 'browser'
+  timeout.timeoutMs = 10
+
+  assert.equal(getImagePreparationRetryable(timeout), true)
+})
+
+test('getImagePreparationRetryable marks HEIC conversion timeout causes as retryable', async () => {
+  const { getImagePreparationRetryable } = await loadImageSelection()
+  const timeout = new Error('La conversión HEIC/HEIF demoró demasiado.')
+  timeout.name = 'AdminOperationTimeoutError'
+  timeout.stage = 'images.convert'
+  timeout.provider = 'browser'
+  timeout.timeoutMs = 10
+  const error = new Error('foto.heic: no pudimos convertir la imagen HEIC/HEIF automáticamente.', {
+    cause: timeout,
+  })
+
+  assert.equal(getImagePreparationRetryable(error), true)
+})
+
+test('getImagePreparationRetryable marks expected permanent errors as not retryable', async () => {
+  const h = await harness()
+  const selection = await h.module('src/features/locations/application/location-image-selection')
+  const reporting = await h.module('src/lib/admin-error-reporting')
+  const error = reporting.markExpectedAdminError(
+    new Error('Formato de imagen no permitido.'),
+  )
+
+  assert.equal(selection.getImagePreparationRetryable(error), false)
+})
+
+test('getImagePreparationRetryable marks confirmed decode failures without timeout as not retryable', async () => {
+  const { getImagePreparationRetryable } = await loadImageSelection()
+  const bitmapError = new DOMException('Cannot decode', 'InvalidStateError')
+  const fallbackError = new Error('HTMLImageElement could not decode the image')
+  const error = new Error(
+    'No pudimos procesar esta imagen. Probá con otra imagen o guardala nuevamente como JPG.',
+    {
+      cause: new AggregateError(
+        [bitmapError, fallbackError],
+        'Image decoding failed',
+      ),
+    },
+  )
+
+  assert.equal(getImagePreparationRetryable(error), false)
+})
+
+test('getImagePreparationRetryable keeps ambiguous errors unclassified', async () => {
+  const { getImagePreparationRetryable } = await loadImageSelection()
+
+  assert.equal(getImagePreparationRetryable(new Error('Canvas draw failed')), undefined)
+  assert.equal(getImagePreparationRetryable('unexpected failure'), undefined)
 })
 
 test('handleSelectedLocationImageFiles processes only the first file for cover selections', async () => {
@@ -575,11 +676,13 @@ test('handleSelectedLocationImageFiles times out a hung preparation and continue
   assert.deepEqual(plain(state.pendingImages.map((image) => ({
     errorMessage: image.errorMessage,
     processingLabel: image.processingLabel,
+    retryable: image.retryable,
     status: image.status,
   }))), [
     {
       errorMessage: 'gallery-a.jpg: la preparación de la imagen demoró demasiado. Probá nuevamente.',
       processingLabel: null,
+      retryable: true,
       status: 'error',
     },
     {
@@ -592,7 +695,9 @@ test('handleSelectedLocationImageFiles times out a hung preparation and continue
   assert.equal(state.reportedFailures[0].context.stage, 'images.prepare')
   assert.equal(state.reportedFailures[0].context.provider, 'browser')
   assert.equal(state.reportedFailures[0].context.correlationId, 'correlation-1')
+  assert.equal(state.reportedFailures[0].context.retryable, true)
   assert.equal(state.reportedFailures[0].context.extraSafeContext.timeout_ms, 10)
+  assert.equal(state.reportedFailures[0].context.extraSafeContext.retryable, true)
 })
 
 test('handleSelectedLocationImageFiles replaces an existing cover and revokes its preview', async () => {
@@ -946,4 +1051,242 @@ test('mergePendingImagePlaceholders preserves order and clears isCover on remain
   ])
   assert.deepEqual(plain(result.removedImageIds), ['old-cover'])
   assert.deepEqual(plain(result.previewUrlsToRevoke), ['blob:old-cover-preview'])
+})
+
+test('retryPendingLocationImagePreparation reuses the same id and file when retry succeeds', async () => {
+  const { retryPendingLocationImagePreparation } = await loadImageSelection()
+  const originalFile = new File(['original'], 'retry.jpg', { type: 'image/jpeg' })
+  const preparedFile = new File(['prepared'], 'retry-prepared.jpg', { type: 'image/jpeg' })
+  const otherImage = pendingImage('other')
+  const retryImage = pendingImage('retry-image', {
+    errorMessage: 'Error anterior',
+    file: originalFile,
+    height: 0,
+    isCover: true,
+    originalIndex: 7,
+    previewUrl: 'blob:retry-error-preview',
+    retryable: true,
+    selectionTarget: 'cover',
+    status: 'error',
+    width: 0,
+  })
+  const prepareCalls = []
+  const { deps, state } = createSelectionHarness({
+    initialImages: [otherImage, retryImage],
+    prepareImage: async (file, options) => {
+      prepareCalls.push({ file, options })
+
+      return pendingImage(options.id, {
+        file: preparedFile,
+        height: 720,
+        isCover: options.isCover,
+        originalIndex: options.originalIndex,
+        previewUrl: 'blob:retry-prepared-preview',
+        selectionTarget: options.target,
+        status: 'pending',
+        width: 1280,
+      })
+    },
+  })
+
+  await retryPendingLocationImagePreparation(
+    createRetryDeps(deps, state, 'retry-image'),
+  )
+
+  assert.equal(prepareCalls.length, 1)
+  assert.equal(prepareCalls[0].file, originalFile)
+  assert.deepEqual(
+    plain({
+      id: prepareCalls[0].options.id,
+      isCover: prepareCalls[0].options.isCover,
+      originalIndex: prepareCalls[0].options.originalIndex,
+      target: prepareCalls[0].options.target,
+    }),
+    {
+      id: 'retry-image',
+      isCover: true,
+      originalIndex: 7,
+      target: 'cover',
+    },
+  )
+  assert.equal(state.pendingImages.length, 2)
+  assert.equal(state.pendingImages[0], otherImage)
+  assert.deepEqual(
+    plain(
+      state.pendingImageSnapshots.map((snapshot) => {
+        const image = snapshot.find((entry) => entry.id === 'retry-image')
+
+        return {
+          errorMessage: image.errorMessage,
+          height: image.height,
+          previewUrl: image.previewUrl,
+          processingLabel: image.processingLabel,
+          status: image.status,
+          width: image.width,
+        }
+      }),
+    ),
+    [
+      {
+        errorMessage: null,
+        height: 0,
+        previewUrl: 'blob:retry-error-preview',
+        processingLabel: null,
+        status: 'processing',
+        width: 0,
+      },
+      {
+        errorMessage: null,
+        height: 720,
+        previewUrl: 'blob:retry-prepared-preview',
+        processingLabel: null,
+        status: 'pending',
+        width: 1280,
+      },
+    ],
+  )
+  assert.equal(state.pendingImages[1].file, preparedFile)
+  assert.equal(state.pendingImages[1].retryable, undefined)
+  assert.deepEqual(state.processedCounts, [])
+  assert.deepEqual(state.reportedFailures, [])
+  assert.deepEqual(state.revokedPreviewUrls, ['blob:retry-error-preview'])
+})
+
+test('retryPendingLocationImagePreparation returns to error with the new message when retry fails', async () => {
+  const { retryPendingLocationImagePreparation } = await loadImageSelection()
+  const retryImage = pendingImage('retry-image', {
+    errorMessage: 'Error anterior',
+    height: 0,
+    previewUrl: 'blob:retry-error-preview',
+    retryable: true,
+    status: 'error',
+    width: 0,
+  })
+  const { deps, state } = createSelectionHarness({
+    initialImages: [retryImage],
+    prepareImage: async () => {
+      throw new Error('Nuevo error de preparación')
+    },
+  })
+
+  await retryPendingLocationImagePreparation(
+    createRetryDeps(deps, state, 'retry-image'),
+  )
+
+  assert.deepEqual(
+    plain(
+      state.pendingImageSnapshots.map((snapshot) => ({
+        errorMessage: snapshot[0].errorMessage,
+        processingLabel: snapshot[0].processingLabel,
+        retryable: snapshot[0].retryable,
+        status: snapshot[0].status,
+      })),
+    ),
+    [
+      {
+        errorMessage: null,
+        processingLabel: null,
+        status: 'processing',
+      },
+      {
+        errorMessage: 'Nuevo error de preparación',
+        processingLabel: null,
+        status: 'error',
+      },
+    ],
+  )
+  assert.equal(state.pendingImages[0].retryable, undefined)
+  assert.equal(state.reportedFailures.length, 1)
+  assert.equal(state.reportedFailures[0].context.stage, 'images.prepare')
+  assert.equal(state.retryingPendingImageIdsRef.current.size, 0)
+})
+
+test('retryPendingLocationImagePreparation does not process other images or start duplicate retries', async () => {
+  const { retryPendingLocationImagePreparation } = await loadImageSelection()
+  const retryImage = pendingImage('retry-image', {
+    errorMessage: 'Error anterior',
+    status: 'error',
+  })
+  const otherImage = pendingImage('other-image', {
+    errorMessage: 'Otro error',
+    status: 'error',
+  })
+  const continuePreparation = createDeferred()
+  let prepareCallCount = 0
+  const { deps, state } = createSelectionHarness({
+    initialImages: [retryImage, otherImage],
+    prepareImage: async (file, options) => {
+      prepareCallCount += 1
+      await continuePreparation.promise
+
+      return pendingImage(options.id, {
+        file,
+        height: 480,
+        isCover: options.isCover,
+        originalIndex: options.originalIndex,
+        previewUrl: 'blob:retry-prepared-preview',
+        selectionTarget: options.target,
+        status: 'pending',
+        width: 640,
+      })
+    },
+  })
+
+  const firstRetry = retryPendingLocationImagePreparation(
+    createRetryDeps(deps, state, 'retry-image'),
+  )
+  const secondRetry = retryPendingLocationImagePreparation(
+    createRetryDeps(deps, state, 'retry-image'),
+  )
+
+  assert.equal(prepareCallCount, 1)
+  continuePreparation.resolve()
+  await Promise.all([firstRetry, secondRetry])
+
+  assert.equal(prepareCallCount, 1)
+  assert.equal(state.pendingImages[0].status, 'pending')
+  assert.equal(state.pendingImages[1], otherImage)
+  assert.deepEqual(state.processedCounts, [])
+  assert.deepEqual(state.reportedFailures, [])
+})
+
+test('retryPendingLocationImagePreparation does not restore an image removed during retry and revokes the late preview', async () => {
+  const { retryPendingLocationImagePreparation } = await loadImageSelection()
+  const retryImage = pendingImage('retry-image', {
+    errorMessage: 'Error anterior',
+    previewUrl: 'blob:retry-error-preview',
+    status: 'error',
+  })
+  const continuePreparation = createDeferred()
+  const { deps, state } = createSelectionHarness({
+    initialImages: [retryImage],
+    prepareImage: async (file, options) => {
+      await continuePreparation.promise
+
+      return pendingImage(options.id, {
+        file,
+        height: 480,
+        isCover: options.isCover,
+        originalIndex: options.originalIndex,
+        previewUrl: 'blob:late-prepared-preview',
+        selectionTarget: options.target,
+        status: 'pending',
+        width: 640,
+      })
+    },
+  })
+
+  const retry = retryPendingLocationImagePreparation(
+    createRetryDeps(deps, state, 'retry-image'),
+  )
+  assert.equal(state.pendingImages[0].status, 'processing')
+  state.removedPendingImageIdsRef.current.add('retry-image')
+  state.pendingImages = []
+  state.pendingImagesRef.current = []
+  continuePreparation.resolve()
+  await retry
+
+  assert.deepEqual(state.pendingImages, [])
+  assert.deepEqual(state.revokedPreviewUrls, ['blob:late-prepared-preview'])
+  assert.deepEqual(state.reportedFailures, [])
 })

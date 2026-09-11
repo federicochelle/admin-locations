@@ -132,4 +132,5 @@ export type PendingLocationImageFile = {
   status: PendingLocationImageStatus
   processingLabel?: string | null
   errorMessage?: string | null
+  retryable?: boolean
 }

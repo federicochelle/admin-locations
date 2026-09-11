@@ -83,6 +83,10 @@ export function markExpectedAdminError(error: Error): Error {
   return error
 }
 
+export function isExpectedAdminError(error: unknown): boolean {
+  return error instanceof Error && suppressed.has(error)
+}
+
 // Only for a UI summary whose individual failures have already been reported.
 export function suppressAdminErrorReport(error: Error): Error {
   suppressed.add(error)
