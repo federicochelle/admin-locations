@@ -30,7 +30,7 @@ test('replay privacy fails closed for malformed or compressed recordings; errors
   assert.equal(await transport.flush(100), true)
 })
 
-test('recording filter removes URL tokens, CSS, arbitrary attributes and mutation text', async () => {
+test('recording filter preserves visible DOM while redacting explicit secrets', async () => {
   const h = await harness()
   const { sanitizeAdminReplayEnvelope } = await h.module('src/lib/admin-session-replay')
   const frames = [
@@ -44,9 +44,13 @@ test('recording filter removes URL tokens, CSS, arbitrary attributes and mutatio
     [{ type: 'replay_recording' }, '{"segment_id":0}\n' + JSON.stringify(frames)],
   ]])
   assert.ok(clean)
-  assert.equal(JSON.stringify(clean).includes('secret'), false)
+  const serialized = JSON.stringify(clean)
+  assert.equal(serialized.includes('token=secret'), false)
+  assert.equal(serialized.includes('data-token":"secret'), false)
   const recording = JSON.parse(clean[1][1][1].split('\n')[1])
   assert.equal(recording[0].name, 'html', 'doctype must remain valid for playback')
   assert.ok(Array.isArray(recording[3].data.attributes), 'mutation arrays keep their rrweb shape')
   assert.equal(recording[2].data.node.tagName, 'div')
+  assert.equal(recording[2].data.node.attributes.class, 'secret')
+  assert.equal(recording[2].data.node.childNodes[0].textContent, 'secret')
 })

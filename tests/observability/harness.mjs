@@ -12,6 +12,7 @@ export const correlationId = '22222222-2222-4222-8222-222222222222'
 export async function harness({ query, invoke, activityError, fetch, prepare, detect, blur, actualImageProcessor = false, optimize, heicTo } = {}) {
   const events = []
   const requests = []
+  const sentryState = { users: [], contexts: [], tags: [] }
   const context = vm.createContext({
     Error, TypeError, RangeError, DOMException, Response, Request, Headers,
     Blob, File, FormData, AbortController, URL, TextEncoder, crypto, setTimeout, clearTimeout,
@@ -21,6 +22,11 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
   const sentry = {
     captureException(error, hint) { events.push({ kind: 'exception', error, scope: hint.captureContext }); return 'event-id' },
     captureMessage(message, scope) { events.push({ kind: 'message', message, scope }); return 'event-id' },
+    setUser(user) { sentryState.users.push(user) },
+    setContext(name, context) { sentryState.contexts.push({ name, context }) },
+    getCurrentScope() {
+      return { setTag(key, value) { sentryState.tags.push({ key, value }); return this } }
+    },
   }
   const supabase = {
     from(table) {
@@ -157,5 +163,5 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
     await mod.evaluate()
     return { ...mod.namespace, state }
   }
-  return { events, requests, module, reporting, formHandlers, context }
+  return { events, requests, module, reporting, formHandlers, context, sentryState }
 }

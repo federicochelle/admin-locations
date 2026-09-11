@@ -188,6 +188,48 @@ test('sanitizer strips private values, bodies, credentials, breadcrumbs and sign
   assert.equal(output.exception.values[0].stacktrace.frames[0].lineno, 10)
 })
 
+test('sanitizer keeps only approved identity and global tags', async () => {
+  const h = await harness()
+  const profileId = '33333333-3333-4333-8333-333333333333'
+  const output = h.reporting.sanitizeAdminSentryEvent({
+    type: undefined,
+    level: 'error',
+    environment: 'production',
+    release: '53f1769',
+    user: { id: locationId, email: 'admin@example.com', username: 'private-name' },
+    tags: {
+      app: 'admin',
+      profile_id: profileId,
+      role: 'admin',
+      route: '/locations/' + locationId + '?token=secret-token',
+      token: 'secret-token',
+    },
+    request: { data: { address: 'Private address', password: 'secret' } },
+    exception: { values: [{ type: 'Error', value: 'private value' }] },
+  })
+  assert.equal(output.environment, 'production')
+  assert.equal(output.release, '53f1769')
+  assert.equal(output.user.id, locationId)
+  assert.equal(output.user.email, 'admin@example.com')
+  assert.equal(output.tags.app, 'admin')
+  assert.equal(output.tags.profile_id, profileId)
+  assert.equal(output.tags.role, 'admin')
+  assert.equal(output.tags.route, '/locations/:id')
+  assert.equal(JSON.stringify(output).includes('secret-token'), false)
+  assert.equal(JSON.stringify(output).includes('Private address'), false)
+  assert.equal(JSON.stringify(output).includes('private-name'), false)
+})
+
+test('reported admin errors include app and normalized route tags', async () => {
+  const h = await harness()
+  h.reporting.reportAdminError(new Error('failure'), {
+    ...observation,
+    route: '/locations/' + locationId + '/edit?token=secret-token',
+  })
+  assert.equal(h.events[0].scope.tags.app, 'admin')
+  assert.equal(h.events[0].scope.tags.route, '/locations/:id/edit')
+})
+
 test('no exception uses captureMessage; a failed SDK never breaks the operation', async () => {
   const h = await harness()
   h.reporting.reportAdminError(null, { ...observation, outcome: 'partial' })

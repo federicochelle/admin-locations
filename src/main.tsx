@@ -23,6 +23,7 @@ Sentry.init({
   release: import.meta.env.VITE_APP_RELEASE?.trim() || undefined,
   beforeSend: sanitizeAdminSentryEvent,
 })
+Sentry.setTag('app', 'admin')
 
 const uninstallVersionRecovery = installVersionRecovery()
 if (import.meta.hot) import.meta.hot.dispose(uninstallVersionRecovery)
