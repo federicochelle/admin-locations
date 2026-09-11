@@ -4,6 +4,7 @@ import {
   FunctionsRelayError,
   getSupabaseClient,
 } from '../../lib/supabase'
+import { getAdminCorrelationHeaders } from '../../lib/admin-correlation'
 import { assertSupportedImageFile } from '../images/image-upload.constants'
 
 export type LocationSensitiveContentBoundingBox = {
@@ -76,6 +77,7 @@ async function getEdgeFunctionErrorMessage(
 export async function detectLocationImageSensitiveContent(
   file: File,
   signal?: AbortSignal,
+  correlationId?: string,
 ): Promise<LocationSensitiveContentDetectionResult> {
   assertSupportedImageFile(file)
 
@@ -88,6 +90,7 @@ export async function detectLocationImageSensitiveContent(
       'location-image-detect-sensitive-content',
       {
         body: formData,
+        headers: getAdminCorrelationHeaders(correlationId),
         signal,
       },
     )

@@ -22,6 +22,7 @@ export type CreatePendingLocationImagePlaceholderOptions = {
 
 export type PreparePendingLocationImageOptions = {
   id: string
+  correlationId?: string
   isCover: boolean
   originalIndex: number
   target: PendingImageSelectionTarget
@@ -84,7 +85,12 @@ export async function preparePendingLocationImage(
 
   try {
     const detectionResult = await withAdminErrorStage({ stage: 'images.detect', provider: 'google_vision' }, () => runWithAdminTimeout({
-      action: () => detectLocationImageSensitiveContent(optimizedFile),
+      action: () =>
+        detectLocationImageSensitiveContent(
+          optimizedFile,
+          undefined,
+          options.correlationId,
+        ),
       message: 'La detección automática demoró demasiado.',
       provider: 'google_vision',
       stage: 'images.detect',
@@ -109,6 +115,7 @@ export async function preparePendingLocationImage(
       provider: 'google_vision',
       outcome: 'partial',
       level: 'warning',
+      correlationId: options.correlationId,
       extraSafeContext: {
         fallback_used: true,
         image_index: options.originalIndex,

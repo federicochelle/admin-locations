@@ -8,6 +8,7 @@ export type LocationImageUploadUrlInput = {
   locationId: string
   filename: string
   contentType: LocationImageContentType
+  correlationId?: string
 }
 
 export type LocationImageUploadUrlCloudflareResult = {
@@ -40,6 +41,7 @@ export type LocationImageFinalizeInput = {
   locationId: string
   cloudflareImageId: string
   clientUploadId?: string | null
+  correlationId?: string
   width: number
   height: number
   altText?: string | null
@@ -68,6 +70,7 @@ export type UploadLocationImageInput = {
   locationId: string
   file: File
   clientUploadId?: string | null
+  correlationId?: string
   width: number
   height: number
   altText?: string | null

@@ -342,7 +342,7 @@ function LocationViewPage() {
           enabled: true,
         },
         action: async () => {
-          await deleteLocation(id)
+          await deleteLocation(id, { correlationId })
         },
       })
 

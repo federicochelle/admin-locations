@@ -9,7 +9,7 @@ const root = process.cwd()
 export const locationId = '11111111-1111-4111-8111-111111111111'
 export const correlationId = '22222222-2222-4222-8222-222222222222'
 
-export async function harness({ query, invoke, activityError, fetch, prepare, detect, blur, actualImageProcessor = false, optimize, heicTo } = {}) {
+export async function harness({ query, invoke, activityError, fetch, prepare, detect, blur, actualImageProcessor = false, actualSensitiveContent = false, optimize, heicTo } = {}) {
   const events = []
   const requests = []
   const sentryState = { users: [], contexts: [], tags: [] }
@@ -28,6 +28,14 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
       return { setTag(key, value) { sentryState.tags.push({ key, value }); return this } }
     },
   }
+  class FunctionsFetchError extends Error {}
+  class FunctionsRelayError extends Error {}
+  class FunctionsHttpError extends Error {
+    constructor(message, context) {
+      super(message)
+      this.context = context
+    }
+  }
   const supabase = {
     from(table) {
       const call = { table, method: 'select' }
@@ -43,8 +51,8 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
       } })
       return builder
     },
-    functions: { invoke: async (name, options) => {
-      requests.push({ name })
+    functions: { invoke: async (name, options = {}) => {
+      requests.push({ name, options })
       if (!invoke) throw new Error('Unexpected Edge invocation in test')
       return invoke(name, options)
     } },
@@ -55,10 +63,11 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
     [path.join(root, 'src/features/images/image-upload.processor'), { prepareImageUploadFile: prepare ?? (async file => ({ file, outputDimensions: { width: 10, height: 20 } })) }],
     [path.join(root, 'src/features/locations/location-sensitive-content.service'), { detectLocationImageSensitiveContent: detect ?? (async () => ({ summary: { faces: 0 }, faces: [] })) }],
     [path.join(root, 'src/features/locations/location-face-blur'), { applyFaceBlurToImage: blur ?? (async file => file) }],
-    [path.join(root, 'src/lib/supabase'), { getSupabaseClient: () => supabase }],
+    [path.join(root, 'src/lib/supabase'), { FunctionsFetchError, FunctionsHttpError, FunctionsRelayError, getSupabaseClient: () => supabase }],
     [path.join(root, 'src/features/activity/activity-logs.service'), { createActivityLog: async () => { if (activityError) throw activityError } }],
   ])
   if (actualImageProcessor) mocks.delete(path.join(root, 'src/features/images/image-upload.processor'))
+  if (actualSensitiveContent) mocks.delete(path.join(root, 'src/features/locations/location-sensitive-content.service'))
   if (optimize) mocks.set(path.join(root, 'src/features/locations/location-image-optimizer'), { optimizeLocationImageFile: optimize })
   if (heicTo) mocks.set('heic-to', { heicTo })
   const cache = new Map()

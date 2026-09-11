@@ -2,6 +2,7 @@ import { assertAdmin } from '../_shared/auth.ts'
 import { deleteCloudflareImage } from '../_shared/cloudflare.ts'
 import {
   errorResponse,
+  getAdminCorrelationId,
   handleOptions,
   HttpError,
   jsonResponse,
@@ -40,6 +41,8 @@ function parseRequestBody(body: DeleteRequestBody) {
 
 Deno.serve(async (request) => {
   const origin = request.headers.get('origin')
+  const correlationId = getAdminCorrelationId(request)
+  let locationId: string | undefined
 
   if (request.method === 'OPTIONS') {
     return handleOptions(request)
@@ -56,6 +59,7 @@ Deno.serve(async (request) => {
   try {
     const body = (await request.json()) as DeleteRequestBody
     const input = parseRequestBody(body)
+    locationId = input.locationId
     const { adminClient } = await assertAdmin(request)
 
     const { data: locationRow, error: locationError } = await adminClient
@@ -140,6 +144,14 @@ Deno.serve(async (request) => {
       origin,
     )
   } catch (error) {
-    return errorResponse(error, origin)
+    console.error('[location-delete] error', {
+      correlationId,
+      event: 'location-delete.error',
+      locationId,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stage: 'request',
+      status: error instanceof HttpError ? error.status : 500,
+    })
+    return errorResponse(error, origin, correlationId)
   }
 })

@@ -18,6 +18,10 @@ type SafeErrorLog = {
   operation: string
 }
 
+const ADMIN_CORRELATION_ID_HEADER = 'x-admin-correlation-id'
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
@@ -69,11 +73,19 @@ export function getCorsHeaders(origin?: string | null) {
   return {
     'Access-Control-Allow-Origin': origin ?? '*',
     'Access-Control-Allow-Headers':
-      'authorization, x-client-info, apikey, content-type',
+      `authorization, x-client-info, apikey, content-type, ${ADMIN_CORRELATION_ID_HEADER}`,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
   }
+}
+
+export function getAdminCorrelationId(request: Request): string | undefined {
+  const correlationId = request.headers.get(ADMIN_CORRELATION_ID_HEADER)?.trim()
+
+  return correlationId && UUID_PATTERN.test(correlationId)
+    ? correlationId
+    : undefined
 }
 
 export function jsonResponse(
@@ -94,12 +106,14 @@ export function jsonResponse(
 export function errorResponse(
   error: unknown,
   origin?: string | null,
+  correlationId?: string,
 ) {
   if (error instanceof HttpError) {
     return jsonResponse(
       {
         error: error.message,
         details: error.details ?? null,
+        ...(correlationId ? { correlationId } : {}),
       },
       { status: error.status },
       origin,
@@ -115,6 +129,7 @@ export function errorResponse(
     {
       error: message,
       details: null,
+      ...(correlationId ? { correlationId } : {}),
     },
     { status: 500 },
     origin,

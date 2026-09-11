@@ -1221,6 +1221,7 @@ function LocationForm({
         }
 
         const uploadedAsset = await uploadLocationImageAsset({
+          correlationId,
           file: blurredFile,
           locationId,
         })
