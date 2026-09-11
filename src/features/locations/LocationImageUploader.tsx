@@ -22,7 +22,7 @@ type LocationImageUploaderProps = {
   multiple?: boolean
   onTrigger?: () => void
   variant?: 'button' | 'empty-state'
-  onFilesSelected: (files: FileList | null) => void
+  onFilesSelected: (files: FileList | null) => void | Promise<void>
 }
 
 export type LocationImageUploaderHandle = {
@@ -79,7 +79,13 @@ const LocationImageUploader = forwardRef<
   )
 
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
-    onFilesSelected(event.target.files)
+    try {
+      Promise.resolve(onFilesSelected(event.target.files)).catch((error: unknown) => {
+        console.error('No pudimos procesar los archivos seleccionados.', error)
+      })
+    } catch (error) {
+      console.error('No pudimos procesar los archivos seleccionados.', error)
+    }
     event.target.value = ''
   }
 

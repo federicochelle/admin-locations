@@ -1,5 +1,6 @@
 import { reportAdminError, withAdminErrorStage } from '../../lib/admin-error-reporting'
 import { runWithAdminTimeout } from '../../lib/async-timeout'
+import { createClientUuid } from '../../lib/client-id'
 import { prepareImageUploadFile } from '../images/image-upload.processor'
 import { applyFaceBlurToImage } from './location-face-blur'
 import { detectLocationImageSensitiveContent } from './location-sensitive-content.service'
@@ -57,7 +58,7 @@ export function createPendingLocationImagePlaceholder(
   options: CreatePendingLocationImagePlaceholderOptions,
 ): PendingLocationImageFile {
   return {
-    id: options.id ?? crypto.randomUUID(),
+    id: options.id ?? createClientUuid(),
     file,
     height: 0,
     previewUrl: PLACEHOLDER_PREVIEW_URL,
@@ -151,7 +152,7 @@ export async function preparePendingLocationImages(
     try {
       nextImages.push(
         await preparePendingLocationImage(file, {
-          id: crypto.randomUUID(),
+          id: createClientUuid(),
           isCover: options.isCoverSelection && index === 0,
           onStatusChange: undefined,
           originalIndex: options.startingOriginalIndex + nextImages.length,

@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/react'
+import { createClientUuid } from './client-id'
 
 export type AdminErrorContext = {
   operation: string
@@ -94,7 +95,7 @@ export function suppressAdminErrorReport(error: Error): Error {
 }
 
 export function createAdminCorrelationId(): string {
-  try { return globalThis.crypto.randomUUID() } catch { return '' }
+  try { return createClientUuid() } catch { return '' }
 }
 
 export function normalizeAdminRoute(route?: string): string {

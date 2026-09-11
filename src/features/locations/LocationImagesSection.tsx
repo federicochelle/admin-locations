@@ -6,6 +6,7 @@ import {
   uploadLocationImage,
 } from './location-images.service'
 import { prepareImageUploadFile } from '../images/image-upload.processor'
+import { createClientUuid } from '../../lib/client-id'
 import type {
   LocationImageRecord,
   PendingLocationImageFile,
@@ -96,7 +97,7 @@ function LocationImagesSection({
         const preparedFile = prepareResult.file
 
         nextUploads.push({
-          id: crypto.randomUUID(),
+          id: createClientUuid(),
           file: preparedFile,
           height: prepareResult.outputDimensions.height,
           previewUrl: URL.createObjectURL(preparedFile),
