@@ -6,7 +6,6 @@ import {
   HttpError,
   jsonResponse,
 } from '../_shared/http.ts'
-import { assertLocationExists } from '../_shared/locations.ts'
 
 type DeleteRequestBody = {
   locationId?: unknown
@@ -23,6 +22,7 @@ type DeletedLocationRow = {
 
 type DeleteLocationResponse = {
   success: true
+  alreadyDeleted?: boolean
   deletedLocationId: string
   deletedImagesCount: number
 }
@@ -58,7 +58,32 @@ Deno.serve(async (request) => {
     const input = parseRequestBody(body)
     const { adminClient } = await assertAdmin(request)
 
-    await assertLocationExists(adminClient, input.locationId)
+    const { data: locationRow, error: locationError } = await adminClient
+      .from('locations')
+      .select('id')
+      .eq('id', input.locationId)
+      .maybeSingle()
+
+    if (locationError) {
+      throw new HttpError(
+        500,
+        'Could not validate location.',
+        locationError.message,
+      )
+    }
+
+    if (!locationRow) {
+      return jsonResponse(
+        {
+          success: true,
+          alreadyDeleted: true,
+          deletedLocationId: input.locationId,
+          deletedImagesCount: 0,
+        } satisfies DeleteLocationResponse,
+        { status: 200 },
+        origin,
+      )
+    }
 
     const { data: imageRows, error: imageRowsError } = await adminClient
       .from('location_images')
