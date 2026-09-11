@@ -1,6 +1,8 @@
 import { normalizeAdminError } from '../../lib/admin-error-reporting'
 import { getSupabaseClient } from '../../lib/supabase'
 
+const EXCLUDED_ACTIVITY_LOG_ACTOR_PROFILE_ID = '689dd1d5-4db1-4a40-9a95-0871b529984f'
+
 export type ActivityLogAction = 'created' | 'updated' | 'deleted'
 
 export type ActivityLogEntityType = 'location' | 'owner' | 'category' | 'zone'
@@ -135,6 +137,10 @@ export async function createActivityLog({
   entityId,
   entityName,
 }: CreateActivityLogInput): Promise<void> {
+  if (actorProfileId === EXCLUDED_ACTIVITY_LOG_ACTOR_PROFILE_ID) {
+    return
+  }
+
   const supabase = getSupabaseClient()
 
   const { error } = await supabase.from('activity_logs').insert({
@@ -170,6 +176,7 @@ export async function getActivityLogs({
         profiles(full_name)
       `,
     )
+    .eq('visible', true)
     .not('created_at', 'is', null)
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -227,6 +234,7 @@ export async function getActivityLogsPage(input: {
       `,
       { count: 'exact' },
     )
+    .eq('visible', true)
     .not('action', 'is', null)
     .not('entity_type', 'is', null)
     .not('entity_name', 'is', null)
