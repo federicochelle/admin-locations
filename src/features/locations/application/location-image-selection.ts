@@ -132,7 +132,7 @@ type HandleSelectedLocationImageFilesInput = {
   target: ImageSelectionTarget
 }
 
-const DEFAULT_IMAGE_PREPARATION_TIMEOUT_MS = 60_000
+const DEFAULT_IMAGE_PREPARATION_TIMEOUT_MS = 120_000
 
 export function getImageSelectionPlan({
   files,
