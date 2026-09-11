@@ -28,6 +28,7 @@ type LocationCoverFieldProps = {
   onOpenImageSourceModal: (target: 'cover' | 'gallery') => void
   onOpenPersistedManualBlur: (imageId: string) => void
   onRemovePendingImage: (imageId: string) => void
+  onRetryPendingImage: (imageId: string) => void
   onSetCoverImage: (imageId: string) => void
   pendingCoverImage: PendingLocationImageFile | null
   persistedCoverImage: LocationImageRecord | null
@@ -98,6 +99,7 @@ export default function LocationCoverField({
   onOpenImageSourceModal,
   onOpenPersistedManualBlur,
   onRemovePendingImage,
+  onRetryPendingImage,
   onSetCoverImage,
   pendingCoverImage,
   persistedCoverImage,
@@ -128,6 +130,7 @@ export default function LocationCoverField({
           mode="pending"
           onManualBlur={onManualBlur}
           onRemove={onRemovePendingImage}
+          onRetry={onRetryPendingImage}
           onSetCover={onSetCoverImage}
           showCount={false}
           showGallery={false}
@@ -155,6 +158,7 @@ export default function LocationCoverField({
             mode="pending"
             onManualBlur={onManualBlur}
             onRemove={onRemovePendingImage}
+            onRetry={onRetryPendingImage}
             onSetCover={onSetCoverImage}
             showCount={false}
             showGallery={false}
