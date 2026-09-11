@@ -61,6 +61,7 @@ import {
 } from './application/location-form.helpers'
 import {
   handleSelectedLocationImageFiles,
+  retryPendingLocationImagePreparation,
 } from './application/location-image-selection'
 import {
   buildSubmitObservation,
@@ -272,6 +273,7 @@ function LocationForm({
   const isMountedRef = useRef(true)
   const ownerComboboxRef = useRef<HTMLDivElement | null>(null)
   const removedPendingImageIdsRef = useRef<Set<string>>(new Set())
+  const retryingPendingImageIdsRef = useRef<Set<string>>(new Set())
   const zoneComboboxRef = useRef<HTMLDivElement | null>(null)
   const locationImages = useLocationImages(
     mode !== 'create' ? locationId ?? null : null,
@@ -1020,6 +1022,25 @@ function LocationForm({
     })
   }
 
+  function handleRetryPendingImage(imageId: string) {
+    if (isReadOnly) {
+      return
+    }
+
+    void retryPendingLocationImagePreparation({
+      correlationId: createAdminCorrelationId(),
+      imageId,
+      isMountedRef,
+      pendingImagesRef,
+      prepareImage: preparePendingLocationImage,
+      removedPendingImageIdsRef,
+      reportLocationFailure,
+      retryingPendingImageIdsRef,
+      revokePreviewUrl,
+      setPendingImages,
+    })
+  }
+
   function handleOpenManualBlur(imageId: string) {
     if (isReadOnly || manualBlurLoadingImageId !== null) {
       return
@@ -1664,6 +1685,7 @@ function LocationForm({
               onOpenImageSourceModal={handleOpenImageSourceModal}
               onOpenPersistedManualBlur={handleOpenPersistedManualBlur}
               onRemovePendingImage={handleRemovePendingImage}
+              onRetryPendingImage={handleRetryPendingImage}
               onSetCoverImage={handleSetCoverImage}
               pendingCoverImage={pendingCoverImage}
               persistedCoverImage={persistedCoverImage}
@@ -1737,6 +1759,7 @@ function LocationForm({
             onOpenImageSourceModal={handleOpenImageSourceModal}
             onOpenPersistedManualBlur={handleOpenPersistedManualBlur}
             onRemovePendingImage={handleRemovePendingImage}
+            onRetryPendingImage={handleRetryPendingImage}
             pendingGalleryImages={pendingGalleryImages}
             persistedGalleryImages={persistedGalleryImages}
             processedImagesCount={processedImagesCount}

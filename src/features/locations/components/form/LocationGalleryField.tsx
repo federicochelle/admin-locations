@@ -36,6 +36,7 @@ type LocationGalleryFieldProps = {
   onOpenImageSourceModal: (target: 'cover' | 'gallery') => void
   onOpenPersistedManualBlur: (imageId: string) => void
   onRemovePendingImage: (imageId: string) => void
+  onRetryPendingImage: (imageId: string) => void
   pendingGalleryImages: PendingLocationImageFile[]
   persistedGalleryImages: LocationImageRecord[]
   processedImagesCount: number
@@ -71,6 +72,7 @@ export default function LocationGalleryField({
   onOpenImageSourceModal,
   onOpenPersistedManualBlur,
   onRemovePendingImage,
+  onRetryPendingImage,
   pendingGalleryImages,
   persistedGalleryImages,
   processedImagesCount,
@@ -105,6 +107,7 @@ export default function LocationGalleryField({
             mode="pending"
             onManualBlur={onManualBlur}
             onRemove={onRemovePendingImage}
+            onRetry={onRetryPendingImage}
             showCount={false}
             showCover={false}
           />
@@ -147,6 +150,7 @@ export default function LocationGalleryField({
             onManualBlurPersisted={(imageId) => void onOpenPersistedManualBlur(imageId)}
             onRemovePending={onRemovePendingImage}
             onRemovePersisted={(imageId) => void onDeletePersistedImage(imageId)}
+            onRetryPending={onRetryPendingImage}
             showCount={false}
             showCover={false}
           />
