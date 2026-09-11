@@ -7,7 +7,6 @@ import {
   type PropsWithChildren,
 } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import * as Sentry from '@sentry/react'
 import { getSupabaseClient } from '../../lib/supabase'
 import {
   getCurrentSession,
@@ -18,6 +17,11 @@ import {
   type AuthContextValue,
   type Profile,
 } from './auth-context'
+import {
+  applySentryAdminProfile,
+  applySentryAuthSession,
+  clearSentryAdminIdentity,
+} from './auth-sentry'
 
 function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null)
@@ -47,6 +51,7 @@ function AuthProvider({ children }: PropsWithChildren) {
 
     if (!userId) {
       setIsProfileLoading(false)
+      applySentryAdminProfile(null, null)
       return
     }
 
@@ -78,11 +83,13 @@ function AuthProvider({ children }: PropsWithChildren) {
       if (!nextProfile || nextProfile.user_id !== userId) {
         setProfile(null)
         latestProfileRef.current = null
+        applySentryAdminProfile(null, userId)
         return
       }
 
       setProfile(nextProfile)
       latestProfileRef.current = nextProfile
+      applySentryAdminProfile(nextProfile, userId)
     } catch (error) {
       if (
         activeProfileRequestIdRef.current !== requestId ||
@@ -96,6 +103,7 @@ function AuthProvider({ children }: PropsWithChildren) {
       if (!options?.preserveExistingProfile) {
         setProfile(null)
         latestProfileRef.current = null
+        applySentryAdminProfile(null, userId)
       }
     } finally {
       if (
@@ -114,7 +122,7 @@ function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     let isActive = true
     let hasAuthStateChange = false
-    Sentry.setUser(null)
+    clearSentryAdminIdentity()
 
     void getCurrentSession()
       .then(async (nextSession) => {
@@ -122,7 +130,7 @@ function AuthProvider({ children }: PropsWithChildren) {
           return
         }
 
-        Sentry.setUser(nextSession?.user ? { id: nextSession.user.id } : null)
+        applySentryAuthSession(nextSession?.user ?? null)
         expectedProfileUserIdRef.current = nextSession?.user.id ?? null
         latestSessionUserIdRef.current = nextSession?.user.id ?? null
         setProfile(null)
@@ -135,7 +143,7 @@ function AuthProvider({ children }: PropsWithChildren) {
           return
         }
 
-        Sentry.setUser(null)
+        clearSentryAdminIdentity()
         setSession(null)
         setProfile(null)
         latestSessionUserIdRef.current = null
@@ -159,7 +167,7 @@ function AuthProvider({ children }: PropsWithChildren) {
       }
 
       hasAuthStateChange = true
-      Sentry.setUser(nextSession?.user ? { id: nextSession.user.id } : null)
+      applySentryAuthSession(nextSession?.user ?? null)
       const previousUserId = latestSessionUserIdRef.current
       const nextUserId = nextSession?.user.id ?? null
       const isSameUser = previousUserId !== null && previousUserId === nextUserId
@@ -188,12 +196,14 @@ function AuthProvider({ children }: PropsWithChildren) {
         setProfile(null)
         latestProfileRef.current = null
         setIsProfileLoading(false)
+        applySentryAdminProfile(null, null)
         return
       }
 
       if (!preserveExistingProfile) {
         setProfile(null)
         latestProfileRef.current = null
+        applySentryAdminProfile(null, nextUserId)
       }
 
       void loadProfileForUser(nextUserId, {
@@ -204,7 +214,7 @@ function AuthProvider({ children }: PropsWithChildren) {
     return () => {
       isActive = false
       subscription.unsubscribe()
-      Sentry.setUser(null)
+      clearSentryAdminIdentity()
     }
   }, [loadProfileForUser])
 

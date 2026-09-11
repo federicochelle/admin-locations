@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -8,9 +9,16 @@ if (suppliedRelease && !/^[a-f0-9]{7,64}$/.test(suppliedRelease)) throw new Erro
 if (process.env.VERCEL === '1' && !suppliedRelease) throw new Error('Vercel build requires VERCEL_GIT_COMMIT_SHA or VITE_APP_RELEASE')
 // Local builds/testing only; never a production release on Vercel.
 const release = suppliedRelease || `local-${randomUUID().replaceAll('-', '')}`
+const sentryOrg = process.env.SENTRY_ORG?.trim()
+const sentryProject = process.env.SENTRY_PROJECT?.trim()
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN?.trim()
+const shouldUploadSentrySourceMaps = Boolean(suppliedRelease && sentryOrg && sentryProject && sentryAuthToken)
 
 export default defineConfig({
   define: { 'import.meta.env.VITE_APP_RELEASE': JSON.stringify(release) },
+  build: {
+    sourcemap: shouldUploadSentrySourceMaps,
+  },
   plugins: [react(), tailwindcss(), {
     name: 'admin-build-version',
     generateBundle() {
@@ -23,5 +31,16 @@ export default defineConfig({
         response.end(JSON.stringify({ version: release }))
       })
     },
-  }],
+  }, ...(shouldUploadSentrySourceMaps ? [sentryVitePlugin({
+    org: sentryOrg,
+    project: sentryProject,
+    authToken: sentryAuthToken,
+    release: {
+      name: release,
+    },
+    sourcemaps: {
+      assets: './dist/assets/**',
+      filesToDeleteAfterUpload: './dist/assets/**/*.map',
+    },
+  })] : [])],
 })

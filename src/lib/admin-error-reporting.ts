@@ -40,8 +40,10 @@ const stages = new Set([
 ])
 const providers = new Set(['supabase', 'cloudflare', 'google_vision', 'browser', 'dropbox'])
 const resourceTypes = new Set(['location', 'image', 'owner', 'category', 'zone'])
+const profileRoles = new Set(['admin'])
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const numericKeys = new Set(['image_count', 'image_bytes', 'image_index', 'attempt', 'duration_ms', 'timeout_ms'])
+const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null ? value as Record<string, unknown> : undefined
@@ -128,6 +130,7 @@ function safeExtras(input?: Record<string, unknown>): Record<string, unknown> {
 
 function safeContext(context: AdminErrorContext) {
   const tags: Record<string, string> = {
+    app: 'admin',
     operation: operations.has(context.operation) ? context.operation : 'location.load',
     module: context.operation === 'app.version_recovery' ? 'app' : 'locations',
     resource_type: resourceTypes.has(context.resourceType ?? '') ? context.resourceType! : 'location',
@@ -139,8 +142,9 @@ function safeContext(context: AdminErrorContext) {
   if (providers.has(context.provider ?? '')) tags.provider = context.provider!
   if (Number.isInteger(context.httpStatus) && context.httpStatus! >= 100 && context.httpStatus! <= 599) tags.http_status = String(context.httpStatus)
   if (/^(?:[0-9A-Z]{5}|PGRST\d{3})$/.test(context.supabaseCode ?? '')) tags.supabase_code = context.supabaseCode!
+  tags.route = normalizeAdminRoute(context.route)
   const details = safeExtras(context.extraSafeContext)
-  details.route = normalizeAdminRoute(context.route)
+  details.route = tags.route
   details.failed_stage = tags.stage
   if ((!context.resourceType || context.resourceType === 'location' || context.resourceType === 'image') && uuid.test(context.resourceId ?? '')) details.location_id = context.resourceId
   if (uuid.test(context.correlationId ?? '')) details.correlation_id = context.correlationId
@@ -196,6 +200,11 @@ export function sanitizeAdminSentryEvent(event: Sentry.ErrorEvent): Sentry.Error
   try {
     const sourceTags = event.tags ?? {}
     const details = event.contexts?.admin_operation ?? {}
+    const globalTags: Record<string, string> = {}
+    if (sourceTags.app === 'admin') globalTags.app = 'admin'
+    if (uuid.test(String(sourceTags.profile_id ?? ''))) globalTags.profile_id = String(sourceTags.profile_id)
+    if (profileRoles.has(String(sourceTags.role ?? ''))) globalTags.role = String(sourceTags.role)
+    if (typeof sourceTags.route === 'string') globalTags.route = normalizeAdminRoute(sourceTags.route)
     const scope = safeContext({
       level: event.level === 'warning' ? 'warning' : 'error',
       operation: String(sourceTags.operation ?? 'location.load'),
@@ -212,18 +221,21 @@ export function sanitizeAdminSentryEvent(event: Sentry.ErrorEvent): Sentry.Error
       route: typeof details.route === 'string' ? details.route : undefined,
       extraSafeContext: details,
     })
+    const tags = {
+      ...globalTags,
+      ...(sourceTags.operation ? scope.tags : {}),
+      ...(typeof sourceTags.replayId === 'string' && /^[a-f0-9]{32}$/.test(sourceTags.replayId) ? { replayId: sourceTags.replayId } : {}),
+    }
     return {
       type: event.type, event_id: event.event_id, timestamp: event.timestamp, platform: event.platform,
       level: event.level, environment: event.environment, release: event.release,
       ...(typeof event.user?.id === 'string' && uuid.test(event.user.id)
-        ? { user: { id: event.user.id } }
+        ? { user: { id: event.user.id, ...(typeof event.user.email === 'string' && email.test(event.user.email) ? { email: event.user.email } : {}) } }
         : {}),
       // Automatic events retain automatic grouping without being labelled locations.
       ...(sourceTags.operation ? { ...scope, fingerprint: ['{{ default }}', scope.tags.operation, scope.tags.stage, scope.tags.supabase_code ?? scope.tags.http_status ?? 'unknown'] } : {}),
       // Replay 10.73 adds this tag before beforeSend, including global errors.
-      ...(typeof sourceTags.replayId === 'string' && /^[a-f0-9]{32}$/.test(sourceTags.replayId)
-        ? { tags: { ...(sourceTags.operation ? scope.tags : {}), replayId: sourceTags.replayId } }
-        : {}),
+      ...(Object.keys(tags).length > 0 ? { tags } : {}),
       message: event.message ? 'Admin operation invariant' : undefined,
       exception: event.exception ? { values: event.exception.values?.map(value => ({
         type: ['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'AbortError', 'TimeoutError', 'FunctionsHttpError', 'FunctionsFetchError', 'FunctionsRelayError'].includes(value.type ?? '') ? value.type : 'Error',
