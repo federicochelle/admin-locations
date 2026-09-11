@@ -15,7 +15,7 @@ import {
 
 const HEIC_RESIZE_MAX_DIMENSION = 2400
 const HEIC_OUTPUT_QUALITY_STEPS = [0.85, 0.82] as const
-const DEFAULT_LOCATION_IMAGE_CONVERT_TIMEOUT_MS = 45_000
+const DEFAULT_LOCATION_IMAGE_CONVERT_TIMEOUT_MS = 90_000
 
 export type PrepareImageUploadResult = {
   file: File
