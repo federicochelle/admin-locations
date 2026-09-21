@@ -1,5 +1,7 @@
 import { getSupabaseClient } from '../../../lib/supabase'
 
+const OFFICIAL_PDF_SIGNED_URL_TTL_SECONDS = 120
+
 type OfficialRequestProjectPdf = {
   bucket: string
   path: string
@@ -17,33 +19,64 @@ function validateOfficialPdf(officialPdf: OfficialRequestProjectPdf | null) {
   return officialPdf
 }
 
-function openPdfBlobInNewTab(blob: Blob) {
-  const blobUrl = URL.createObjectURL(blob)
+function closePopup(popup: Window) {
+  try {
+    popup.close()
+  } catch {
+    // Ignore browsers that prevent closing the placeholder tab.
+  }
+}
 
-  window.open(blobUrl, '_blank', 'noopener,noreferrer')
+function detachPopupOpener(popup: Window) {
+  try {
+    popup.opener = null
+  } catch {
+    // Keep the PDF flow working if the browser disallows changing opener.
+  }
+}
 
-  window.setTimeout(() => {
-    URL.revokeObjectURL(blobUrl)
-  }, 60_000)
+function getSignedUrlErrorMessage(message: string | null | undefined) {
+  const normalizedMessage = message?.trim()
+
+  return normalizedMessage
+    ? `No pudimos generar el enlace temporal del PDF oficial: ${normalizedMessage}`
+    : 'No pudimos generar el enlace temporal del PDF oficial.'
 }
 
 export async function openOfficialRequestProjectPdf(
   officialPdf: OfficialRequestProjectPdf | null,
 ) {
   const resolvedOfficialPdf = validateOfficialPdf(officialPdf)
+  const popup = window.open('', '_blank')
+
+  if (!popup) {
+    throw new Error(
+      'El navegador bloqueó la apertura del PDF. Permití ventanas emergentes para este sitio.',
+    )
+  }
+
+  detachPopupOpener(popup)
+
   const supabase = getSupabaseClient()
 
   const { data, error } = await supabase.storage
     .from(resolvedOfficialPdf.bucket)
-    .download(resolvedOfficialPdf.path)
+    .createSignedUrl(
+      resolvedOfficialPdf.path,
+      OFFICIAL_PDF_SIGNED_URL_TTL_SECONDS,
+    )
 
   if (error) {
-    throw new Error('No pudimos descargar el PDF oficial de la solicitud.')
+    closePopup(popup)
+    throw new Error(getSignedUrlErrorMessage(error.message))
   }
 
-  if (!(data instanceof Blob) || data.size === 0) {
-    throw new Error('El PDF oficial de la solicitud no está disponible.')
+  const signedUrl = data?.signedUrl?.trim()
+
+  if (!signedUrl) {
+    closePopup(popup)
+    throw new Error('Supabase no devolvió un enlace temporal para el PDF oficial.')
   }
 
-  openPdfBlobInNewTab(data)
+  popup.location.replace(signedUrl)
 }
