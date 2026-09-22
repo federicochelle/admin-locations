@@ -39,7 +39,11 @@ function getRequestStatusSelectClassName(status: LocationRequestStatus) {
   }
 }
 
-function formatDateTime(value: string) {
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return '-'
+  }
+
   return new Intl.DateTimeFormat('es-UY', {
     day: '2-digit',
     month: '2-digit',

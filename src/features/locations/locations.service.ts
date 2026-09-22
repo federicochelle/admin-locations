@@ -407,6 +407,7 @@ export async function getLocationsPage(
   let query = supabase
     .from('locations')
     .select(LOCATION_LIST_SELECT, { count: 'exact' })
+    .eq('location_images.is_cover', true)
 
   if (searchTerm.length > 0) {
     const filters: string[] = []

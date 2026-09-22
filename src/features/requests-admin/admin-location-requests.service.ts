@@ -650,8 +650,8 @@ function mapRequestProjectLocationToDetail(input: {
   }
 }
 
-function getCanonicalSubmittedAt(row: RequestProjectRow) {
-  return row.submitted_at?.trim() || row.created_at
+function getSubmittedAt(row: RequestProjectRow) {
+  return row.submitted_at?.trim() || null
 }
 
 export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]> {
@@ -710,7 +710,7 @@ export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]
           : locationNames[0] ?? 'Solicitud sin titulo',
       message: requestContact.notes,
       status: normalizeLocationRequestStatus(row.status),
-      submittedAt: getCanonicalSubmittedAt(row),
+      submittedAt: getSubmittedAt(row),
       updatedAt: row.updated_at,
       requesterFullName:
         requestContact.contactName ||
@@ -810,7 +810,7 @@ export async function getAdminLocationRequestsPage(input: {
             : locationNames[0] ?? 'Solicitud sin titulo',
         message: requestContact.notes,
         status: normalizeLocationRequestStatus(row.status),
-        submittedAt: getCanonicalSubmittedAt(row),
+        submittedAt: getSubmittedAt(row),
         updatedAt: row.updated_at,
         requesterFullName:
           requestContact.contactName ||
@@ -1334,7 +1334,7 @@ export async function getAdminLocationRequestById(
     message: requestContact.notes,
     status: normalizeLocationRequestStatus(row.status),
     createdAt: row.created_at,
-    submittedAt: getCanonicalSubmittedAt(row),
+    submittedAt: getSubmittedAt(row),
     updatedAt: row.updated_at,
     requester: {
       userId: row.user_id,
