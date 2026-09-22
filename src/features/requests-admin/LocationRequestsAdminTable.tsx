@@ -22,7 +22,11 @@ type LocationRequestsAdminTableProps = {
   isEmbedded?: boolean
 }
 
-function formatDate(value: string) {
+function formatDate(value: string | null) {
+  if (!value) {
+    return '-'
+  }
+
   return new Intl.DateTimeFormat('es-UY', {
     day: '2-digit',
     month: '2-digit',
@@ -30,7 +34,11 @@ function formatDate(value: string) {
   }).format(new Date(value))
 }
 
-function formatTime(value: string) {
+function formatTime(value: string | null) {
+  if (!value) {
+    return '-'
+  }
+
   return new Intl.DateTimeFormat('es-UY', {
     hour: '2-digit',
     minute: '2-digit',

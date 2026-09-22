@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -14,33 +14,53 @@ const sentryProject = process.env.SENTRY_PROJECT?.trim()
 const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN?.trim()
 const shouldUploadSentrySourceMaps = Boolean(suppliedRelease && sentryOrg && sentryProject && sentryAuthToken)
 
-export default defineConfig({
-  define: { 'import.meta.env.VITE_APP_RELEASE': JSON.stringify(release) },
-  build: {
-    sourcemap: shouldUploadSentrySourceMaps,
-  },
-  plugins: [react(), tailwindcss(), {
-    name: 'admin-build-version',
-    generateBundle() {
-      this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ version: release }) })
+function normalizePublicSiteUrl(value = '') {
+  const trimmedValue = value.trim()
+
+  if (!/^https?:\/\//i.test(trimmedValue)) {
+    return ''
+  }
+
+  return trimmedValue.replace(/\/+$/, '')
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const publicSiteUrl = normalizePublicSiteUrl(env.VITE_PUBLIC_SITE_URL)
+
+  return {
+    define: { 'import.meta.env.VITE_APP_RELEASE': JSON.stringify(release) },
+    build: {
+      sourcemap: shouldUploadSentrySourceMaps,
     },
-    configureServer(server) {
-      server.middlewares.use('/version.json', (_request, response) => {
-        response.setHeader('Content-Type', 'application/json')
-        response.setHeader('Cache-Control', 'no-store')
-        response.end(JSON.stringify({ version: release }))
-      })
-    },
-  }, ...(shouldUploadSentrySourceMaps ? [sentryVitePlugin({
-    org: sentryOrg,
-    project: sentryProject,
-    authToken: sentryAuthToken,
-    release: {
-      name: release,
-    },
-    sourcemaps: {
-      assets: './dist/assets/**',
-      filesToDeleteAfterUpload: './dist/assets/**/*.map',
-    },
-  })] : [])],
+    plugins: [react(), tailwindcss(), {
+      name: 'admin-public-site-url',
+      transformIndexHtml(html) {
+        return html.replaceAll('__PUBLIC_SITE_URL__', publicSiteUrl)
+      },
+    }, {
+      name: 'admin-build-version',
+      generateBundle() {
+        this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ version: release }) })
+      },
+      configureServer(server) {
+        server.middlewares.use('/version.json', (_request, response) => {
+          response.setHeader('Content-Type', 'application/json')
+          response.setHeader('Cache-Control', 'no-store')
+          response.end(JSON.stringify({ version: release }))
+        })
+      },
+    }, ...(shouldUploadSentrySourceMaps ? [sentryVitePlugin({
+      org: sentryOrg,
+      project: sentryProject,
+      authToken: sentryAuthToken,
+      release: {
+        name: release,
+      },
+      sourcemaps: {
+        assets: './dist/assets/**',
+        filesToDeleteAfterUpload: './dist/assets/**/*.map',
+      },
+    })] : [])],
+  }
 })

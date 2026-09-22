@@ -27,6 +27,10 @@ function getPendingRequests(requests: AdminLocationRequest[]) {
   return requests.filter((request) => request.status === 'pending')
 }
 
+function formatSubmittedAt(value: string | null) {
+  return value ? formatRelativeCreatedAt(value) : '-'
+}
+
 function DashboardPendingRequestsCard() {
   const navigate = useNavigate()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -149,7 +153,7 @@ function DashboardPendingRequestsCard() {
                     {getRequesterName(request)}
                   </p>
                   <p className="mt-1 text-sm text-slate-500">
-                    {formatRelativeCreatedAt(request.submittedAt)}
+                    {formatSubmittedAt(request.submittedAt)}
                   </p>
                 </div>
 

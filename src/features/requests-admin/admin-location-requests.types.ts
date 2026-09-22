@@ -14,7 +14,7 @@ export type AdminLocationRequest = {
   title: string
   message: string | null
   status: LocationRequestStatus
-  submittedAt: string
+  submittedAt: string | null
   updatedAt: string | null
   requesterFullName: string | null
   requesterEmail: string | null
@@ -86,7 +86,7 @@ export type AdminLocationRequestDetail = {
   message: string | null
   status: LocationRequestStatus
   createdAt: string
-  submittedAt: string
+  submittedAt: string | null
   updatedAt: string | null
   tentativeStartDate: string | null
   tentativeEndDate: string | null
