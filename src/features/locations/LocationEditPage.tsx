@@ -20,10 +20,16 @@ type OwnerLocationBreadcrumbState = {
   ownerName: string
 }
 
+type LocationReturnTo = {
+  pathname: string
+  state?: unknown
+}
+
 type CategoryLocationBreadcrumbState = {
   source: 'category'
   categoryId: string
   categoryName: string
+  returnTo?: LocationReturnTo
 }
 
 type LocationBreadcrumbState =
@@ -105,6 +111,11 @@ function LocationEditPage() {
     navigationState.categoryId &&
     navigationState.categoryName
       ? navigationState
+      : null
+  const categoryReturnTo =
+    categoryContext?.returnTo?.pathname?.startsWith('/') === true &&
+    !categoryContext.returnTo.pathname.startsWith('//')
+      ? categoryContext.returnTo
       : null
 
   useEffect(() => {
@@ -196,7 +207,8 @@ function LocationEditPage() {
               { label: 'Listado de categorías', to: routePaths.categories },
               {
                 label: categoryContext.categoryName,
-                to: getCategoryEditPath(categoryContext.categoryId),
+                to: categoryReturnTo?.pathname ?? getCategoryEditPath(categoryContext.categoryId),
+                state: categoryReturnTo?.state,
               },
               { label: breadcrumbCurrentLabel },
             ]

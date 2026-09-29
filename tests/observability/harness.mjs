@@ -9,7 +9,7 @@ const root = process.cwd()
 export const locationId = '11111111-1111-4111-8111-111111111111'
 export const correlationId = '22222222-2222-4222-8222-222222222222'
 
-export async function harness({ query, invoke, activityError, fetch, prepare, detect, blur, actualImageProcessor = false, actualSensitiveContent = false, optimize, heicTo } = {}) {
+export async function harness({ query, rpc, invoke, activityError, fetch, prepare, detect, blur, actualImageProcessor = false, actualSensitiveContent = false, optimize, heicTo } = {}) {
   const events = []
   const requests = []
   const sentryState = { users: [], contexts: [], tags: [] }
@@ -50,6 +50,12 @@ export async function harness({ query, invoke, activityError, fetch, prepare, de
         }
       } })
       return builder
+    },
+    rpc: async (fn, args) => {
+      const call = { fn, args, method: 'rpc' }
+      requests.push(call)
+      if (!rpc) throw new Error('Unexpected RPC in test')
+      return rpc(call)
     },
     functions: { invoke: async (name, options = {}) => {
       requests.push({ name, options })

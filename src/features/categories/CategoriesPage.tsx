@@ -1,10 +1,12 @@
 import { createAdminCorrelationId, reportAdminError } from '../../lib/admin-error-reporting'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useLayoutHeader } from '../../app/layouts/useLayoutHeader'
 import { routePaths } from '../../app/router/route-paths'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import EmptyState from '../../components/ui/EmptyState'
+import { useAdminFeedback } from '../../components/ui/admin-feedback/useAdminFeedback'
 import PageContainer from '../../components/ui/PageContainer'
 import LocationDeleteProgressModal from '../locations/LocationDeleteProgressModal'
 import CategoriesTable from './CategoriesTable'
@@ -12,10 +14,24 @@ import LocationsTable from '../locations/LocationsTable'
 import {
   deleteLocation,
   getLocationsByCategory,
+  updateCategoryLocationDisplayOrder,
 } from '../locations/locations.service'
 import type { LocationListItem } from '../locations/locations.types'
 import type { CategoryListItem } from './categories.types'
+import {
+  getCategoryLocationOrderIds,
+  hasCategoryLocationOrderChanges,
+  moveCategoryLocationToDisplayOrder,
+  renumberCategoryLocations,
+} from './category-location-order'
 import { useCategories } from './useCategories'
+
+type CategoryLocationsReturnState = {
+  source: 'category-locations'
+  categoryId: string
+}
+
+type CategoryLocationsHistoryMode = 'none' | 'push' | 'replace'
 
 function formatLocationIdentifier(location: Pick<LocationListItem, 'locationCode' | 'title'>) {
   const locationCode = location.locationCode?.trim()
@@ -30,6 +46,9 @@ function formatLocationIdentifier(location: Pick<LocationListItem, 'locationCode
 }
 
 function CategoriesPage() {
+  const routerLocation = useLocation()
+  const navigate = useNavigate()
+  const { toast } = useAdminFeedback()
   const {
     actionErrorMessage,
     activeActionKey,
@@ -49,7 +68,9 @@ function CategoriesPage() {
   } = useCategories()
   const [selectedCategory, setSelectedCategory] = useState<CategoryListItem | null>(null)
   const [categoryLocations, setCategoryLocations] = useState<LocationListItem[]>([])
+  const [savedCategoryLocationOrderIds, setSavedCategoryLocationOrderIds] = useState<string[]>([])
   const [isLocationsLoading, setIsLocationsLoading] = useState(false)
+  const [isOrderSaving, setIsOrderSaving] = useState(false)
   const [locationsErrorMessage, setLocationsErrorMessage] = useState<string | null>(
     null,
   )
@@ -57,12 +78,26 @@ function CategoriesPage() {
     null,
   )
   const [locationsActionKey, setLocationsActionKey] = useState<string | null>(null)
+  const restoredCategoryIdRef = useRef<string | null>(null)
+
+  const categoryLocationsReturnState =
+    routerLocation.state as CategoryLocationsReturnState | null
 
   function resetSelectedCategory() {
     setSelectedCategory(null)
     setCategoryLocations([])
+    setSavedCategoryLocationOrderIds([])
     setLocationsErrorMessage(null)
     setLocationsActionErrorMessage(null)
+  }
+
+  function closeSelectedCategory() {
+    restoredCategoryIdRef.current = null
+    resetSelectedCategory()
+    navigate(routePaths.categories, {
+      replace: true,
+      state: null,
+    })
   }
 
   async function handleDelete(category: CategoryListItem) {
@@ -77,14 +112,29 @@ function CategoriesPage() {
     await remove(category.id)
   }
 
-  async function loadSelectedCategoryLocations(category: CategoryListItem) {
+  async function loadSelectedCategoryLocations(
+    category: CategoryListItem,
+    historyMode: CategoryLocationsHistoryMode = 'none',
+  ) {
+    restoredCategoryIdRef.current = category.id
+    if (historyMode !== 'none') {
+      navigate(routePaths.categories, {
+        replace: historyMode === 'replace',
+        state: {
+          source: 'category-locations',
+          categoryId: category.id,
+        } satisfies CategoryLocationsReturnState,
+      })
+    }
     setSelectedCategory(category)
     setIsLocationsLoading(true)
     setLocationsErrorMessage(null)
 
     try {
       const nextLocations = await getLocationsByCategory(category.id)
-      setCategoryLocations(nextLocations)
+      const orderedLocations = renumberCategoryLocations(nextLocations)
+      setCategoryLocations(orderedLocations)
+      setSavedCategoryLocationOrderIds(getCategoryLocationOrderIds(orderedLocations))
     } catch (error) {
       const message =
         error instanceof Error
@@ -93,14 +143,45 @@ function CategoriesPage() {
 
       setLocationsErrorMessage(message)
       setCategoryLocations([])
+      setSavedCategoryLocationOrderIds([])
     } finally {
       setIsLocationsLoading(false)
     }
   }
 
   async function handleView(category: CategoryListItem) {
-    await loadSelectedCategoryLocations(category)
+    await loadSelectedCategoryLocations(category, 'push')
   }
+
+  useEffect(() => {
+    if (
+      categoryLocationsReturnState?.source !== 'category-locations' ||
+      !categoryLocationsReturnState.categoryId ||
+      restoredCategoryIdRef.current === categoryLocationsReturnState.categoryId
+    ) {
+      return
+    }
+
+    const categoryToRestore = categories.find(
+      (category) => category.id === categoryLocationsReturnState.categoryId,
+    )
+
+    if (!categoryToRestore) {
+      return
+    }
+
+    restoredCategoryIdRef.current = categoryToRestore.id
+    void loadSelectedCategoryLocations(categoryToRestore)
+  }, [categories, categoryLocationsReturnState])
+
+  useEffect(() => {
+    if (categoryLocationsReturnState?.source === 'category-locations') {
+      return
+    }
+
+    restoredCategoryIdRef.current = null
+    resetSelectedCategory()
+  }, [categoryLocationsReturnState])
 
   async function runLocationAction(
     actionKey: string,
@@ -142,6 +223,76 @@ function CategoriesPage() {
     await runLocationAction(`delete:${location.id}`, () => deleteLocation(location.id))
   }
 
+  function handleLocationOrderChange(locationId: string, nextDisplayOrder: number) {
+    setCategoryLocations((currentLocations) =>
+      moveCategoryLocationToDisplayOrder(
+        currentLocations,
+        locationId,
+        nextDisplayOrder,
+      ),
+    )
+  }
+
+  async function handleSaveCategoryLocationOrder() {
+    if (!selectedCategory || isOrderSaving) {
+      return
+    }
+
+    const locationIds = getCategoryLocationOrderIds(categoryLocations)
+    const correlationId = createAdminCorrelationId()
+
+    try {
+      setIsOrderSaving(true)
+      setLocationsActionErrorMessage(null)
+
+      await updateCategoryLocationDisplayOrder(selectedCategory.id, locationIds)
+      setSavedCategoryLocationOrderIds(locationIds)
+      toast({
+        variant: 'success',
+        title: 'Orden guardado',
+        description: 'Actualizamos el orden de las locaciones de esta categoría.',
+      })
+    } catch (error) {
+      reportAdminError(error, {
+        operation: 'location.display_order.update',
+        resourceId: selectedCategory.id,
+        stage: 'request',
+        provider: 'supabase',
+        correlationId,
+        userFacing: true,
+        outcome: 'failed',
+      })
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No pudimos guardar el orden de las locaciones.'
+
+      setLocationsActionErrorMessage(message)
+      toast({
+        variant: 'error',
+        title: 'No pudimos guardar el orden',
+        description: message,
+      })
+    } finally {
+      setIsOrderSaving(false)
+    }
+  }
+
+  const orderSelectOptions = useMemo(
+    () =>
+      Array.from({ length: categoryLocations.length }, (_, index) => index + 1),
+    [categoryLocations.length],
+  )
+
+  const hasOrderChanges = useMemo(
+    () =>
+      hasCategoryLocationOrderChanges(
+        categoryLocations,
+        savedCategoryLocationOrderIds,
+      ),
+    [categoryLocations, savedCategoryLocationOrderIds],
+  )
+
   const headerConfig = useMemo(
     () => ({
       breadcrumbItems: selectedCategory
@@ -149,7 +300,7 @@ function CategoriesPage() {
             {
               label: 'Categorías',
               to: routePaths.categories,
-              onClick: resetSelectedCategory,
+              onClick: closeSelectedCategory,
             },
             { label: selectedCategory.name },
           ]
@@ -276,19 +427,70 @@ function CategoriesPage() {
             <LocationsTable
               locations={categoryLocations}
               activeActionKey={locationsActionKey}
+              getLocationDetailState={() => ({
+                source: 'category',
+                categoryId: selectedCategory.id,
+                categoryName: selectedCategory.name,
+                returnTo: {
+                  pathname: routePaths.categories,
+                  state: {
+                    source: 'category-locations',
+                    categoryId: selectedCategory.id,
+                  },
+                },
+              })}
               getLocationEditState={() => ({
                 source: 'category',
                 categoryId: selectedCategory.id,
                 categoryName: selectedCategory.name,
+                returnTo: {
+                  pathname: routePaths.categories,
+                  state: {
+                    source: 'category-locations',
+                    categoryId: selectedCategory.id,
+                  },
+                },
               })}
               headerAction={
-                <Button
-                  variant="secondary"
-                  onClick={resetSelectedCategory}
-                >
-                  Volver a categorías
-                </Button>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    variant="secondary"
+                    onClick={closeSelectedCategory}
+                  >
+                    Volver a categorías
+                  </Button>
+                  <Button
+                    disabled={!hasOrderChanges || isOrderSaving}
+                    onClick={() => void handleSaveCategoryLocationOrder()}
+                  >
+                    {isOrderSaving ? 'Guardando...' : 'Guardar orden'}
+                  </Button>
+                </div>
               }
+              visibleColumns={{ actions: false, order: true }}
+              disableSorting
+              preserveInputOrder
+              renderOrderCell={(location) => (
+                <select
+                  aria-label={`Orden de ${location.title}`}
+                  value={location.displayOrder ?? 1}
+                  disabled={isOrderSaving}
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) =>
+                    handleLocationOrderChange(
+                      location.id,
+                      Number(event.target.value),
+                    )
+                  }
+                  className="w-20 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-950 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {orderSelectOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              )}
               searchPlaceholder="Buscar locación, dueño o zona"
               title={`Listado de ${selectedCategory.name}`}
               onDelete={handleDeleteLocation}

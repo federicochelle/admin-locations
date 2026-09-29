@@ -36,6 +36,13 @@ type SupabaseErrorLike = {
   message?: string
 }
 
+type MoveLocationToCategoryRow = {
+  location_id: string
+  category_id: string | null
+  display_order: number
+  location_code: string | null
+}
+
 type PaginatedLocationsInput = {
   page: number
   pageSize: number
@@ -49,6 +56,7 @@ const LOCATION_LIST_SELECT = `
   title,
   slug,
   location_code,
+  display_order,
   google_department_name,
   google_zone_name,
   formatted_address,
@@ -258,6 +266,7 @@ function mapLocation(row: SupabaseLocationRow): LocationListItem {
     title: row.title,
     slug: row.slug,
     locationCode: row.location_code,
+    displayOrder: row.display_order ?? null,
     coverImageUrl: getCoverImageUrl(row),
     status: row.status,
     published: row.published ?? false,
@@ -468,7 +477,8 @@ export async function getLocationsByCategory(
     .from('locations')
     .select(LOCATION_LIST_SELECT)
     .eq('category_id', categoryId)
-    .order('title', { ascending: true })
+    .order('display_order', { ascending: true, nullsFirst: false })
+    .order('id', { ascending: true })
 
   if (error) {
     throw normalizeAdminError(error)
@@ -477,6 +487,22 @@ export async function getLocationsByCategory(
   const rows = (data ?? []) as SupabaseLocationRow[]
 
   return rows.map(mapLocation)
+}
+
+export async function updateCategoryLocationDisplayOrder(
+  categoryId: string,
+  locationIds: string[],
+): Promise<void> {
+  const supabase = getSupabaseClient()
+
+  const { error } = await supabase.rpc('update_category_location_display_order', {
+    p_category_id: categoryId,
+    p_location_ids: locationIds,
+  })
+
+  if (error) {
+    throw normalizeAdminError(error)
+  }
 }
 
 export async function getLocationFormOptions(): Promise<LocationFormOptions> {
@@ -759,13 +785,14 @@ export async function updateLocation(
     const currentLocationCode =
       ((currentLocationData as { location_code: string | null } | null)?.location_code ??
         null)
-    const nextCategoryId = locationPayload.category_id
-    const shouldRegenerateLocationCode = currentCategoryId !== nextCategoryId
-    const updatePayload = shouldRegenerateLocationCode
+    const nextCategoryId = locationPayload.category_id ?? null
+    const shouldMoveCategory = currentCategoryId !== nextCategoryId
+    const { category_id: _categoryId, ...locationPayloadWithoutCategory } =
+      locationPayload
+    const updatePayload = shouldMoveCategory
       ? {
-          ...locationPayload,
+          ...locationPayloadWithoutCategory,
           slug: uniqueSlug,
-          location_code: null,
         }
       : {
           ...locationPayload,
@@ -794,7 +821,31 @@ export async function updateLocation(
 
     const updatedRow = data as CreatedLocationRow
     confirmedStages.push('location.update')
-    const finalLocationCode = updatedRow.location_code ?? currentLocationCode
+    let finalLocationCode = updatedRow.location_code ?? currentLocationCode
+
+    if (shouldMoveCategory) {
+      stage = 'location.category.move'
+      const { data: movedLocationData, error: moveCategoryError } =
+        await supabase.rpc('move_location_to_category', {
+          p_location_id: id,
+          p_category_id: nextCategoryId,
+        })
+
+      if (isLocationCodeUniqueError(moveCategoryError)) {
+        throw normalizeAdminError(moveCategoryError, 'No pudimos asignar un código único a la locación. Intentá guardar nuevamente.')
+      }
+
+      if (moveCategoryError) {
+        throw normalizeAdminError(moveCategoryError)
+      }
+
+      const movedLocation = Array.isArray(movedLocationData)
+        ? movedLocationData[0] as MoveLocationToCategoryRow | undefined
+        : movedLocationData as MoveLocationToCategoryRow | null
+
+      finalLocationCode = movedLocation?.location_code ?? finalLocationCode
+      confirmedStages.push('location.category.move')
+    }
 
     stage = 'relations.features'
     await replaceLocationRelations({

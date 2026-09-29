@@ -23,10 +23,16 @@ type OwnerLocationBreadcrumbState = {
   ownerName: string
 }
 
+type LocationReturnTo = {
+  pathname: string
+  state?: unknown
+}
+
 type CategoryLocationBreadcrumbState = {
   source: 'category'
   categoryId: string
   categoryName: string
+  returnTo?: LocationReturnTo
 }
 
 type LocationBreadcrumbState =
@@ -187,6 +193,11 @@ function LocationViewPage() {
     navigationState.categoryName
       ? navigationState
       : null
+  const categoryReturnTo =
+    categoryContext?.returnTo?.pathname?.startsWith('/') === true &&
+    !categoryContext.returnTo.pathname.startsWith('//')
+      ? categoryContext.returnTo
+      : null
 
   useEffect(() => {
     let isActive = true
@@ -265,7 +276,8 @@ function LocationViewPage() {
               { label: 'Listado de categorías', to: routePaths.categories },
               {
                 label: categoryContext.categoryName,
-                to: getCategoryEditPath(categoryContext.categoryId),
+                to: categoryReturnTo?.pathname ?? getCategoryEditPath(categoryContext.categoryId),
+                state: categoryReturnTo?.state,
               },
               { label: breadcrumbCurrentLabel },
             ]
@@ -374,6 +386,7 @@ function LocationViewPage() {
       <div className="flex shrink-0 items-center gap-2">
         <Link
           to={getLocationEditPath(id)}
+          state={navigationState ?? undefined}
           aria-label="Editar"
           className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-sky-200 bg-sky-50 text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-sky-100"
         >

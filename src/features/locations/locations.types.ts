@@ -9,6 +9,7 @@ export type LocationListItem = {
   title: string
   slug: string
   locationCode: string | null
+  displayOrder?: number | null
   coverImageUrl: string | null
   status: LocationStatus
   published: boolean
@@ -201,6 +202,7 @@ export type SupabaseLocationRow = {
   title: string
   slug: string
   location_code: string | null
+  display_order?: number | null
   google_department_name: string | null
   google_zone_name: string | null
   formatted_address: string | null

@@ -27,6 +27,10 @@ type LocationEditState = {
   source: 'category'
   categoryId: string
   categoryName: string
+  returnTo?: {
+    pathname: string
+    state?: unknown
+  }
 }
 
 type OwnerLocationEditState = {
@@ -35,12 +39,15 @@ type OwnerLocationEditState = {
   ownerName: string
 }
 
+type LocationNavigationState = LocationEditState | OwnerLocationEditState
+
 type VisibleColumns = {
   cover?: boolean
   code?: boolean
   department?: boolean
   owner?: boolean
   phone?: boolean
+  order?: boolean
   actions?: boolean
 }
 
@@ -52,15 +59,21 @@ type LocationsTableProps = {
   showToolbar?: boolean
   title?: string | null
   visibleColumns?: VisibleColumns
+  getLocationDetailState?: (
+    location: LocationListItem,
+  ) => LocationNavigationState | undefined
   getLocationEditState?: (
     location: LocationListItem,
-  ) => LocationEditState | OwnerLocationEditState | undefined
+  ) => LocationNavigationState | undefined
   currentPage?: number
   pageSize?: number
   searchTerm?: string
   sortKey?: LocationSortKey
   sortDirection?: LocationSortDirection
   totalCount?: number
+  disableSorting?: boolean
+  preserveInputOrder?: boolean
+  renderOrderCell?: (location: LocationListItem) => React.ReactNode
   onPageChange?: (page: number) => void
   onSearchTermChange?: (value: string) => void
   onSortChange?: (key: LocationSortKey) => void
@@ -290,6 +303,7 @@ function LocationsTable({
   showToolbar = true,
   title = 'Listado de locaciones',
   visibleColumns,
+  getLocationDetailState,
   getLocationEditState,
   currentPage,
   pageSize,
@@ -297,6 +311,9 @@ function LocationsTable({
   sortKey,
   sortDirection,
   totalCount,
+  disableSorting = false,
+  preserveInputOrder = false,
+  renderOrderCell,
   onPageChange,
   onSearchTermChange,
   onSortChange,
@@ -321,6 +338,7 @@ function LocationsTable({
     department: visibleColumns?.department ?? true,
     owner: visibleColumns?.owner ?? true,
     phone: visibleColumns?.phone ?? true,
+    order: visibleColumns?.order ?? false,
     actions: visibleColumns?.actions ?? true,
   }
   const normalizedSearchTerm = resolvedSearchTerm.trim()
@@ -352,6 +370,10 @@ function LocationsTable({
       return locations
     }
 
+    if (preserveInputOrder) {
+      return filteredLocations
+    }
+
     return [...filteredLocations].sort((left, right) => {
       const leftValue =
         resolvedSortKey === 'departmentName'
@@ -369,9 +391,20 @@ function LocationsTable({
 
       return resolvedSortDirection === 'asc' ? comparison : -comparison
     })
-  }, [filteredLocations, isServerPaginated, locations, resolvedSortDirection, resolvedSortKey])
+  }, [
+    filteredLocations,
+    isServerPaginated,
+    locations,
+    preserveInputOrder,
+    resolvedSortDirection,
+    resolvedSortKey,
+  ])
 
   function handleSort(nextSortKey: LocationSortKey) {
+    if (disableSorting) {
+      return
+    }
+
     if (onSortChange) {
       onSortChange(nextSortKey)
       return
@@ -417,7 +450,10 @@ function LocationsTable({
       return
     }
 
-    navigate(getLocationDetailPath(locationId))
+    const location = locations.find((currentLocation) => currentLocation.id === locationId)
+    navigate(getLocationDetailPath(locationId), {
+      state: location ? getLocationDetailState?.(location) : undefined,
+    })
   }
 
   const isEmptyState = sortedLocations.length === 0
@@ -507,44 +543,52 @@ function LocationsTable({
               </th>
               {resolvedVisibleColumns.code ? (
                 <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
-                  <button
-                    type="button"
-                    onClick={() => handleSort('locationCode')}
-                    className="inline-flex items-center gap-3 transition hover:text-[#C9A227]"
-                  >
-                    <span>CÓDIGO</span>
-                    <span
-                      className={[
-                        'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
-                        resolvedSortKey === 'locationCode'
-                          ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
-                          : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
-                      ].join(' ')}
+                  {disableSorting ? (
+                    'CÓDIGO'
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleSort('locationCode')}
+                      className="inline-flex items-center gap-3 transition hover:text-[#C9A227]"
                     >
-                      <SortIcon isActive={resolvedSortKey === 'locationCode'} />
-                    </span>
-                  </button>
+                      <span>CÓDIGO</span>
+                      <span
+                        className={[
+                          'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
+                          resolvedSortKey === 'locationCode'
+                            ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
+                            : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
+                        ].join(' ')}
+                      >
+                        <SortIcon isActive={resolvedSortKey === 'locationCode'} />
+                      </span>
+                    </button>
+                  )}
                 </th>
               ) : null}
               {resolvedVisibleColumns.department ? (
                 <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
-                  <button
-                    type="button"
-                    onClick={() => handleSort('departmentName')}
-                    className="inline-flex items-center gap-3 transition hover:text-[#C9A227]"
-                  >
-                    <span>DEPARTAMENTO</span>
-                    <span
-                      className={[
-                        'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
-                        resolvedSortKey === 'departmentName'
-                          ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
-                          : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
-                      ].join(' ')}
+                  {disableSorting ? (
+                    'DEPARTAMENTO'
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleSort('departmentName')}
+                      className="inline-flex items-center gap-3 transition hover:text-[#C9A227]"
                     >
-                      <SortIcon isActive={resolvedSortKey === 'departmentName'} />
-                    </span>
-                  </button>
+                      <span>DEPARTAMENTO</span>
+                      <span
+                        className={[
+                          'inline-flex h-6 w-6 items-center justify-center rounded-md border transition',
+                          resolvedSortKey === 'departmentName'
+                            ? 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]'
+                            : 'border-[#C9A227] bg-[rgba(201,162,39,0.12)] text-[#C9A227]',
+                        ].join(' ')}
+                      >
+                        <SortIcon isActive={resolvedSortKey === 'departmentName'} />
+                      </span>
+                    </button>
+                  )}
                 </th>
               ) : null}
               {resolvedVisibleColumns.owner ? (
@@ -555,6 +599,11 @@ function LocationsTable({
               {resolvedVisibleColumns.phone ? (
                 <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
                   Teléfono
+                </th>
+              ) : null}
+              {resolvedVisibleColumns.order ? (
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-[0.18em] text-black sm:px-6">
+                  Orden
                 </th>
               ) : null}
               {resolvedVisibleColumns.actions ? (
@@ -649,6 +698,11 @@ function LocationsTable({
                         </a>
                       )
                     })()}
+                  </td>
+                ) : null}
+                {resolvedVisibleColumns.order ? (
+                  <td className="px-3 py-4 text-sm text-slate-900 sm:px-6">
+                    {renderOrderCell?.(location)}
                   </td>
                 ) : null}
                 {resolvedVisibleColumns.actions ? (

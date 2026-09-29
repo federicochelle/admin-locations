@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 
 export type PageBreadcrumbItem = {
   label: string
+  state?: unknown
   to?: string
   onClick?: () => void
 }
@@ -22,6 +23,7 @@ function PageBreadcrumb({ items }: PageBreadcrumbProps) {
               {item.to ? (
                 <Link
                   to={item.to}
+                  state={item.state}
                   onClick={item.onClick}
                   className="font-semibold text-slate-600 underline-offset-4 transition hover:text-slate-900 hover:underline"
                 >
