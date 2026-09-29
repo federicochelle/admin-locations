@@ -145,7 +145,7 @@ type ManualBlurTarget =
     }
 
 const IMAGE_UPLOAD_CONCURRENCY = 3
-const IMAGE_UPLOAD_TIMEOUT_MS = 90_000
+const IMAGE_UPLOAD_TIMEOUT_MS = 180_000
 const IMAGE_UPLOAD_TIMEOUT_ERROR_MESSAGE =
   'La subida tardó demasiado y fue cancelada. Intenta nuevamente.'
 
@@ -751,16 +751,13 @@ function LocationForm({
     }
 
     const target = imageSelectionTarget
-    setIsImageSourceModalOpen(false)
-
-    window.setTimeout(() => {
-      if (target === 'cover') {
-        coverImageUploaderRef.current?.openFileDialog()
-        return
-      }
-
+    if (target === 'cover') {
+      coverImageUploaderRef.current?.openFileDialog()
+    } else {
       galleryImageUploaderRef.current?.openFileDialog()
-    }, 0)
+    }
+
+    setIsImageSourceModalOpen(false)
   }
 
   function handleSelectDropboxSource() {
@@ -1335,6 +1332,7 @@ function LocationForm({
       updateSaveProgress,
       updateStageStatus,
       uploadLocationImage,
+      visibility: document,
       visiblePersistedImages,
     })
   }

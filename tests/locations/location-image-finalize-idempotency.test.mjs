@@ -6,6 +6,7 @@ import { harness, locationId } from '../observability/harness.mjs'
 const clientUploadId = '33333333-3333-4333-8333-333333333333'
 const otherLocationId = '44444444-4444-4444-8444-444444444444'
 const edgeSourcePath = 'supabase/functions/location-image-finalize/index.ts'
+const finalizeMigrationPath = 'supabase/migrations/20260923120000_add_finalize_location_image_rpc.sql'
 
 function plain(value) {
   return JSON.parse(JSON.stringify(value))
@@ -109,23 +110,73 @@ test('uploadLocationImage forwards clientUploadId into finalize after Cloudflare
   assert.equal(finalizeBodies[0].clientUploadId, clientUploadId)
 })
 
-test('location-image-finalize declares the DB idempotency contract', async () => {
+test('location-image-finalize delegates metadata writes to the transactional RPC', async () => {
   const source = await fs.readFile(edgeSourcePath, 'utf8')
 
-  assert.match(source, /clientUploadId/)
-  assert.match(source, /client_upload_id/)
-  assert.match(source, /23505/)
-  assert.match(source, /\.eq\('location_id', input\.locationId\)[\s\S]*\.eq\('client_upload_id', input\.clientUploadId\)/)
+  assert.match(source, /\.rpc\('finalize_location_image'/)
+  assert.match(source, /p_client_upload_id: input\.clientUploadId/)
+  assert.match(source, /p_is_cover: isCover/)
+  assert.match(source, /p_location_id: input\.locationId/)
+  assert.match(source, /p_storage_key: input\.cloudflareImageId/)
+  assert.match(source, /p_url: buildCloudflarePublicUrl\(input\.cloudflareImageId\)/)
+  assert.doesNotMatch(source, /\.update\(\{ is_cover: false \}\)/)
+  assert.doesNotMatch(source, /\.from\('location_images'\)[\s\S]*\.insert\(/)
 })
 
-test('location-image-finalize checks idempotency before cover side effects', async () => {
-  const source = await fs.readFile(edgeSourcePath, 'utf8')
-  const idempotencyLookupIndex = source.indexOf("client_upload_id', input.clientUploadId")
-  const coverMutationIndex = source.indexOf(".update({ is_cover: false })")
+test('finalize_location_image RPC exposes the expected insert signature', async () => {
+  const migration = await fs.readFile(finalizeMigrationPath, 'utf8')
+
+  assert.match(migration, /create or replace function public\.finalize_location_image\(/)
+  assert.match(migration, /p_location_id uuid/)
+  assert.match(migration, /p_client_upload_id uuid/)
+  assert.match(migration, /p_url text/)
+  assert.match(migration, /p_storage_key text/)
+  assert.match(migration, /p_alt_text text/)
+  assert.match(migration, /p_caption text/)
+  assert.match(migration, /p_sort_order integer/)
+  assert.match(migration, /p_is_cover boolean/)
+  assert.match(migration, /p_width integer/)
+  assert.match(migration, /p_height integer/)
+  assert.match(migration, /returns table \([\s\S]*client_upload_id uuid[\s\S]*is_cover boolean[\s\S]*updated_at timestamptz/)
+})
+
+test('finalize_location_image inserts the same image metadata as the Edge Function used to insert', async () => {
+  const migration = await fs.readFile(finalizeMigrationPath, 'utf8')
+
+  assert.match(migration, /insert into public\.location_images \([\s\S]*alt_text,[\s\S]*caption,[\s\S]*client_upload_id,[\s\S]*height,[\s\S]*is_cover,[\s\S]*location_id,[\s\S]*sort_order,[\s\S]*storage_key,[\s\S]*url,[\s\S]*width[\s\S]*\)/)
+  assert.match(migration, /values \([\s\S]*p_alt_text,[\s\S]*p_caption,[\s\S]*p_client_upload_id,[\s\S]*p_height,[\s\S]*p_is_cover,[\s\S]*p_location_id,[\s\S]*p_sort_order,[\s\S]*p_storage_key,[\s\S]*p_url,[\s\S]*p_width[\s\S]*\)/)
+})
+
+test('finalize_location_image checks idempotency before cover side effects', async () => {
+  const migration = await fs.readFile(finalizeMigrationPath, 'utf8')
+  const idempotencyLookupIndex = migration.indexOf('and li.client_upload_id = p_client_upload_id')
+  const coverMutationIndex = migration.indexOf('set is_cover = false')
 
   assert.notEqual(idempotencyLookupIndex, -1)
   assert.notEqual(coverMutationIndex, -1)
   assert.equal(idempotencyLookupIndex < coverMutationIndex, true)
+})
+
+test('finalize_location_image leaves non-cover writes as plain inserts', async () => {
+  const migration = await fs.readFile(finalizeMigrationPath, 'utf8')
+
+  assert.match(migration, /if p_is_cover = true then[\s\S]*set is_cover = false[\s\S]*end if;/)
+  assert.match(migration, /where p_is_cover = true[\s\S]*set cover_image_id = created_image\.id|set cover_image_id = created_image\.id[\s\S]*where p_is_cover = true/)
+})
+
+test('finalize_location_image synchronizes cover rows and locations.cover_image_id together', async () => {
+  const migration = await fs.readFile(finalizeMigrationPath, 'utf8')
+
+  assert.match(migration, /if p_is_cover = true then[\s\S]*for update[\s\S]*update public\.location_images li[\s\S]*set is_cover = false/)
+  assert.match(migration, /insert into public\.location_images[\s\S]*p_is_cover[\s\S]*returning[\s\S]*created_image/)
+  assert.match(migration, /update public\.locations l[\s\S]*set cover_image_id = created_image\.id[\s\S]*where p_is_cover = true/)
+})
+
+test('finalize_location_image rolls back cover clearing when insert hits idempotency race', async () => {
+  const migration = await fs.readFile(finalizeMigrationPath, 'utf8')
+
+  assert.match(migration, /begin[\s\S]*if p_is_cover = true then[\s\S]*set is_cover = false[\s\S]*insert into public\.location_images[\s\S]*exception[\s\S]*when unique_violation then/)
+  assert.match(migration, /when unique_violation then[\s\S]*where li\.location_id = p_location_id[\s\S]*and li\.client_upload_id = p_client_upload_id/)
 })
 
 test('location-image-finalize migration adds a partial unique key per location and client upload id', async () => {

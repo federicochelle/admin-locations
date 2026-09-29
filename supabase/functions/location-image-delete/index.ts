@@ -12,7 +12,6 @@ type ExistingLocationImageRow = {
   id: string
   location_id: string
   storage_key: string
-  is_cover: boolean
 }
 
 type DeleteLocationImageResponse = {
@@ -62,7 +61,7 @@ Deno.serve(async (request) => {
 
     const { data: imageRow, error: imageError } = await adminClient
       .from('location_images')
-      .select('id, location_id, storage_key, is_cover')
+      .select('id, location_id, storage_key')
       .eq('id', input.imageId)
       .maybeSingle()
 
@@ -80,15 +79,27 @@ Deno.serve(async (request) => {
       throw new HttpError(400, 'Image does not belong to the provided location.')
     }
 
-    await deleteCloudflareImage(typedImageRow.storage_key)
-
     const { error: deleteRowError } = await adminClient
-      .from('location_images')
-      .delete()
-      .eq('id', typedImageRow.id)
+      .rpc('delete_location_image_and_reconcile_cover', {
+        p_image_id: typedImageRow.id,
+        p_location_id: input.locationId,
+      })
+      .single()
 
     if (deleteRowError) {
       throw new HttpError(500, 'Could not delete image metadata.', deleteRowError.message)
+    }
+
+    try {
+      await deleteCloudflareImage(typedImageRow.storage_key)
+    } catch (error) {
+      console.warn('[location-image-delete] cloudflare_delete_failed_after_db_delete', {
+        event: 'location-image-delete.cloudflare_orphan_possible',
+        imageId: typedImageRow.id,
+        locationId: input.locationId,
+        storageKey: typedImageRow.storage_key,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      })
     }
 
     return jsonResponse(

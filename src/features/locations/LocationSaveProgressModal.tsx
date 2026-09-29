@@ -199,7 +199,7 @@ function getProgressMessage(progress: LocationSaveProgressState) {
   }
 
   if (uploadStatus === 'active' || progress.uploadingDone > 0) {
-    return 'Procesando imagenes...'
+    return 'Subiendo imagenes...'
   }
 
   if (syncStatus === 'active' || getStageStatus(progress, 'completed') === 'active') {

@@ -149,6 +149,27 @@ test('edit save runs update, delete, upload, sync, cleanup and success in order'
   assert.deepEqual(form.state.navigation, ['/locations'])
 })
 
+test('edit save runs multiple persisted image deletes sequentially in queued order', async () => {
+  const { events, form } = await setupSaveBranchHarness({
+    mode: 'edit',
+    pendingDeletedPersistedImageIds: ['gallery-a', 'cover-b', 'gallery-c'],
+    formOverrides: {
+      deleteLocationImage: async (input) => {
+        events.push(`delete:${input.imageId}`)
+      },
+    },
+  })
+
+  await form.handleSubmit({ preventDefault() {} })
+
+  assert.deepEqual(
+    events.filter((event) => event.startsWith('delete:')),
+    ['delete:gallery-a', 'delete:cover-b', 'delete:gallery-c'],
+  )
+  assert.equal(events.includes('clearDeleted'), true)
+  assert.deepEqual(form.state.navigation, ['/locations'])
+})
+
 test('new create save runs create, delete, upload, cleanup, sync and success in order', async () => {
   const doneImage = pendingImage('done-image', { status: 'pending', previewUrl: 'blob:done' })
   const { events, form, h, revokedPreviewUrls, savedMarks } = await setupSaveBranchHarness({

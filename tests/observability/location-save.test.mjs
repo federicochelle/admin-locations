@@ -464,7 +464,7 @@ test('create upload failure stays usable; retry updates same location without du
     mode: 'create',
     createLocation: async () => { creates++; return locationId },
     updateLocation: async () => { updates++ },
-    uploadLocationImage: async () => { if (++uploads === 1) throw new Error('Upload failed') },
+    uploadLocationImage: async () => { if (++uploads <= 3) throw new Error('Upload failed') },
   })
   await form.handleSubmit({ preventDefault() {} })
   assertClosed(form)
@@ -475,6 +475,7 @@ test('create upload failure stays usable; retry updates same location without du
   assert.equal(form.state.submitError, null)
   assert.equal(creates, 1)
   assert.equal(updates, 1)
+  assert.equal(uploads, 4)
   assert.equal(router.state.location.pathname, '/locations')
 })
 

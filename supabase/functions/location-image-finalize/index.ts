@@ -31,12 +31,41 @@ type CreatedLocationImageRow = {
   updated_at: string
 }
 
-type ExistingLocationImageRow = {
-  sort_order: number | null
+type SupabaseError = {
+  message: string
+}
+
+type SupabaseQueryResult<T> = Promise<{
+  data: T | null
+  error: SupabaseError | null
+}>
+
+type SupabaseQueryBuilder<T = unknown> = {
+  eq: (column: string, value: unknown) => SupabaseQueryBuilder<T>
+  limit: (count: number) => SupabaseQueryResult<T>
+  maybeSingle: () => SupabaseQueryResult<T>
+  order: (
+    column: string,
+    options: { ascending: boolean },
+  ) => SupabaseQueryBuilder<T>
+  select: (columns: string) => SupabaseQueryBuilder<T>
+  single: () => SupabaseQueryResult<T>
+}
+
+type SupabaseRpcBuilder<T = unknown> = {
+  single: () => SupabaseQueryResult<T>
 }
 
 type SupabaseAdminClient = {
-  from: (table: string) => any
+  from: <T = unknown>(table: string) => SupabaseQueryBuilder<T>
+  rpc: <T = unknown>(
+    fn: string,
+    args: Record<string, unknown>,
+  ) => SupabaseRpcBuilder<T>
+}
+
+type ExistingLocationImageRow = {
+  sort_order: number | null
 }
 
 const LOCATION_IMAGE_SELECT = `
@@ -131,15 +160,6 @@ function parseOptionalUuid(value: unknown, fieldName: string) {
   }
 
   return trimmed
-}
-
-function isUniqueViolation(error: unknown) {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === '23505'
-  )
 }
 
 function parseRequestBody(body: FinalizeRequestBody) {
@@ -252,71 +272,30 @@ Deno.serve(async (request) => {
     const nextSortOrder = input.sortOrder ?? latestSortOrder + 1
     const isCover = input.isCover === true
 
-    if (input.isCover === true) {
-      const { error: clearCoverError } = await adminClient
-        .from('location_images')
-        .update({ is_cover: false })
-        .eq('location_id', input.locationId)
-
-      if (clearCoverError) {
-        throw new HttpError(
-          500,
-          'Could not update existing cover image.',
-          clearCoverError.message,
-        )
-      }
-    }
-
-    const { data: createdRow, error: insertError } = await adminClient
-      .from('location_images')
-      .insert({
-        alt_text: input.altText,
-        caption: input.caption,
-        client_upload_id: input.clientUploadId,
-        height: input.height,
-        is_cover: isCover,
-        location_id: input.locationId,
-        sort_order: nextSortOrder,
-        storage_key: input.cloudflareImageId,
-        url: buildCloudflarePublicUrl(input.cloudflareImageId),
-        width: input.width,
+    const { data: finalizedRow, error: finalizeError } = await adminClient
+      .rpc('finalize_location_image', {
+        p_alt_text: input.altText,
+        p_caption: input.caption,
+        p_client_upload_id: input.clientUploadId,
+        p_height: input.height,
+        p_is_cover: isCover,
+        p_location_id: input.locationId,
+        p_sort_order: nextSortOrder,
+        p_storage_key: input.cloudflareImageId,
+        p_url: buildCloudflarePublicUrl(input.cloudflareImageId),
+        p_width: input.width,
       })
-      .select(
-        `
-          id,
-          location_id,
-          client_upload_id,
-          url,
-          storage_key,
-          alt_text,
-          caption,
-          sort_order,
-          is_cover,
-          width,
-          height,
-          created_at,
-          updated_at
-        `,
-      )
       .single()
 
-    if (insertError || !createdRow) {
-      if (input.clientUploadId && isUniqueViolation(insertError)) {
-        const recoveredClientUpload = await findExistingClientUpload(adminClient, input)
-
-        if (recoveredClientUpload) {
-          return jsonResponse(recoveredClientUpload, { status: 200 }, origin)
-        }
-      }
-
+    if (finalizeError || !finalizedRow) {
       throw new HttpError(
         500,
         'Could not store image metadata.',
-        insertError?.message ?? null,
+        finalizeError?.message ?? null,
       )
     }
 
-    return jsonResponse(createdRow as CreatedLocationImageRow, { status: 201 }, origin)
+    return jsonResponse(finalizedRow as CreatedLocationImageRow, { status: 201 }, origin)
   } catch (error) {
     console.error('[location-image-finalize] error', {
       correlationId,
