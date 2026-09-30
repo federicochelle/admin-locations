@@ -45,6 +45,12 @@ function formatLocationIdentifier(location: Pick<LocationListItem, 'locationCode
   return title.length > 0 ? title : 'esta locación'
 }
 
+async function fetchOrderedCategoryLocations(categoryId: string) {
+  const nextLocations = await getLocationsByCategory(categoryId)
+
+  return renumberCategoryLocations(nextLocations)
+}
+
 function CategoriesPage() {
   const routerLocation = useLocation()
   const navigate = useNavigate()
@@ -131,8 +137,7 @@ function CategoriesPage() {
     setLocationsErrorMessage(null)
 
     try {
-      const nextLocations = await getLocationsByCategory(category.id)
-      const orderedLocations = renumberCategoryLocations(nextLocations)
+      const orderedLocations = await fetchOrderedCategoryLocations(category.id)
       setCategoryLocations(orderedLocations)
       setSavedCategoryLocationOrderIds(getCategoryLocationOrderIds(orderedLocations))
     } catch (error) {
@@ -246,7 +251,9 @@ function CategoriesPage() {
       setLocationsActionErrorMessage(null)
 
       await updateCategoryLocationDisplayOrder(selectedCategory.id, locationIds)
-      setSavedCategoryLocationOrderIds(locationIds)
+      const orderedLocations = await fetchOrderedCategoryLocations(selectedCategory.id)
+      setCategoryLocations(orderedLocations)
+      setSavedCategoryLocationOrderIds(getCategoryLocationOrderIds(orderedLocations))
       toast({
         variant: 'success',
         title: 'Orden guardado',

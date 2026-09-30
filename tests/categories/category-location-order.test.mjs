@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs/promises'
+import path from 'node:path'
 import test from 'node:test'
 import { harness } from '../observability/harness.mjs'
+
+const root = process.cwd()
 
 async function loadOrderHelpers() {
   const h = await harness()
@@ -169,4 +173,22 @@ test('persist error can preserve the local reordered state for a later manual re
     'location-3',
     'location-4',
   ])
+})
+
+test('category order save refetches authoritative rows after the RPC succeeds', async () => {
+  const source = await fs.readFile(
+    path.join(root, 'src/features/categories/CategoriesPage.tsx'),
+    'utf8',
+  )
+  const saveHandler =
+    source.match(/async function handleSaveCategoryLocationOrder\(\) \{[\s\S]*?\n  \}/)?.[0] ?? ''
+
+  assert.match(saveHandler, /await updateCategoryLocationDisplayOrder\(selectedCategory\.id, locationIds\)/)
+  assert.match(saveHandler, /await fetchOrderedCategoryLocations\(selectedCategory\.id\)/)
+  assert.match(saveHandler, /setCategoryLocations\(orderedLocations\)/)
+  assert.match(
+    saveHandler,
+    /setSavedCategoryLocationOrderIds\(getCategoryLocationOrderIds\(orderedLocations\)\)/,
+  )
+  assert.doesNotMatch(saveHandler, /setSavedCategoryLocationOrderIds\(locationIds\)/)
 })
