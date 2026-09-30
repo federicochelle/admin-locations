@@ -101,6 +101,13 @@ type RequestProjectVersionLocationStatusRow = {
   status: string | null
 }
 
+type SnapshotLocationRow = {
+  coverImageUrl: string | null
+  locationCode: string | null
+  locationId: string
+  title: string | null
+}
+
 type RequestProjectRow = {
   id: string
   user_id: string
@@ -324,6 +331,67 @@ function getUniqueValues(values: Array<string | null | undefined>) {
   )
 }
 
+function getSnapshotObjectValue(value: unknown, keys: string[]) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+
+  for (const key of keys) {
+    const currentValue = record[key]
+
+    if (typeof currentValue === 'string') {
+      const normalizedValue = currentValue.trim()
+
+      if (normalizedValue.length > 0) {
+        return normalizedValue
+      }
+    }
+  }
+
+  return null
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
+function parseSnapshotLocations(snapshotPayload: unknown): SnapshotLocationRow[] | null {
+  if (!snapshotPayload || typeof snapshotPayload !== 'object' || Array.isArray(snapshotPayload)) {
+    return null
+  }
+
+  const locations = (snapshotPayload as { locations?: unknown }).locations
+
+  if (!Array.isArray(locations)) {
+    return null
+  }
+
+  if (locations.length === 0) {
+    return []
+  }
+
+  const snapshotLocations = locations.flatMap((location): SnapshotLocationRow[] => {
+    const locationId = getSnapshotObjectValue(location, ['locationId', 'location_id', 'id'])
+
+    if (!locationId || !isUuid(locationId)) {
+      return []
+    }
+
+    return [
+      {
+        coverImageUrl: getSnapshotObjectValue(location, ['coverImageUrl', 'cover_image_url']),
+        locationCode: getSnapshotObjectValue(location, ['locationCode', 'location_code']),
+        locationId,
+        title: getSnapshotObjectValue(location, ['title', 'locationTitle', 'location_title']),
+      },
+    ]
+  })
+
+  return snapshotLocations.length > 0 ? snapshotLocations : null
+}
+
 async function getVersionsByRequestId(
   requestId: string,
 ): Promise<RequestProjectVersionRow[]> {
@@ -449,7 +517,7 @@ async function getRequestProjectLocationsByRequestId(requestId: string) {
 }
 
 async function getReservationsByRequestProjectLocationId(
-  requestProjectLocationIds: string[],
+  requestProjectLocationIds: Array<string | null | undefined>,
 ) {
   const normalizedRequestProjectLocationIds = getUniqueValues(requestProjectLocationIds)
 
@@ -603,9 +671,10 @@ function mapRequestProjectVersions(input: {
 
 function mapRequestProjectLocationToDetail(input: {
   currentLocation: CurrentLocationRow | null
-  legacyLocation: RequestProjectLocationLegacyRow
+  legacyLocation: RequestProjectLocationLegacyRow | null
   linkedReservation: ReservationByRequestProjectLocationRow | null
   requestProjectVersionId: string
+  snapshotLocation: SnapshotLocationRow | null
   statusByLocationId: Map<string, RequestProjectLocationStatus>
 }): AdminRequestLocation {
   const {
@@ -613,33 +682,40 @@ function mapRequestProjectLocationToDetail(input: {
     legacyLocation,
     linkedReservation,
     requestProjectVersionId,
+    snapshotLocation,
     statusByLocationId,
   } = input
-  const fallbackLegacyReservation = legacyLocation.reservations?.[0] ?? null
+  const locationId = snapshotLocation?.locationId ?? legacyLocation?.location_id ?? currentLocation?.id ?? ''
+  const fallbackLegacyReservation = legacyLocation?.reservations?.[0] ?? null
   const resolvedReservation = linkedReservation ?? fallbackLegacyReservation
   const owner = getOwnerRelation(currentLocation?.owners ?? null)
 
   return {
-    id: legacyLocation.location_id,
-    rowKey: legacyLocation.id,
+    id: locationId,
+    rowKey: legacyLocation?.id ?? `${requestProjectVersionId}:${locationId}`,
     requestProjectVersionId,
-    requestProjectLocationId: legacyLocation.id,
+    requestProjectLocationId: legacyLocation?.id ?? null,
     requestProjectLocationStatus:
-      statusByLocationId.get(legacyLocation.location_id) ??
-      normalizeRequestProjectLocationStatus(legacyLocation.status),
+      statusByLocationId.get(locationId) ??
+      normalizeRequestProjectLocationStatus(legacyLocation?.status),
     reservationId: resolvedReservation?.id ?? null,
     reservationRecordStatus: resolvedReservation?.status?.trim() || null,
     reservationStartsAt: resolvedReservation?.starts_at?.trim() || null,
     reservationEndsAt: resolvedReservation?.ends_at?.trim() || null,
     title:
       currentLocation?.title?.trim() ||
-      legacyLocation.location_title_snapshot?.trim() ||
+      snapshotLocation?.title?.trim() ||
+      legacyLocation?.location_title_snapshot?.trim() ||
       'Locacion sin titulo',
     locationCode:
       currentLocation?.location_code?.trim() ||
-      legacyLocation.location_code_snapshot?.trim() ||
+      snapshotLocation?.locationCode?.trim() ||
+      legacyLocation?.location_code_snapshot?.trim() ||
       null,
-    coverImageUrl: getCoverImageUrl(currentLocation?.location_images ?? null),
+    coverImageUrl:
+      getCoverImageUrl(currentLocation?.location_images ?? null) ||
+      snapshotLocation?.coverImageUrl?.trim() ||
+      null,
     categoryName: getRelationName(currentLocation?.categories ?? null)?.trim() || null,
     departmentName: getRelationName(currentLocation?.departments ?? null)?.trim() || null,
     zoneName: getRelationName(currentLocation?.zones ?? null)?.trim() || null,
@@ -651,7 +727,7 @@ function mapRequestProjectLocationToDetail(input: {
 }
 
 function getSubmittedAt(row: RequestProjectRow) {
-  return row.submitted_at?.trim() || null
+  return row.submitted_at?.trim() || row.created_at?.trim() || null
 }
 
 export async function getAdminLocationRequests(): Promise<AdminLocationRequest[]> {
@@ -1233,6 +1309,9 @@ export async function getActiveAdminLocationRequestReservations(
 
 export async function getAdminLocationRequestById(
   requestId: string,
+  options: {
+    versionId?: string | null
+  } = {},
 ): Promise<AdminLocationRequestDetail> {
   const supabase = getSupabaseClient()
 
@@ -1271,6 +1350,16 @@ export async function getAdminLocationRequestById(
 
   const versions = await getVersionsByRequestId(requestId)
   const latestVersion = versions[0] ?? null
+  const explicitVersionId = options.versionId?.trim() || null
+  const explicitVersion =
+    explicitVersionId
+      ? versions.find((version) => version.id === explicitVersionId) ?? null
+      : null
+
+  if (explicitVersionId && !explicitVersion) {
+    throw new Error('La versión seleccionada no pertenece a esta solicitud.')
+  }
+
   const persistedActiveVersionId =
     typeof row.admin_active_version_id === 'string' && row.admin_active_version_id.trim()
       ? row.admin_active_version_id.trim()
@@ -1279,9 +1368,10 @@ export async function getAdminLocationRequestById(
     persistedActiveVersionId
       ? versions.find((version) => version.id === persistedActiveVersionId) ?? null
       : null
-  const activeVersion = activeVersionFromPersistence ?? latestVersion
+  const activeVersion = explicitVersion ?? activeVersionFromPersistence ?? latestVersion
 
   if (
+    !explicitVersion &&
     latestVersion &&
     hasAdminActiveVersionColumn(row) &&
     (!persistedActiveVersionId || !activeVersionFromPersistence)
@@ -1294,28 +1384,60 @@ export async function getAdminLocationRequestById(
   }
 
   const requestProjectLocations = await getRequestProjectLocationsByRequestId(requestId)
-  const locationIds = requestProjectLocations.map((location) => location.location_id)
+  const snapshotLocations = activeVersion
+    ? parseSnapshotLocations(activeVersion.snapshot_payload)
+    : null
+  const hasVersionedLocationMembership = snapshotLocations !== null
+  const locationIds = hasVersionedLocationMembership
+    ? snapshotLocations.map((location) => location.locationId)
+    : requestProjectLocations.map((location) => location.location_id)
   const [locationsById, statusesByLocationId] = await Promise.all([
     getLocationsById(locationIds),
     activeVersion
       ? getVersionLocationStatusesByLocationId(activeVersion.id, locationIds)
       : Promise.resolve(new Map<string, RequestProjectLocationStatus>()),
   ])
+  const requestProjectLocationsByLocationId = new Map(
+    requestProjectLocations.map((requestProjectLocation) => [
+      requestProjectLocation.location_id,
+      requestProjectLocation,
+    ]),
+  )
   const reservationsByRequestProjectLocationId =
     await getReservationsByRequestProjectLocationId(
-      requestProjectLocations.map((location) => location.id),
+      hasVersionedLocationMembership
+        ? snapshotLocations
+            .map((location) => requestProjectLocationsByLocationId.get(location.locationId)?.id)
+        : requestProjectLocations.map((location) => location.id),
     )
 
-  const locations = requestProjectLocations.map((requestProjectLocation) =>
-    mapRequestProjectLocationToDetail({
-      currentLocation: locationsById.get(requestProjectLocation.location_id) ?? null,
-      legacyLocation: requestProjectLocation,
-      linkedReservation:
-        reservationsByRequestProjectLocationId.get(requestProjectLocation.id) ?? null,
-      requestProjectVersionId: activeVersion?.id ?? '',
-      statusByLocationId: statusesByLocationId,
-    }),
-  )
+  const locations = hasVersionedLocationMembership
+    ? snapshotLocations.map((snapshotLocation) => {
+        const legacyLocation =
+          requestProjectLocationsByLocationId.get(snapshotLocation.locationId) ?? null
+
+        return mapRequestProjectLocationToDetail({
+          currentLocation: locationsById.get(snapshotLocation.locationId) ?? null,
+          legacyLocation,
+          linkedReservation: legacyLocation
+            ? reservationsByRequestProjectLocationId.get(legacyLocation.id) ?? null
+            : null,
+          requestProjectVersionId: activeVersion?.id ?? '',
+          snapshotLocation,
+          statusByLocationId: statusesByLocationId,
+        })
+      })
+    : requestProjectLocations.map((requestProjectLocation) =>
+        mapRequestProjectLocationToDetail({
+          currentLocation: locationsById.get(requestProjectLocation.location_id) ?? null,
+          legacyLocation: requestProjectLocation,
+          linkedReservation:
+            reservationsByRequestProjectLocationId.get(requestProjectLocation.id) ?? null,
+          requestProjectVersionId: activeVersion?.id ?? '',
+          snapshotLocation: null,
+          statusByLocationId: statusesByLocationId,
+        }),
+      )
 
   const title = row.title?.trim()
   const requestContact = parseRequestProjectMessageWithContactMetadata(row.message)

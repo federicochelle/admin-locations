@@ -31,7 +31,18 @@ type UseAdminLocationRequestsResult = {
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
-    return error.message
+    const message = error.message.trim()
+    const normalizedMessage = message.toLocaleLowerCase('en-US')
+
+    if (normalizedMessage.includes('request project is immutable in status confirmed')) {
+      return 'Esta solicitud ya fue confirmada y no se puede modificar.'
+    }
+
+    if (normalizedMessage.includes('request project is immutable in status closed')) {
+      return 'Esta solicitud ya fue cerrada y no se puede modificar.'
+    }
+
+    return message
   }
 
   return 'No pudimos cargar las solicitudes en este momento.'

@@ -30,6 +30,7 @@ function formatDate(value: string | null) {
   return new Intl.DateTimeFormat('es-UY', {
     day: '2-digit',
     month: '2-digit',
+    timeZone: 'America/Montevideo',
     year: 'numeric',
   }).format(new Date(value))
 }
@@ -42,6 +43,7 @@ function formatTime(value: string | null) {
   return new Intl.DateTimeFormat('es-UY', {
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: 'America/Montevideo',
   }).format(new Date(value))
 }
 

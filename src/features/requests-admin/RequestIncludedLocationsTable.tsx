@@ -418,6 +418,14 @@ function RequestIncludedLocationsTable({
     }
 
     if (nextStatus === 'confirmed') {
+      if (!location.requestProjectLocationId) {
+        toast({
+          variant: 'warning',
+          title: 'Esta locación histórica no tiene una fila operativa para vincular una reserva.',
+        })
+        return
+      }
+
       setReservationFormError(null)
       setPendingReservationSelection({
         location,
@@ -738,10 +746,14 @@ function RequestIncludedLocationsTable({
                             ].join(' ')}
                           >
                             {REQUEST_PROJECT_LOCATION_STATUS_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
+                              <option
+                                key={option.value}
+                                value={option.value}
+                                disabled={option.value === 'confirmed' && !location.requestProjectLocationId}
+                              >
+                                {option.label}
+                              </option>
+                            ))}
                           </select>
                         </div>
                       </td>

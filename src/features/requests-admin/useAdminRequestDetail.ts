@@ -4,7 +4,6 @@ import {
   deleteAdminLocationRequest,
   getActiveAdminLocationRequestReservations,
   getAdminLocationRequestById,
-  setAdminLocationRequestActiveVersion,
   updateAdminLocationRequestStatus,
 } from './admin-location-requests.service'
 import { usePendingNavCounts } from '../../app/layouts/PendingNavCountsContext'
@@ -32,7 +31,18 @@ type UseAdminRequestDetailResult = {
 
 function getErrorMessage(error: unknown, fallbackMessage: string) {
   if (error instanceof Error) {
-    return error.message
+    const message = error.message.trim()
+    const normalizedMessage = message.toLocaleLowerCase('en-US')
+
+    if (normalizedMessage.includes('request project is immutable in status confirmed')) {
+      return 'Esta solicitud ya fue confirmada y no se puede modificar.'
+    }
+
+    if (normalizedMessage.includes('request project is immutable in status closed')) {
+      return 'Esta solicitud ya fue cerrada y no se puede modificar.'
+    }
+
+    return message
   }
 
   return fallbackMessage
@@ -52,8 +62,9 @@ export function useAdminRequestDetail(
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
   const [versionErrorMessage, setVersionErrorMessage] = useState<string | null>(null)
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null)
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null)
 
-  async function loadRequest() {
+  async function loadRequest(versionId = selectedVersionId) {
     if (!enabled || !requestId) {
       setRequest(null)
       setErrorMessage(null)
@@ -67,7 +78,9 @@ export function useAdminRequestDetail(
       setVersionErrorMessage(null)
       setDeleteErrorMessage(null)
 
-      const nextRequest = await getAdminLocationRequestById(requestId)
+      const nextRequest = await getAdminLocationRequestById(requestId, {
+        versionId,
+      })
       setRequest(nextRequest)
     } catch (error) {
       setErrorMessage(
@@ -171,11 +184,9 @@ export function useAdminRequestDetail(
       setSaveErrorMessage(null)
       setDeleteErrorMessage(null)
 
-      await setAdminLocationRequestActiveVersion({
-        requestId: request.id,
-        requestProjectVersionId,
-      })
-      await loadRequest()
+      const nextVersionId = requestProjectVersionId.trim()
+      await loadRequest(nextVersionId)
+      setSelectedVersionId(nextVersionId)
     } catch (error) {
       setVersionErrorMessage(
         getErrorMessage(error, 'No pudimos cambiar la versión activa de la solicitud.'),
@@ -187,6 +198,7 @@ export function useAdminRequestDetail(
 
   useEffect(() => {
     let isActive = true
+    setSelectedVersionId(null)
 
     if (!enabled || !requestId) {
       setRequest(null)
